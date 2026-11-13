@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "picoclock"
+dynamic = ["version"]
+description = "A master clock for modular synths on a Raspberry Pi Pico 2 W, set from a phone."
+requires-python = ">=3.10"
+authors = [
+	{name = "Simon Holliday"},
+]
+keywords = [
+	"eurorack",
+	"modular-synth",
+	"clock",
+	"cv",
+	"raspberry-pi-pico",
+	"micropython",
+	"pio",
+]
+# No licence is declared yet because none has been chosen. Add the `license` key
+# and its classifier together once one is. There is no `readme` key yet either,
+# because the README is written once the clock has been measured end to end.
+classifiers = [
+	"Development Status :: 2 - Pre-Alpha",
+	"Intended Audience :: End Users/Desktop",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: Implementation :: CPython",
+	"Programming Language :: Python :: Implementation :: MicroPython",
+	"Topic :: Multimedia :: Sound/Audio",
+]
+dependencies = [
+	# The web page's server. The same package is copied onto the Pico, and on a
+	# laptop it serves the page from the stand-in engine.
+	"microdot>=2.7",
+]
+
+[project.optional-dependencies]
+dev = [
+	"pytest",
+	"mypy",
+	# Copies files to a real Pico and runs them there, by hand. No test reaches one.
+	"mpremote",
+]
+
+[tool.hatch.version]
+# One place says which version this is, and the Pico reads the same place for
+# the page's About view.
+path = "picoclock/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["picoclock"]
+
+[tool.hatch.build.targets.sdist]
+# Keep local agent config, including its token, the tracker's marker and caches
+# out of any source archive.
+exclude = [
+	".claude",
+	".mypy_cache",
+	".pytest_cache",
+	".subroutine",
+	"CLAUDE.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The working tree lives on a network share, so pytest's cache stays on local
+# disk. It is disposable and never committed.
+cache_dir = "/tmp/pytest-cache-picoclock"
+
+[tool.mypy]
+strict = true
+# The oldest Python the host side supports. Checking against it flags syntax the
+# shared code must not use, since MicroPython runs that code too.
+python_version = "3.10"
+files = ["picoclock", "tests", "tools"]
+# `picoclock/device` and `tools/board` only run on the Pico: they import
+# `machine`, `rp2` and `_thread`, which don't exist here. They are checked on
+# the board instead.
+exclude = ["^picoclock/device/", "^tools/board/"]
+# The working tree lives on a network share, where mypy's incremental cache goes
+# stale in ways that abort the run with an internal error rather than a type
+# error. Keep the cache on local disk. It is disposable and never committed.
+cache_dir = "/tmp/mypy-cache-picoclock"

@@ -1,0 +1,85 @@
+freerun    idle       n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: idle
+freerun    gc         n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: gc runs=333 worst_collect=15.9ms heap_used=180K
+freerun    flash      n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: flash writes=50 worst_write=88.5ms
+freerun    flashsmall n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: small flash writes=64 worst_write=42.9ms
+freerun    wifi       n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: wifi ap=True scans=15 worst_scan=644ms networks=13
+freerun    ble        n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: ble advertising
+freerun    all        n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: all: ap+ble+gc+scan loops=161 heap_used=134K
+spin       idle       n=1998 mean_err=-0.005us min=-19.76us max=+24.60us |dev| p50=1.248us p99=10.78us  >100us:0 >1ms:0
+    load: idle core1_max_gap=84us
+spin       gc         n=1998 mean_err=-0.002us min=-31.33us max=+31.76us |dev| p50=2.224us p99=9.10us  >100us:0 >1ms:0
+    load: gc runs=300 worst_collect=17.8ms heap_used=184K core1_max_gap=46us
+spin       flash      n=1998 mean_err=-16.709us min=-4987.72us max=+36733.67us |dev| p50=15.229us p99=34586.34us  >100us:499 >1ms:460
+    load: flash writes=50 worst_write=89.0ms core1_max_gap=37858us
+spin       flashsmall n=1998 mean_err=+0.002us min=-4986.96us max=+37395.91us |dev| p50=1.882us p99=4985.56us  >100us:98 >1ms:73
+    load: small flash writes=64 worst_write=43.2ms core1_max_gap=37787us
+spin       wifi       n=1998 mean_err=-0.001us min=-23.16us max=+23.53us |dev| p50=1.879us p99=7.41us  >100us:0 >1ms:0
+    load: wifi ap=True scans=16 worst_scan=638ms networks=13 core1_max_gap=46us
+spin       ble        n=1998 mean_err=-0.000us min=-33.21us max=+35.11us |dev| p50=1.266us p99=11.65us  >100us:0 >1ms:0
+    load: ble advertising core1_max_gap=54us
+spin       all        n=1998 mean_err=+0.000us min=-33.07us max=+33.37us |dev| p50=1.880us p99=10.05us  >100us:0 >1ms:0
+    load: all: ap+ble+gc+scan loops=153 heap_used=137K core1_max_gap=54us
+timer_hard idle       n=1998 mean_err=-0.001us min=-32.13us max=+34.41us |dev| p50=1.639us p99=26.37us  >100us:0 >1ms:0
+    load: idle
+timer_hard gc         n=1998 mean_err=-0.010us min=-29.65us max=+32.79us |dev| p50=2.923us p99=26.45us  >100us:0 >1ms:0
+    load: gc runs=330 worst_collect=16.4ms heap_used=180K
+timer_hard flash      n=1998 mean_err=-14.556us min=-4989.91us max=+37204.62us |dev| p50=14.903us p99=34085.69us  >100us:510 >1ms:438
+    load: flash writes=50 worst_write=89.2ms
+timer_hard flashsmall n=1998 mean_err=-0.002us min=-4989.91us max=+36170.69us |dev| p50=0.642us p99=4989.50us  >100us:93 >1ms:65
+    load: small flash writes=64 worst_write=43.4ms
+timer_hard wifi       n=1998 mean_err=+0.004us min=-27.68us max=+29.92us |dev| p50=0.782us p99=26.48us  >100us:0 >1ms:0
+    load: wifi ap=True scans=16 worst_scan=642ms networks=14
+timer_hard ble        n=1998 mean_err=-0.013us min=-27.69us max=+29.56us |dev| p50=3.800us p99=24.97us  >100us:0 >1ms:0
+    load: ble advertising
+timer_hard all        n=1998 mean_err=+0.000us min=-31.56us max=+34.59us |dev| p50=1.747us p99=26.51us  >100us:0 >1ms:0
+    load: all: ap+ble+gc+scan loops=161 heap_used=134K
+timer_soft idle       n=1998 mean_err=-0.001us min=-277.79us max=+305.68us |dev| p50=12.121us p99=53.55us  >100us:7 >1ms:0
+    load: idle
+timer_soft gc         n=1998 mean_err=+5.257us min=-4979.92us max=+16097.84us |dev| p50=4902.430us p99=15520.80us  >100us:1390 >1ms:1307
+    load: gc runs=331 worst_collect=16.3ms heap_used=180K
+timer_soft flash      n=1998 mean_err=-14.984us min=-4983.83us max=+40129.54us |dev| p50=15.384us p99=36845.61us  >100us:549 >1ms:537
+    load: flash writes=50 worst_write=89.1ms
+timer_soft flashsmall n=1998 mean_err=-0.001us min=-4983.89us max=+36237.69us |dev| p50=0.761us p99=4983.27us  >100us:116 >1ms:74
+    load: small flash writes=64 worst_write=43.9ms
+timer_soft wifi       n=1998 mean_err=+0.001us min=-4982.29us max=+28297.44us |dev| p50=1.241us p99=183.40us  >100us:40 >1ms:7
+    load: wifi ap=True scans=16 worst_scan=641ms networks=11
+timer_soft ble        n=1998 mean_err=-0.017us min=-303.04us max=+321.36us |dev| p50=4.383us p99=33.00us  >100us:6 >1ms:0
+    load: ble advertising
+timer_soft all        n=1998 mean_err=-1.357us min=-4991.29us max=+30051.85us |dev| p50=7.803us p99=12055.80us  >100us:590 >1ms:542
+    load: all: ap+ble+gc+scan loops=161 heap_used=134K
+pio_core1  idle       n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: idle underrun=0 core1_max_gap=5009us
+pio_core1  gc         n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: gc runs=307 worst_collect=17.3ms heap_used=184K underrun=0 core1_max_gap=5024us
+pio_core1  flash      n=1998 mean_err=+386.381us min=+0.00us max=+16383.92us |dev| p50=386.381us p99=13084.02us  >100us:58 >1ms:58
+    load: flash writes=54 worst_write=92.4ms underrun=1 core1_max_gap=41430us
+pio_core1  flashsmall n=1998 mean_err=+60.617us min=+0.00us max=+18510.12us |dev| p50=60.617us p99=60.62us  >100us:8 >1ms:8
+    load: small flash writes=64 worst_write=44.2ms underrun=1 core1_max_gap=43572us
+pio_core1  wifi       n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: wifi ap=True scans=16 worst_scan=640ms networks=10 underrun=0 core1_max_gap=5021us
+pio_core1  ble        n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: ble advertising underrun=0 core1_max_gap=5020us
+pio_core1  all        n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: all: ap+ble+gc+scan loops=156 heap_used=137K underrun=0 core1_max_gap=5016us
+pio_irq    idle       n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: idle underrun=0
+pio_irq    gc         n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: gc runs=325 worst_collect=16.7ms heap_used=180K underrun=0
+pio_irq    flash      n=1998 mean_err=+372.167us min=+0.00us max=+15848.49us |dev| p50=372.167us p99=12831.95us  >100us:57 >1ms:57
+    load: flash writes=54 worst_write=90.4ms underrun=1
+pio_irq    flashsmall n=1998 mean_err=+60.870us min=+0.00us max=+17293.97us |dev| p50=60.870us p99=60.87us  >100us:8 >1ms:8
+    load: small flash writes=65 worst_write=44.1ms underrun=1
+pio_irq    wifi       n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: wifi ap=True scans=16 worst_scan=639ms networks=10 underrun=0
+pio_irq    ble        n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: ble advertising underrun=0
+pio_irq    all        n=1998 mean_err=+0.000us min=+0.00us max=+0.00us |dev| p50=0.000us p99=0.00us  >100us:0 >1ms:0
+    load: all: ap+ble+gc+scan loops=161 heap_used=134K underrun=0
+DONE

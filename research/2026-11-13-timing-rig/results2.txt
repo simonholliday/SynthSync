@@ -1,0 +1,48 @@
+PicoClock research, 2026-11-13. Pico 2 W (RP2350, 150 MHz), MicroPython v1.29.0.
+Pulse out on GP0 (or GP2..GP5), captured by a second PIO state machine through DMA,
+so the measurement does not depend on the CPU. Capture resolution 2 cycles (13.3 ns).
+
+== Prototype 1: exact timeline with big integers, on core 1 -> PIO player (GP2..GP5) ==
+word cost: ratios=[(1, 1), (2, 1), (3, 1), (4, 1)] bpm=120.00 -> 487 us/word
+word cost: ratios=[(24, 1), (16, 1), (12, 1), (32, 1)] bpm=300.00 -> 654 us/word
+word cost: 8 outputs bpm=120.00 -> 616 us/word
+timeline out3 x24/1 @125.00 all: n=598 worst deviation from exact=0 cycles, underrun=0 min_fifo=7
+    load: all: ap+ble+gc+scan loops=179 heap_used=155K
+timeline out2 x3/1 @123.45 idle: n=78 worst deviation from exact=1 cycles (6.7 ns), underrun=0 min_fifo=8
+timeline out3 x24/1 @125.00 idle, 12 pauses of 150 ms: exactly 12 intervals differ (by the pause), all others exact, underrun=0
+timeline out3 x24/1 @125.00 preroll: n=598 worst deviation=0 cycles, underrun=0
+    load: preroll flash writes=17 worst_write=43.3ms words_per_preroll=60
+timeline out3 x24/1 @125.00 gc (tempo swept live): n=598 min=13.73ms max=40.91ms underrun=0 min_fifo=5
+FAILED: timeline out3 x32/1 @300.00 all: underrun=1 min_fifo=0
+    (a producer that allocates memory waits for the other core's garbage collection)
+
+== Prototype 2: integer-only fast path (no heap use), @micropython.native ==
+word cost v2: 4 outputs @120.00 -> 84 us/word, heap growth over 5000 words: 0 bytes; tempo change 1184 us
+word cost v2: 4 outputs x24,x16,x12,x32 @300.00 -> 99 us/word, 0 bytes; tempo change 1110 us
+word cost v2: 8 outputs @120.00 -> 135 us/word, 0 bytes; tempo change 2286 us
+timeline2 out3 x32/1 @300.00 all: n=1998 worst deviation from exact=0 cycles, underrun=0 min_fifo=7
+    load: all: ap+ble+gc+scan loops=181 heap_used=164K
+timeline2 out3 x137/100 @123.45 all: n=58 worst deviation from exact=0 cycles, underrun=0 min_fifo=8
+timeline2 out3 x32/1 @300.00 all (tempo swept live): n=1406 min=6.25ms max=30.68ms underrun=0 min_fifo=6
+FAILED (prototype bug, since fixed): pre-roll that stopped feeding while it rendered 0.6 s of
+    words starved the player at x32 @300: underrun=1, 18 intervals off by up to 19.6 ms.
+After the fix (build the backlog while still feeding, then hand the backlog to DMA):
+timeline2 out3 x32/1 @300.00 preroll, WiFi AP up: n=1998 worst deviation=0 cycles, underrun=0 min_fifo=7
+    load: preroll flash writes=30 worst_write=44.2ms words_per_preroll=162
+timeline2 out3 x32/1 @300.00 preroll, WiFi off:   n=1998 worst deviation=0 cycles, underrun=0 min_fifo=7
+timeline2 out3 x24/1 @125.00 preroll, WiFi AP up: n=598 worst deviation=0 cycles, underrun=0 min_fifo=8
+
+== Host checks ==
+proto_check.py:  260777 pulses over 61.5 min, every edge within 1 tick of exact, drift 0;
+                 61496 edges on their own grid after 3093 tempo and 298 ratio changes.
+proto2_check.py: scale helper matches exact integer arithmetic in 200000 random cases;
+                 323398 pulses over 72.0 min with 2844 tempo changes, each within 1 us of its
+                 exact grid position, no accumulated error; all player words fit in 30 bits.
+
+== Device facts ==
+heap free at start: 440560; with AP up: 440048; with AP + BLE up: 439936
+state machine 8 (PIO2/SM0) is claimed by the radio from boot; PIO0 and PIO1 are free
+rp2.DMA() hands out channels 0, 3, 4 (1 and 2 belong to the radio)
+AP comes up in 3 ms at 192.168.4.1; network.hostname('picoclock') accepted
+Microdot 2.7.0: HTTP GET and POST served on MicroPython 1.29.0 (unix build) and CPython 3.12;
+                imports on the Pico for about 27 KB of heap

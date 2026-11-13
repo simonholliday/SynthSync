@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+# The project agent's token for the tracker. Never commit it.
+.claude/settings.local.json
+# Local to this checkout: the tracker's project marker and agent notes.
+.subroutine
+CLAUDE.md
