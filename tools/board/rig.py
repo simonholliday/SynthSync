@@ -1985,6 +1985,63 @@ _PAGE_FOLDER = "/_rig_page"
 _OWN_SITE = {"Origin": "http://192.168.4.1", "Host": "192.168.4.1"}
 
 
+def page_files () -> list:
+
+	"""Give the page's files as an install leaves them on the Pico, which is the page alone, with everything inside it."""
+
+	return sorted(name[:-3] for name in os.listdir("picoclock/web/static") if name.endswith(".gz"))
+
+
+def copy_page_file (name: str) -> int:
+
+	"""Copy one of the page's gzipped files onto the Pico's own storage, where it is read from in use, and give its length.
+
+	It goes a kilobyte at a time: the page is one file of about 18 KB, and
+	under the heavier loads there may be no room for it in one piece.
+	"""
+
+	length = 0
+
+	with open("picoclock/web/static/" + name + ".gz", "rb") as source:
+		with open(_PAGE_FOLDER + "/" + name + ".gz", "wb") as target:
+
+			while True:
+
+				part = source.read(1024)
+
+				if not part:
+					return length
+
+				target.write(part)
+				length += len(part)
+
+
+async def _count_body (response, sent) -> None:
+
+	"""Stand in for the test client's own reading of a body: count a gzipped page's bytes as they come, and keep anything else.
+
+	The test client keeps a body by adding each part to the last, which asks
+	for ever longer pieces of memory, and under load there may be none for
+	the page. The real server sends it a kilobyte at a time and keeps none
+	of it.
+	"""
+
+	response.body = b""
+	response.length = 0
+	parts = sent.body_iter()
+	whole = sent.headers.get("Content-Encoding") != "gzip"
+
+	async for part in parts:
+
+		response.length += len(part)
+
+		if whole:
+			response.body += part.encode() if isinstance(part, str) else part
+
+	if hasattr(parts, "aclose"):
+		await parts.aclose()
+
+
 class Visitor:
 
 	"""Stands in for a page that stays open: it answers each batch it is sent, as a page does, and counts the messages by type."""
@@ -2049,8 +2106,8 @@ def test_page (load: str = "idle") -> None:
 
 	"""Serve the page and its API as the Pico does, and ask for them over and over, while a fast output is timed.
 
-	Every request a phone makes is made here: the page's six files, read from
-	the Pico's own storage, everything a new page needs, changes sent as JSON
+	Every request a phone makes is made here: the page, which is one file read
+	from the Pico's own storage, everything a new page needs, changes sent as JSON
 	and through a socket, ones that must be refused, and a look for networks.
 	A page that stays open must be told of each change and of where the clock
 	has got to. The Pico's own network is up throughout and settings are
@@ -2070,7 +2127,7 @@ def test_page (load: str = "idle") -> None:
 	board = picoclock.device.board
 	tempo = 30000
 	count = 3000
-	names = sorted(picoclock.web.app.PAGE_FILES)
+	names = page_files()
 	sizes = {}
 
 	# The page's files go onto the Pico's own storage, which is where it reads them from in use.
@@ -2080,14 +2137,7 @@ def test_page (load: str = "idle") -> None:
 		pass
 
 	for name in names:
-
-		with open("picoclock/web/static/" + name + ".gz", "rb") as handle:
-			data = handle.read()
-
-		with open(_PAGE_FOLDER + "/" + name + ".gz", "wb") as handle:
-			handle.write(data)
-
-		sizes[name] = len(data)
+		sizes[name] = copy_page_file(name)
 
 	# Output 2 is the one timed, and nothing below changes it. The changes go to outputs 3 and 4.
 	capture = Capture(board.FIRST_OUTPUT_PIN + 1, count)
@@ -2107,8 +2157,15 @@ def test_page (load: str = "idle") -> None:
 
 	app = picoclock.web.app.App(clock, wifi, _PAGE_FOLDER)
 	client = microdot.test_client.TestClient(app.web)
+
+	# The page is counted as it comes, not kept, as a phone's browser would take it in.
+	microdot.test_client.TestResponse._initialize_body = _count_body
 	visitor = Visitor()
 	wrong = []
+
+	# An install leaves the page as one file, with everything inside it, so a phone asks for nothing else.
+	if names != ["index.html"]:
+		wrong.append("the page isn't one file: " + ",".join(names))
 
 	# How many requests have been made, how many rounds of them, the longest one took in
 	# milliseconds, the memory left after the first round, how many networks the look
@@ -2118,9 +2175,9 @@ def test_page (load: str = "idle") -> None:
 
 	def busy () -> bool:
 
-		"""Say whether this round makes changes. Three do and then five don't, so that settings are left alone long enough to be saved."""
+		"""Say whether this round makes changes. Rounds in one second of every four do, so that settings are then left alone for longer than a save waits."""
 
-		return counts[1] % 8 < 3
+		return time.ticks_ms() // 1000 % 4 == 0
 
 	def expect (what: str, truth: bool) -> None:
 
@@ -2135,7 +2192,7 @@ def test_page (load: str = "idle") -> None:
 
 		response = await client.get("/" if name == "index.html" else "/" + name, headers={"Host": "192.168.4.1"})
 
-		expect(name + " wasn't sent whole and gzipped", response.status_code == 200 and response.headers.get("Content-Encoding") == "gzip" and len(response.body) == sizes[name])
+		expect(name + " wasn't sent whole and gzipped", response.status_code == 200 and response.headers.get("Content-Encoding") == "gzip" and response.length == sizes[name])
 
 	async def everything () -> None:
 
@@ -2310,7 +2367,7 @@ def test_air (load: str = "idle") -> None:
 	board = picoclock.device.board
 	path = picoclock.device.storage.PATH
 	tempo = 30000
-	names = sorted(picoclock.web.app.PAGE_FILES)
+	names = page_files()
 
 	try:
 		with open(path) as handle:
@@ -2325,12 +2382,7 @@ def test_air (load: str = "idle") -> None:
 		pass
 
 	for name in names:
-
-		with open("picoclock/web/static/" + name + ".gz", "rb") as handle:
-			data = handle.read()
-
-		with open(_PAGE_FOLDER + "/" + name + ".gz", "wb") as handle:
-			handle.write(data)
+		copy_page_file(name)
 
 	count = _AIR_FOR // 1000 * 130
 	capture = Capture(board.FIRST_OUTPUT_PIN + 1, count)

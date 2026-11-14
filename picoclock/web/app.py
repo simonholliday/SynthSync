@@ -4,7 +4,7 @@ This never touches a pin. It changes things through the clock, which checks
 each one and passes it to whatever engine is playing, so the same file serves
 the page from the Pico and from a laptop.
 
-    GET  /             the page, and its other files beside it
+    GET  /             the page: on the Pico one file, and on a laptop its six
     GET  /api/state    everything, for a page that has just opened
     GET  /api/health   how well the page's side of things has kept up
     POST /api/change   one message from the page, as JSON
@@ -243,6 +243,16 @@ QUIET_FOR = 5000
 # How late a look has to come to count as everything having been held up, in milliseconds.
 HELD = 1000
 
+# The page's files go to one phone at a time, and the open pages are sent
+# nothing while they do. A connection may queue 6,400 bytes in the Pico's
+# network stack, which has 8,000 for everything, so two loads together, or a
+# load and the pages' news, could fill it, and on a poor signal that holds
+# everything here for ten seconds. A load that hasn't finished after this long
+# loses its turn, so one that went wrong can't keep everything waiting, in
+# milliseconds. How often a waiting load looks again, in milliseconds.
+TURN_MOST = 5000
+TURN_LOOK = 20
+
 # How long a batch is before anything is put in it, at the most, and what goes between two messages.
 _WRAPPING = len('{"batch": 1000000, "messages": []}')
 _BETWEEN = ", "
@@ -290,6 +300,45 @@ def _since (then: int) -> int:
 		return int(_ticks_diff(_ticks_ms(), then))
 
 	return int(time.monotonic() * 1000) - then
+
+
+class Turn:
+
+	"""A file of the page's, sent only once no other is being sent.
+
+	Microdot reads a file's contents after the handler has given it back, so
+	the turn is taken by the first read and given back when the file is
+	closed, which Microdot does when the send is over, however it went.
+	"""
+
+	def __init__ (self, app: "App", file: "typing.Any") -> None:
+
+		"""Wrap an open file for the app to send in its turn."""
+
+		self._app = app
+		self._file = file
+		self._turn = 0
+
+	async def read (self, size: int) -> bytes:
+
+		"""Wait for this file's turn the first time, then read the next part of it."""
+
+		if not self._turn:
+			self._turn = await self._app._take_turn()
+
+		part: bytes = self._file.read(size)
+
+		return part
+
+	def close (self) -> None:
+
+		"""Give the turn back, and close the file."""
+
+		if self._turn:
+			self._app._end_turn(self._turn)
+			self._turn = 0
+
+		self._file.close()
 
 
 def _same_site (request: microdot.Request) -> bool:
@@ -463,6 +512,12 @@ class App:
 		self.held = 0
 		self.longest_hold = 0
 
+		# The page load whose turn it is, counted from 1, whether it is still being
+		# sent, and for how many looks it has been.
+		self._turn = 0
+		self.sending_page = False
+		self._turn_looks = 0
+
 		self._fixed = self._describe()
 
 		clock.watch(self._changed)
@@ -626,7 +681,14 @@ class App:
 
 	def look (self) -> None:
 
-		"""See whether the clock or the network has moved on by itself, and whether each open page is still answering."""
+		"""See whether the clock or the network has moved on by itself, whether each open page is still answering, and how long a page load has had."""
+
+		if self.sending_page:
+
+			self._turn_looks += 1
+
+			if self._turn_looks * LOOK_EVERY >= TURN_MOST:
+				self._end_turn(self._turn)
 
 		if not self.pages:
 			return
@@ -826,7 +888,8 @@ class App:
 		is nothing to say.
 		"""
 
-		if len(page.unheard) >= AHEAD:
+		# The page itself is being sent to a phone, which may need nearly all the network stack's room.
+		if self.sending_page or len(page.unheard) >= AHEAD:
 			page.short = True
 			return None
 
@@ -1167,5 +1230,45 @@ class App:
 		assert self.static is not None
 
 		packed = name in self._packed
+		response = microdot.send_file(self.static + "/" + name, content_type=PAGE_FILES[name], max_age=0, compressed=packed, file_extension=".gz" if packed else "")
 
-		return microdot.send_file(self.static + "/" + name, content_type=PAGE_FILES[name], max_age=0, compressed=packed, file_extension=".gz" if packed else "")
+		# Microdot's type stubs say a body is bytes, but it takes anything it can read and close, as the file here is.
+		response.body = Turn(self, response.body)  # type: ignore[assignment]
+
+		return response
+
+	async def _take_turn (self) -> int:
+
+		"""Wait for this page load's turn, and give its number.
+
+		Loads go one at a time. Once it is this one's turn, nothing more goes
+		to the open pages, and what is already on its way to them is let
+		arrive before the load begins, so a load and the pages' news never
+		fill the network stack's memory between them. A turn that has lasted
+		TURN_MOST is ended by `look`, which counts the time in looks, so a
+		moment when everything here was held up never cuts a turn short.
+		"""
+
+		while self.sending_page:
+			await asyncio.sleep(TURN_LOOK / 1000)
+
+		self._turn += 1
+		self.sending_page = True
+		self._turn_looks = 0
+
+		turn = self._turn
+
+		while self._on_the_way and self.sending_page and self._turn == turn:
+			await asyncio.sleep(TURN_LOOK / 1000)
+
+		return turn
+
+	def _end_turn (self, turn: int) -> None:
+
+		"""Let the next load go, and the open pages be sent what they have missed, unless this turn already ran out."""
+
+		if turn != self._turn or not self.sending_page:
+			return
+
+		self.sending_page = False
+		self._make_room()

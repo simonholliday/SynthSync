@@ -9,6 +9,7 @@ Nothing here writes anywhere but the folder it is given.
 
 import gzip
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -122,22 +123,77 @@ def compile_all (folder: pathlib.Path, compiler: str) -> None:
 			compile_one(compiler, folder, name)
 
 
-def pack_page (folder: pathlib.Path) -> None:
+# How the page's own files are named inside `index.html` and `page.js`, which
+# is how `one_page` finds what to put in their place.
+_STYLE_SHEET = '<link rel="stylesheet" href="page.css">'
+_SCRIPT = '<script type="module" src="page.js"></script>'
+_IMPORT_NAMES = re.compile(r'^import \{([A-Za-z, ]+)\} from "\./([a-z]+)\.js";$', re.MULTILINE)
+_IMPORT_ALL = re.compile(r'^import \* as ([A-Za-z]+) from "\./([a-z]+)\.js";$', re.MULTILINE)
+_EXPORT = re.compile(r'^export (?:class|function|const|let) ([A-Za-z]+)', re.MULTILINE)
 
-	"""Gzip each of the page's files into a folder, where the app looks for them.
 
-	The app sends a gzipped file as it is, so the Pico never holds the plain
-	one. The time stamp is left out so the same page always packs to the
-	same bytes, and a file that hasn't changed isn't copied again.
+def one_page () -> str:
+
+	"""Write the page as one file: `index.html`, with the style sheet and every script inside it.
+
+	A phone then opens the page with one request over one connection, where
+	the six files take six. The scripts are modules: each one `page.js`
+	imports is wrapped in a function of its own, so its names stay its own,
+	and hands over what it exports. The page's source stays as six plain
+	files, which the laptop stand-in serves as they are.
 	"""
 
 	source = ROOT / "picoclock" / "web" / "static"
+	page = (source / "index.html").read_text()
+	style = (source / "page.css").read_text()
+	main = (source / "page.js").read_text()
+	parts = []
+
+	imports = [(names, module, False) for names, module in _IMPORT_NAMES.findall(main)]
+	imports += [(name, module, True) for name, module in _IMPORT_ALL.findall(main)]
+
+	for names, module, whole in sorted(imports, key=lambda each: main.index('"./%s.js"' % each[1])):
+
+		script = (source / (module + ".js")).read_text()
+		exported = _EXPORT.findall(script)
+		inside = _EXPORT.sub(lambda found: found.group(0)[len("export "):], script)
+
+		# What is put inside the page has to stand alone, and mustn't end the script it is put in.
+		if "import " in inside or re.search(r"^export ", inside, re.MULTILINE) or "</script" in inside:
+			raise ValueError("%s.js can't be put inside the page as it is" % module)
+
+		given = ("const %s = " % names) if whole else ("const {%s} = " % names)
+		parts.append("%s(() => {\n%s\nreturn {%s};\n})();\n" % (given, inside, ", ".join(exported)))
+
+	rest = _IMPORT_ALL.sub("", _IMPORT_NAMES.sub("", main))
+
+	if "import " in rest or "</script" in rest or "</style" in style:
+		raise ValueError("page.js or page.css can't be put inside the page as it is")
+
+	parts.append(rest)
+
+	if page.count(_STYLE_SHEET) != 1 or page.count(_SCRIPT) != 1:
+		raise ValueError("index.html doesn't name page.css and page.js as one_page expects")
+
+	page = page.replace(_STYLE_SHEET, "<style>\n%s</style>" % style)
+
+	return page.replace(_SCRIPT, '<script type="module">\n%s</script>' % "\n".join(parts))
+
+
+def pack_page (folder: pathlib.Path) -> None:
+
+	"""Put the page into a folder as the Pico holds it: one gzipped file, where the app looks for it.
+
+	The app sends a gzipped file as it is, so the Pico never holds the plain
+	one. The time stamp is left out so the same page always packs to the
+	same bytes, and a page that hasn't changed isn't copied again.
+	"""
+
 	target = folder / "picoclock" / "web" / "static"
 
 	target.mkdir(parents=True)
 
-	for name in sorted(picoclock.web.app.PAGE_FILES):
-		(target / (name + ".gz")).write_bytes(gzip.compress((source / name).read_bytes(), 9, mtime=0))
+	(target / "index.html.gz").write_bytes(gzip.compress(one_page().encode(), 9, mtime=0))
 
 
 def stage_for_pico (folder: pathlib.Path, compiler: str) -> list[str]:

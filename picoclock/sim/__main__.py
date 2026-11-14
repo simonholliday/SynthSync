@@ -3,10 +3,13 @@
     python -m picoclock.sim
     python -m picoclock.sim --port 8080 --outputs 8
     python -m picoclock.sim --host 0.0.0.0
+    python -m picoclock.sim --static FOLDER
 
 It behaves as a Pico that has just been switched on: the clock starts running
 at once with the settings a new one has. Nothing is saved. With `--host
 0.0.0.0` a phone on the same network can reach it at this computer's address.
+It serves the page's own six files, or with `--static` whatever is in another
+folder, such as the page packed into one file as the Pico holds it.
 """
 
 import argparse
@@ -26,14 +29,21 @@ class Stand:
 
 	"""Everything that makes up a stand-in PicoClock, put together."""
 
-	def __init__ (self, outputs: int = 4) -> None:
+	def __init__ (self, outputs: int = 4, static: str | None = None) -> None:
 
-		"""Make a stand-in with this many outputs, running, as a Pico is once switched on."""
+		"""Make a stand-in with this many outputs, running, as a Pico is once switched on.
+
+		`static` is the folder the page is served from, and is the page's own
+		six files unless given.
+		"""
+
+		if static is None:
+			static = os.path.join(os.path.dirname(picoclock.web.app.__file__), "static")
 
 		self.engine = picoclock.sim.engine.Engine(outputs)
 		self.clock = picoclock.core.clock.Clock(picoclock.core.settings.Settings(outputs), self.engine)
 		self.network = picoclock.sim.network.make(self.clock)
-		self.app = picoclock.web.app.App(self.clock, self.network, os.path.join(os.path.dirname(picoclock.web.app.__file__), "static"))
+		self.app = picoclock.web.app.App(self.clock, self.network, static)
 
 		self.clock.load()
 		self.clock.press(picoclock.core.transport.START)
@@ -59,12 +69,13 @@ def main (arguments: list[str] | None = None) -> int:
 	parser.add_argument("--host", default="127.0.0.1", help="the address to serve at: 0.0.0.0 lets other devices on the network reach it")
 	parser.add_argument("--port", type=int, default=8000, help="the port to serve at")
 	parser.add_argument("--outputs", type=int, default=4, help="how many outputs the stand-in has, from 1 to 8")
+	parser.add_argument("--static", help="a folder to serve the page from in place of its own six files")
 	options = parser.parse_args(arguments)
 
 	if options.outputs < 1 or options.outputs > 8:
 		parser.error("a PicoClock has between 1 and 8 outputs")
 
-	stand = Stand(options.outputs)
+	stand = Stand(options.outputs, options.static)
 
 	print("PicoClock's stand-in is at http://%s:%d" % ("localhost" if options.host == "127.0.0.1" else options.host, options.port), flush=True)
 

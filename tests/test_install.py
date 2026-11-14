@@ -7,6 +7,7 @@ and what it lays out is checked as files on this machine.
 import ast
 import gzip
 import pathlib
+import re
 import subprocess
 import time
 
@@ -55,19 +56,44 @@ def compiler () -> str:
 	return found
 
 
-def test_the_page_unpacks_to_exactly_what_was_written (tmp_path: pathlib.Path) -> None:
+def test_the_page_is_packed_as_one_file_that_unpacks_to_exactly_the_page (tmp_path: pathlib.Path) -> None:
 
-	"""Each gzipped file is the page's own file and nothing else, and packs the same way every time."""
+	"""The Pico holds the page as one gzipped file, the same every time, so a phone opens it with one request."""
 
 	tools.stage.pack_page(tmp_path)
 	tools.stage.pack_page(tmp_path / "again")
 
-	for name in picoclock.web.app.PAGE_FILES:
+	folder = tmp_path / "picoclock" / "web" / "static"
+	packed = (folder / "index.html.gz").read_bytes()
 
-		packed = (tmp_path / "picoclock" / "web" / "static" / (name + ".gz")).read_bytes()
+	assert sorted(path.name for path in folder.iterdir()) == ["index.html.gz"]
+	assert gzip.decompress(packed).decode() == tools.stage.one_page()
+	assert packed == (tmp_path / "again" / "picoclock" / "web" / "static" / "index.html.gz").read_bytes()
 
-		assert gzip.decompress(packed) == (ROOT / "picoclock" / "web" / "static" / name).read_bytes()
-		assert packed == (tmp_path / "again" / "picoclock" / "web" / "static" / (name + ".gz")).read_bytes()
+
+def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () -> None:
+
+	"""The style sheet and every script are inside the one file, each script's own names kept to itself, and nothing outside it is asked for."""
+
+	page = tools.stage.one_page()
+	source = ROOT / "picoclock" / "web" / "static"
+
+	# Nothing left that a browser would fetch: the icon is written into the page itself.
+	assert re.findall(r'(?:src|href)="([^"#][^"]*)"', page) == ["data:,"]
+	assert "import " not in page.split("<script", 1)[1]
+	assert page.count("<script") == 1 and page.count("<style>") == 1
+
+	# Every line of every part is there, apart from how the scripts named one another.
+	for name in ("page.css", "page.js", "settings.js", "knob.js", "ratio.js"):
+		for line in (source / name).read_text().splitlines():
+			if line.startswith("import "):
+				continue
+			assert line.removeprefix("export ") in page, (name, line)
+
+	# Each module's names stay inside a function of its own, and only what it exports is handed over.
+	assert "const {Knob} = (() => {" in page
+	assert "const ratio = (() => {" in page
+	assert "const {Settings} = (() => {" in page
 
 
 def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (tmp_path: pathlib.Path, compiler: str) -> None:
@@ -79,7 +105,7 @@ def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (
 
 	expected = {name + ".mpy" for name in sources()}
 	expected |= {"microdot/" + pathlib.Path(part).stem + ".mpy" for part in tools.stage.MICRODOT_PARTS}
-	expected |= {"picoclock/web/static/" + name + ".gz" for name in picoclock.web.app.PAGE_FILES}
+	expected.add("picoclock/web/static/index.html.gz")
 	expected.add(tools.stage.MAIN)
 
 	assert laid_out == expected
@@ -360,7 +386,7 @@ def test_an_install_takes_the_old_copy_off_copies_the_new_tries_it_and_only_then
 	assert starting == ["fs", "cp", "main.py", ":"]
 	assert restarting == ["reset"]
 
-	assert "picoclock/web/static/page.js.gz" in pico.copied
+	assert "picoclock/web/static/index.html.gz" in pico.copied
 
 	said = capsys.readouterr().out
 

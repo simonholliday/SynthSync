@@ -6,6 +6,7 @@ through Microdot's own test client prove the addresses are wired up.
 """
 
 import asyncio
+import io
 import json
 import os
 import sys
@@ -111,6 +112,12 @@ class Socket:
 		"""Have the page take what it is sent and say nothing back, as when what it is sent is stuck on the way."""
 
 		self._answering = False
+
+	def resume_answering (self) -> None:
+
+		"""Have the page answer each batch it is sent again, from the next one on."""
+
+		self._answering = True
 
 	def answer (self, number: "int | None" = None) -> None:
 
@@ -1577,7 +1584,8 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 	async def work () -> None:
 
 		clock, engine, storage = tests.checks.check_clock.make()
-		client = microdot.test_client.TestClient(picoclock.web.app.App(clock, None, folder).web)
+		app = picoclock.web.app.App(clock, None, folder)
+		client = microdot.test_client.TestClient(app.web)
 
 		for path in ("/", "/index.html"):
 
@@ -1588,6 +1596,9 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 			assert response.headers["Content-Type"] == "text/html; charset=utf-8"
 			assert response.headers["Cache-Control"] == "max-age=0"
 			assert "Content-Encoding" not in response.headers
+
+			# Sent in its turn, which it gave back once it had gone, or the next load would wait.
+			assert not app.sending_page
 
 		response = await client.get("/page.js")
 
@@ -1660,3 +1671,171 @@ def check_the_app_takes_every_message_its_table_lists_and_no_other () -> None:
 			assert False, "took a message that isn't in the table"
 		except ValueError as error:
 			assert str(error) == "That isn't something PicoClock can be told to do"
+
+
+def check_two_phones_opening_the_page_together_are_sent_it_in_turn () -> None:
+
+	"""The second load waits until the first is over, so the network stack only ever holds one load's worth of the page."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		first = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 3000))
+		second = picoclock.web.app.Turn(app, io.BytesIO(b"b" * 3000))
+		reached: "list[tuple[str, bytes]]" = []
+
+		async def load (turn: picoclock.web.app.Turn, name: str) -> None:
+
+			reached.append((name, await turn.read(1024)))
+
+		assert await first.read(1024) == b"a" * 1024
+
+		asyncio.create_task(load(second, "second"))
+		await asyncio.sleep(0.1)
+
+		assert reached == []
+
+		assert await first.read(4096) == b"a" * 1976
+		first.close()
+		await asyncio.sleep(0.1)
+
+		assert reached == [("second", b"b" * 1024)]
+
+		second.close()
+
+	tests.checks.check_clock.run(work())
+
+
+def check_a_page_load_that_never_ends_holds_the_next_one_up_only_for_a_while () -> None:
+
+	"""A send that went wrong without its file being closed stops keeping other phones waiting after five seconds' worth of looks, and its late end can't let a third in ahead of the second."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		stuck = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 10))
+		second = picoclock.web.app.Turn(app, io.BytesIO(b"b" * 10))
+		third = picoclock.web.app.Turn(app, io.BytesIO(b"c" * 10))
+		reached: "list[str]" = []
+
+		async def load (turn: picoclock.web.app.Turn, name: str) -> None:
+
+			await turn.read(5)
+			reached.append(name)
+
+		await stuck.read(5)
+		asyncio.create_task(load(second, "second"))
+
+		# Counted in looks, so a moment when everything was held up doesn't cut a turn short.
+		for _ in range(looks(picoclock.web.app.TURN_MOST) - 1):
+			app.look()
+
+		await asyncio.sleep(0.1)
+
+		assert reached == []
+
+		app.look()
+		await asyncio.sleep(0.1)
+
+		assert reached == ["second"]
+
+		# The stuck one ending at last doesn't let the third in while the second is still going.
+		stuck.close()
+		asyncio.create_task(load(third, "third"))
+		await asyncio.sleep(0.1)
+
+		assert reached == ["second"]
+
+		second.close()
+		await asyncio.sleep(0.1)
+
+		assert reached == ["second", "third"]
+
+		third.close()
+
+	tests.checks.check_clock.run(work())
+
+
+
+def check_the_open_pages_are_sent_nothing_while_the_page_goes_to_a_phone () -> None:
+
+	"""What is on its way to the open pages arrives before a page load begins, and nothing more is sent to them until it is over, so the two never fill the network stack between them."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		page = await open_page(app)
+		load = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 3000))
+		reached: "list[str]" = []
+
+		async def begin () -> None:
+
+			await load.read(1024)
+			reached.append("load")
+
+		# A batch on its way that the page hasn't yet said it heard.
+		page.stop_answering()
+		app.clock.set_tempo(9000)
+		await settle(app)
+		sent = len(page.batches)
+
+		assert page.unanswered()
+
+		asyncio.create_task(begin())
+		await asyncio.sleep(0.1)
+
+		assert reached == []
+
+		# Once it is heard, the load goes ahead.
+		page.answer()
+		await asyncio.sleep(0.1)
+
+		assert reached == ["load"]
+
+		# While the load is being sent, a change is kept back from the page.
+		page.resume_answering()
+		app.clock.set_tempo(9100)
+		await settle(app)
+
+		assert len(page.batches) == sent
+
+		# Once it is over, the page is told.
+		load.close()
+		await settle(app)
+
+		assert len(page.batches) == sent + 1
+		assert page.of("tempo")[-1]["tempo"] == 9100
+
+		await close_pages(app, page)
+
+	tests.checks.check_clock.run(work())
+
+
+def check_a_page_load_that_never_ends_doesnt_keep_the_open_pages_waiting_for_good () -> None:
+
+	"""A load that went wrong without its file being closed loses its turn after five seconds' worth of looks, and the open pages are told what they missed."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		page = await open_page(app)
+		stuck = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 10))
+
+		await stuck.read(5)
+		sent = len(page.batches)
+		app.clock.set_tempo(9200)
+		await settle(app)
+
+		assert len(page.batches) == sent
+
+		for _ in range(looks(picoclock.web.app.TURN_MOST)):
+			app.look()
+
+		await settle(app)
+
+		assert page.of("tempo")[-1]["tempo"] == 9200
+
+		stuck.close()
+		await close_pages(app, page)
+
+	tests.checks.check_clock.run(work())

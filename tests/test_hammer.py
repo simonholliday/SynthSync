@@ -40,8 +40,8 @@ def test_a_round_uses_two_pages_a_browser_and_plain_requests_and_leaves_things_a
 	assert tools.hammer.went_well(totals), tools.hammer.notes
 	assert totals["rounds"] == 1
 
-	# Two pages opened, the page's six files twice over, and a change by POST for each whole second.
-	assert totals["requests"] >= 2 + 12 + 4
+	# Two pages opened, the page opened twice at once twice over, and a change by POST for each whole second.
+	assert totals["requests"] >= 2 + 4 + 4
 	assert totals["failed"] == 0
 
 	# Thirty changes a second for the five seconds a round lasts, and the listening page heard of them.

@@ -115,3 +115,40 @@ none over two. It was never let go, and nothing was held up.
 The page's own files. They are sent whole, a connection each, and three at
 once want more than the 8,000 bytes there are. None of them held anything up
 in these runs.
+
+## The page as one file
+
+The install now packs the page into one gzipped `index.html` of about 18 KB,
+with the style sheet and the scripts inside it, where it was six files of
+about 20 KB together. Over the same network, from a browser on the wired
+computer:
+
+| | Six files | One file |
+| --- | --- | --- |
+| Requests to open the page | 6 | 1 |
+| Time until the page shows the tempo | 1.2 to 1.35 s | 0.14 to 0.46 s |
+
+On its own, one file made the stalls worse, not better. Sending it keeps the
+most a connection may queue, 6,400 bytes, in the network stack for longer
+than any of the six smaller files did, and the open pages' news can add up
+to 3,000 more, which is more than the 8,000 there are. Five minutes of
+`tools/hammer.py`, which now opens the page twice at once twice every five
+seconds:
+
+| | Page loads one at a time | And the open pages wait for a load |
+| --- | --- | --- |
+| Times everything was held up | 3 | 0 |
+| Held up in all | 47 s | none |
+| Longest hold | 19.8 s | 44 ms (the longest pause) |
+| Rounds that ended out of step | at least 1 | none of 48 |
+
+So a page load now waits until whatever is on its way to the open pages has
+arrived, and nothing more is sent to them until the load is over, when they
+are told what they missed. The two runs were ten minutes apart, so the
+signal was much the same for both. A load that hasn't finished in five
+seconds loses its turn, so a phone that vanishes mid-load can't freeze the
+pages for good, though its connection may hold its share of the stack for a
+while after.
+
+Two loads at the same moment now take 0.4 to 0.5 s, once 1.8 s, where
+without the wait they took 0.15 to 0.33 s.

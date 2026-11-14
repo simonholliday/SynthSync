@@ -138,4 +138,4 @@ def test_staging_copies_picoclock_and_the_board_half (tmp_path: pathlib.Path) ->
 	assert sorted(path.name for path in (tmp_path / "microdot").iterdir()) == sorted(pathlib.Path(part).stem + ".mpy" for part in tools.stage.MICRODOT_PARTS + (tools.stage.MICRODOT_TEST_CLIENT,))
 
 	# And the page is there gzipped, as the Pico serves it.
-	assert sorted(path.name for path in (tmp_path / "picoclock" / "web" / "static").iterdir()) == sorted(name + ".gz" for name in picoclock.web.app.PAGE_FILES)
+	assert sorted(path.name for path in (tmp_path / "picoclock" / "web" / "static").iterdir()) == ["index.html.gz"]

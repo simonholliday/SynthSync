@@ -8,7 +8,7 @@ settings thirty times a second while the other listens, and at the end of the
 round the listener must end up with what the first one last set. It is given
 a few seconds to, because a packet lost on the air can hold a page up for a
 second or two, and how long it took is counted.
-Meanwhile it fetches the page's files as a browser does and sends changes the
+Meanwhile it opens the page as two phones do at once, and sends changes the
 way a page without a socket does.
 
 It changes outputs 3 and 4 only, so that outputs 1 and 2 pulse steadily and
@@ -33,8 +33,9 @@ import typing
 
 import tools.page
 
-# The page's own files, as a browser asks for them.
-FILES = ("/", "/page.css", "/page.js", "/settings.js", "/knob.js", "/ratio.js")
+# What a phone asks for to open the page. On the Pico the page is one file, with
+# everything inside it, and a laptop's stand-in sends the rest when asked.
+PAGE = "/"
 
 # How long one round lasts, and how many changes a second the busy page makes.
 ROUND = 5.0
@@ -131,14 +132,12 @@ async def count (totals: Totals, work: typing.Awaitable[typing.Any], what: str) 
 
 async def browse (host: str, port: int, totals: Totals) -> None:
 
-	"""Fetch the page's six files as a browser does, three at a time."""
+	"""Open the page as two phones do at the same moment, which the Pico sends one after the other."""
 
-	for some in (FILES[:3], FILES[3:]):
+	for took in await asyncio.gather(*(count(totals, get(host, port, PAGE), "fetching the page") for _ in range(2))):
 
-		for took in await asyncio.gather(*(count(totals, get(host, port, path), "fetching " + path) for path in some)):
-
-			if took is not None and took > totals["worst_file_ms"]:
-				totals["worst_file_ms"] = took
+		if took is not None and took > totals["worst_file_ms"]:
+			totals["worst_file_ms"] = took
 
 
 async def one_round (host: str, port: int, totals: Totals, turn: int, tempo: bool) -> None:

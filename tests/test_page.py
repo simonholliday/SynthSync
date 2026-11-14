@@ -44,12 +44,12 @@ WATCH_LIGHT = """([row, milliseconds]) => new Promise((done) => {
 })"""
 
 
-@pytest.fixture(scope="module")
-def stand () -> typing.Iterator[tests.stand.Stand]:
+@pytest.fixture(scope="module", params=("six files", "one file"))
+def stand (request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> typing.Iterator[tests.stand.Stand]:
 
-	"""One stand-in PicoClock for all of these tests."""
+	"""One stand-in PicoClock for all of these tests, serving the page's own six files, and then the page packed into one as the Pico holds it."""
 
-	stand = tests.stand.Stand()
+	stand = tests.stand.Stand(static=tests.stand.packed(tmp_path_factory.mktemp("packed")) if request.param == "one file" else None)
 
 	yield stand
 
@@ -848,7 +848,7 @@ def test_a_page_whose_answers_stop_arriving_is_let_go_and_comes_back_by_itself (
 
 def test_only_the_pages_own_files_are_sent (stand: tests.stand.Stand) -> None:
 
-	"""The page and its five other files are there, told to be asked for afresh each time, and nothing else is."""
+	"""The page and its five other files are there, or the page alone when it is packed as the Pico holds it, told to be asked for afresh each time, and nothing else is."""
 
 	def fetch (path: str) -> tuple[int, str, str]:
 
@@ -863,10 +863,19 @@ def test_only_the_pages_own_files_are_sent (stand: tests.stand.Stand) -> None:
 
 	assert fetch("/") == (200, "text/html; charset=utf-8", "max-age=0")
 	assert fetch("/index.html") == (200, "text/html; charset=utf-8", "max-age=0")
-	assert fetch("/page.css") == (200, "text/css; charset=utf-8", "max-age=0")
 
-	for name in ("page.js", "settings.js", "knob.js", "ratio.js"):
-		assert fetch("/" + name) == (200, "text/javascript; charset=utf-8", "max-age=0")
+	if stand.packed:
+
+		# Packed, the page has everything inside it, and the other five aren't there to ask for.
+		for name in ("page.css", "page.js", "settings.js", "knob.js", "ratio.js", "index.html.gz"):
+			assert fetch("/" + name)[0] == 404, name
+
+	else:
+
+		assert fetch("/page.css") == (200, "text/css; charset=utf-8", "max-age=0")
+
+		for name in ("page.js", "settings.js", "knob.js", "ratio.js"):
+			assert fetch("/" + name) == (200, "text/javascript; charset=utf-8", "max-age=0")
 
 	for path in ("/app.py", "/__init__.py", "/favicon.ico", "/..%2Fapp.py", "/static/page.js", "/page.js.gz"):
 		assert fetch(path)[0] == 404, path

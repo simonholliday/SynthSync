@@ -20,12 +20,12 @@ if typing.TYPE_CHECKING:
 	import playwright.sync_api
 
 
-@pytest.fixture(scope="module")
-def stand () -> typing.Iterator[tests.stand.Stand]:
+@pytest.fixture(scope="module", params=("six files", "one file"))
+def stand (request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> typing.Iterator[tests.stand.Stand]:
 
-	"""One stand-in PicoClock for all of these tests."""
+	"""One stand-in PicoClock for all of these tests, serving the page's own six files, and then the page packed into one as the Pico holds it."""
 
-	stand = tests.stand.Stand()
+	stand = tests.stand.Stand(static=tests.stand.packed(tmp_path_factory.mktemp("packed")) if request.param == "one file" else None)
 
 	yield stand
 

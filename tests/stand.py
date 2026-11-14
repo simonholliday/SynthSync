@@ -14,7 +14,18 @@ import typing
 import urllib.error
 import urllib.request
 
+import tools.stage
+
 ROOT = pathlib.Path(__file__).parent.parent
+
+
+def packed (folder: pathlib.Path) -> pathlib.Path:
+
+	"""Pack the page into a folder as the Pico holds it, as one gzipped file, and give the folder it is in, for a stand-in to serve."""
+
+	tools.stage.pack_page(folder)
+
+	return folder / "picoclock" / "web" / "static"
 
 
 def free_port () -> int:
@@ -30,15 +41,21 @@ class Stand:
 
 	"""One stand-in PicoClock, started from the command line as a person would."""
 
-	def __init__ (self, outputs: int = 4, port: int | None = None) -> None:
+	def __init__ (self, outputs: int = 4, port: int | None = None, static: pathlib.Path | None = None) -> None:
 
-		"""Start a stand-in with this many outputs, and wait until it says it is serving."""
+		"""Start a stand-in with this many outputs, and wait until it says it is serving.
+
+		`static` is a folder to serve the page from, such as one the page has
+		been packed into as the Pico holds it. Without it the page's own six
+		files are served.
+		"""
 
 		self.port = port if port is not None else free_port()
 		self.address = "http://127.0.0.1:%d" % self.port
+		self.packed = static is not None
 
 		self.process = subprocess.Popen(
-			[sys.executable, "-B", "-m", "picoclock.sim", "--port", str(self.port), "--outputs", str(outputs)],
+			[sys.executable, "-B", "-m", "picoclock.sim", "--port", str(self.port), "--outputs", str(outputs)] + (["--static", str(static)] if static is not None else []),
 			cwd = ROOT,
 			stdout = subprocess.PIPE,
 			stderr = subprocess.STDOUT,
