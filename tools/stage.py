@@ -28,11 +28,12 @@ MICRODOT_TEST_CLIENT = "test_client.py"
 PROCESSOR = "armv7emsp"
 
 # What is compiled to the processor's own instructions and not to bytecode.
-# The scheduler works out every pulse on the Pico's second core. Compiled this
-# way it runs about half as fast again, and, which matters more, none of its
-# functions takes memory to be called. One that did would wait whenever the
-# first core was tidying its memory, for longer than the player's words last.
-NATIVE = ("picoclock/core/timeline.py",)
+# The scheduler works out every pulse on the Pico's second core, and the
+# second core reads the buttons by the rule in `buttons`. Compiled this way the
+# scheduler runs about half as fast again, and, which matters more, none of
+# their functions takes memory to be called. One that did would wait whenever
+# the first core was tidying its memory, for longer than the player's words last.
+NATIVE = ("picoclock/core/timeline.py", "picoclock/core/buttons.py")
 
 # What to say when there is no compiler, since PicoClock can't safely run without one.
 NO_COMPILER = "mpy-cross wasn't found. PicoClock's scheduler has to be compiled for the Pico's processor: left for the Pico to compile, the clock would stumble every time the Pico tidied its memory."

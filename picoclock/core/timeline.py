@@ -51,6 +51,13 @@ RUN = 3
 # seen that signal before its first clock arrives.
 LEAD_TICKS = 10000
 
+# Start, pause and stop, as `press` takes them. They are numbers because the
+# second core reads the buttons and can't look words up without asking for
+# memory. `picoclock.core.transport.NUMBERS` gives each command's number.
+PRESS_START = 1
+PRESS_PAUSE = 2
+PRESS_STOP = 3
+
 # One beat lasts 6000 x 1,000,000 / tempo ticks, with the tempo in hundredths of
 # a BPM. The two factors are kept apart so no product reaches 2**30.
 _BEAT_FACTOR = 6000
@@ -596,6 +603,42 @@ class Timeline:
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 		return lead
+
+	def press (self, command: int) -> bool:
+
+		"""Start, pause or stop, from whatever the clock is doing now, and say whether anything changed.
+
+		It follows `picoclock.core.transport`'s table: start begins a stopped
+		clock at zero and carries a paused one on, pause freezes a running one,
+		and stop sends a running or paused one back to zero. Anything else
+		does nothing. The page's presses and the Pico's own buttons both come
+		here, on the second core, so they always mean the same thing and one
+		can never overtake the other.
+		"""
+
+		if command == PRESS_START:
+
+			if not self.running:
+				self.start()
+				return True
+
+			if self.paused:
+				self.resume()
+				return True
+
+		elif command == PRESS_PAUSE:
+
+			if self.running and not self.paused:
+				self.pause()
+				return True
+
+		elif command == PRESS_STOP:
+
+			if self.running:
+				self.stop()
+				return True
+
+		return False
 
 	def stop (self) -> None:
 

@@ -27,6 +27,10 @@ class Engine:
 		self.position = -1
 		self.faults = 0
 
+		# What the engine says the clock is really doing, which a check sets as a
+		# button on the Pico would, or None while a press is on its way.
+		self.state: "str | None" = None
+
 		# How many calls to refuse, as an engine that's too busy does, and how
 		# many to let through before that.
 		self.refuse = 0
@@ -75,29 +79,17 @@ class Engine:
 
 		self._note(("set_role", output, role))
 
-	def start (self) -> None:
+	def press (self, command: str) -> None:
 
-		"""Note a start."""
+		"""Note a press."""
 
-		self._note(("start",))
+		self._note(("press", command))
 
-	def pause (self) -> None:
+	def transport (self) -> "str | None":
 
-		"""Note a pause."""
+		"""Say whatever the check has set."""
 
-		self._note(("pause",))
-
-	def resume (self) -> None:
-
-		"""Note a resume."""
-
-		self._note(("resume",))
-
-	def stop (self) -> None:
-
-		"""Note a stop."""
-
-		self._note(("stop",))
+		return self.state
 
 	def status (self) -> "dict[str, typing.Any]":
 
@@ -332,16 +324,15 @@ def check_a_bad_value_changes_nothing_and_tells_nobody () -> None:
 	assert engine.calls == []
 
 
-def check_start_pause_and_stop_reach_the_engine_as_the_transport_says () -> None:
+def check_every_press_reaches_the_engine_and_those_that_change_something_are_told () -> None:
 
-	"""Each press does what the transport's table says, and one that does nothing tells nobody."""
+	"""Each press says what the transport's table says, the engine is given every one to carry out by the same table, and one that does nothing tells nobody."""
 
 	clock, engine, storage = make()
 	watcher = Watcher(clock)
 
 	assert clock.press("pause") == picoclock.core.transport.NOTHING
 	assert clock.press("stop") == picoclock.core.transport.NOTHING
-	assert engine.calls == []
 	assert watcher.told == []
 
 	assert clock.press("start") == picoclock.core.transport.BEGIN
@@ -350,7 +341,7 @@ def check_start_pause_and_stop_reach_the_engine_as_the_transport_says () -> None
 	assert clock.press("start") == picoclock.core.transport.CARRY_ON
 	assert clock.press("stop") == picoclock.core.transport.END
 
-	assert engine.calls == [("start",), ("pause",), ("resume",), ("stop",)]
+	assert engine.calls == [("press", command) for command in ("pause", "stop", "start", "start", "pause", "start", "stop")]
 	assert watcher.told == [(picoclock.core.clock.TRANSPORT, None)] * 4
 	assert clock.transport.state == picoclock.core.transport.STOPPED
 
@@ -374,7 +365,7 @@ def check_a_change_made_just_before_a_start_reaches_the_engine_first () -> None:
 	clock.set_output(1, "ratio", "2")
 	clock.press("start")
 
-	assert engine.calls == [("set_tempo", 8000), ("set_ratio", 1, 2, 1), ("start",)]
+	assert engine.calls == [("set_tempo", 8000), ("set_ratio", 1, 2, 1), ("press", "start")]
 
 
 def check_a_reset_brings_back_the_defaults_and_forgets_what_was_saved () -> None:
@@ -514,6 +505,80 @@ def check_running_the_clock_keeps_the_engine_up_to_date () -> None:
 		await asyncio.sleep(0.2)
 
 		assert engine.calls == [("set_tempo", 9900), ("set_tempo", 9800)]
+
+		task.cancel()
+		await asyncio.sleep(0)
+
+	run(work())
+
+
+def check_the_clock_catches_up_with_a_button_pressed_on_the_pico () -> None:
+
+	"""A button on the Pico changes what the clock is doing where it is played, and the clock hears of it afterwards, once."""
+
+	transport = picoclock.core.transport
+	clock, engine, storage = make()
+	watcher = Watcher(clock)
+
+	clock.press("start")
+	watcher.told.clear()
+
+	# While a press is on its way the engine can't say, and nothing changes.
+	clock.catch_up()
+
+	assert clock.transport.state == transport.RUNNING
+	assert watcher.told == []
+
+	# Stop pressed on the Pico: told once, and only once.
+	engine.state = transport.STOPPED
+	clock.catch_up()
+	clock.catch_up()
+
+	assert clock.transport.state == transport.STOPPED
+	assert watcher.told == [(picoclock.core.clock.TRANSPORT, None)]
+
+	# The engine agreeing tells nobody anything.
+	clock.catch_up()
+
+	assert len(watcher.told) == 1
+
+	# A start from the page right after a stop button the clock hadn't yet
+	# heard of begins again from zero, as it should from stopped.
+	engine.state = transport.RUNNING
+	clock.catch_up()
+	engine.state = transport.STOPPED
+	watcher.told.clear()
+
+	assert clock.press("start", "page") == transport.BEGIN
+	assert watcher.told == [(picoclock.core.clock.TRANSPORT, None), (picoclock.core.clock.TRANSPORT, "page")]
+
+	# Whether the clock is running is never saved, however it changed.
+	assert storage.changes == 0
+
+
+def check_running_the_clock_catches_up_with_the_buttons_by_itself () -> None:
+
+	"""With `run` going, a button pressed on the Pico reaches every watcher within a round or two."""
+
+	async def work () -> None:
+
+		clock, engine, storage = make()
+		watcher = Watcher(clock)
+		task = asyncio.create_task(clock.run())
+
+		engine.state = picoclock.core.transport.RUNNING
+		await asyncio.sleep(0.1)
+
+		assert clock.transport.state == picoclock.core.transport.RUNNING
+		assert watcher.told == [(picoclock.core.clock.TRANSPORT, None)]
+
+		# A busy engine still lets the buttons through.
+		engine.refuse = 5
+		engine.state = picoclock.core.transport.PAUSED
+		clock.set_tempo(9800)
+		await asyncio.sleep(0.1)
+
+		assert clock.transport.state == picoclock.core.transport.PAUSED
 
 		task.cancel()
 		await asyncio.sleep(0)

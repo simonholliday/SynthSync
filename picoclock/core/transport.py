@@ -1,8 +1,10 @@
 """Start, pause and stop: what each one does, whatever the clock is doing.
 
-The page's buttons and the hardware inputs both go through this, so a press
-means the same thing wherever it comes from. Each command has one meaning:
-start never pauses, and pause never starts.
+Each command has one meaning: start never pauses, and pause never starts. The
+scheduler carries a press out by this table, on the Pico's second core, where
+the page's presses and the Pico's own buttons both arrive, so a press means the
+same thing wherever it comes from. The first core keeps its own account here,
+to answer at once, and takes the scheduler's whenever the two differ.
 
 | | Stopped | Running | Paused |
 | --- | --- | --- | --- |
@@ -24,6 +26,10 @@ PAUSE = "pause"
 STOP = "stop"
 
 COMMANDS = (START, PAUSE, STOP)
+
+# Each command as the scheduler takes it, which is
+# `picoclock.core.timeline.PRESS_START` and so on.
+NUMBERS = {START: 1, PAUSE: 2, STOP: 3}
 
 # What a command asks the clock's engine to carry out.
 NOTHING = "nothing"
@@ -71,3 +77,13 @@ class Transport:
 		self.state = state
 
 		return action
+
+
+def state_of (running: bool, paused: bool) -> str:
+
+	"""Say what the clock is doing, from what the scheduler says of itself."""
+
+	if not running:
+		return STOPPED
+
+	return PAUSED if paused else RUNNING

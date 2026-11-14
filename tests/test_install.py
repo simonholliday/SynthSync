@@ -134,13 +134,19 @@ def test_every_function_the_second_core_runs_is_native () -> None:
 				waiting.append(called.attr)
 
 	# The walk has to have found the ones that matter, or it is checking nothing.
-	assert {"_feed", "_take_under_cover", "_take", "_ahead", "_build", "_play_out"} <= reached
+	assert {"_feed", "_take_under_cover", "_take", "_ahead", "_build", "_play_out", "_look", "_act", "_note_state"} <= reached
 
 	for name in sorted(reached):
 		assert [ast.unparse(decorator) for decorator in methods[name].decorator_list] == ["micropython.native"], name
 
-	# And the scheduler it calls into is compiled native as a whole.
+	# The pins are read by a function of the module's own, which reads the register itself.
+	functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+
+	assert [ast.unparse(decorator) for decorator in functions["_levels"].decorator_list] == ["micropython.viper"]
+
+	# And the scheduler and the buttons' rule it calls into are compiled native as a whole.
 	assert "picoclock/core/timeline.py" in tools.stage.NATIVE
+	assert "picoclock/core/buttons.py" in tools.stage.NATIVE
 
 
 def test_everything_asked_of_the_radio_chip_goes_through_the_guard () -> None:

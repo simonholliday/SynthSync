@@ -5,6 +5,10 @@ page, a hardware input or power-up, so a change means the same thing wherever
 it comes from. Each change is checked, noted to be saved, passed to the engine,
 and told to whoever is watching, which is how every open page stays in step.
 
+The one exception is the Pico's start, pause and stop buttons. They are read
+where the clock is played, so they work even while everything else is held
+up, and the clock catches up with what they did a moment later.
+
 The engine is whatever turns the settings into pulses. On the Pico it is the
 player, and on a laptop it is a stand-in with no pins. Both take the same
 calls, which `Engine` lists.
@@ -55,21 +59,13 @@ if TYPE_CHECKING:
 
 			"""Say what an output is for, as one of the scheduler's role numbers."""
 
-		def start (self) -> None:
+		def press (self, command: str) -> None:
 
-			"""Begin at zero."""
+			"""Start, pause or stop, as `picoclock.core.transport`'s table says for whatever the clock is really doing."""
 
-		def pause (self) -> None:
+		def transport (self) -> str | None:
 
-			"""Hold the clock where it is."""
-
-		def resume (self) -> None:
-
-			"""Carry on from a pause."""
-
-		def stop (self) -> None:
-
-			"""Set every output low and go back to zero."""
+			"""Say whether the clock is really stopped, running or paused, or None while a press is still on its way to it."""
 
 		def status (self) -> dict[str, typing.Any]:
 
@@ -223,28 +219,44 @@ class Clock:
 
 		The answer is one of the transport's actions, which is NOTHING when
 		the command changes nothing, such as starting a clock that's running.
+
+		The engine is given every press, and carries it out by the same table
+		from what the clock is really doing. A button on the Pico may have
+		changed that a moment ago, before this clock heard of it, and the
+		press then still means what it should.
 		"""
+
+		self.catch_up()
 
 		action = self.transport.press(command)
 
-		if action == picoclock.core.transport.NOTHING:
-			return action
-
 		# Whatever was changed just before goes first, so a start begins with it.
 		self.flush()
+		self.engine.press(command)
 
-		if action == picoclock.core.transport.BEGIN:
-			self.engine.start()
-		elif action == picoclock.core.transport.CARRY_ON:
-			self.engine.resume()
-		elif action == picoclock.core.transport.FREEZE:
-			self.engine.pause()
-		else:
-			self.engine.stop()
-
-		self._tell(TRANSPORT, by)
+		if action != picoclock.core.transport.NOTHING:
+			self._tell(TRANSPORT, by)
 
 		return action
+
+	def catch_up (self) -> None:
+
+		"""Take what the engine says the clock is doing, when it isn't what this clock thinks, and tell every watcher.
+
+		The Pico's start, pause and stop buttons are read where the clock is
+		played, so a press works even while everything else is held up. This
+		is how the rest hears of it afterwards. While a press from here is
+		still on its way to the engine, the engine can't say, and nothing is
+		taken.
+		"""
+
+		state = self.engine.transport()
+
+		if state is None or state == self.transport.state:
+			return
+
+		self.transport.state = state
+		self._tell(TRANSPORT, None)
 
 	def reset (self, by: object = None) -> None:
 
@@ -338,11 +350,13 @@ class Clock:
 
 	async def run (self) -> None:
 
-		"""Keep the engine up to date with the settings. Runs for as long as the clock does."""
+		"""Keep the engine up to date with the settings, and this clock up to date with the buttons. Runs for as long as the clock does."""
 
 		while True:
 
 			await asyncio.sleep(FLUSH_EVERY / 1000)
+
+			self.catch_up()
 
 			try:
 				self.flush()

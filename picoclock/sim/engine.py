@@ -14,6 +14,7 @@ import time
 import typing
 
 import picoclock.core.timeline
+import picoclock.core.transport
 
 # How far ahead of the laptop's clock words are taken, in seconds. The Pico's
 # player is kept about this far ahead too, so a change takes as long to show.
@@ -79,6 +80,18 @@ class Engine:
 		"""Say what an output is for, as one of the scheduler's role numbers."""
 
 		self.timeline.set_role(output, role)
+
+	def press (self, command: str) -> None:
+
+		"""Start, pause or stop, as the transport's table says for whatever the clock is doing."""
+
+		self.timeline.press(picoclock.core.transport.NUMBERS[command])
+
+	def transport (self) -> str:
+
+		"""Say whether the clock is stopped, running or paused. A press here is carried out at once, so this can always say."""
+
+		return picoclock.core.transport.state_of(self.timeline.running, self.timeline.paused)
 
 	def start (self) -> None:
 

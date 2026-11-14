@@ -472,11 +472,24 @@ def gap_lengths (tempo: int, pulses: int, beats: int) -> set:
 	return lengths
 
 
+def listen_to_buttons (player) -> None:
+
+	"""Have the second core read the start, pause and stop pins, as it always does in use, so what that costs it is in every timing.
+
+	Nothing is wired to them on the test board, so they read as let go.
+	"""
+
+	for name, (pin, low) in picoclock.device.panel.wiring().items():
+		if name != picoclock.device.panel.RESET:
+			player.listen(name, pin, low)
+
+
 def make_player (ratios, tempo: int):
 
-	"""Make the real player with these ratios at this tempo, not yet started."""
+	"""Make the real player with these ratios at this tempo, reading the buttons, not yet started."""
 
 	player = picoclock.device.player.Player(picoclock.device.board.FIRST_OUTPUT_PIN, len(ratios))
+	listen_to_buttons(player)
 	player.set_tempo(tempo)
 
 	for output in range(len(ratios)):
@@ -771,25 +784,41 @@ def make_clustered_player (tempo: int):
 
 def test_cluster (load: str = "idle") -> None:
 
-	"""Time the fastest output while four outputs' edges crowd together: every gap must be exact."""
+	"""Time the fastest output while four outputs' edges crowd together: every gap must be exact.
+
+	Then press stop through the jumper, with the second core as busy as it
+	gets: the clock must stop within 50 ms all the same.
+	"""
 
 	count = 4000
 	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_clustered_player(30000)
+	finger = Finger(True)
 
+	player.listen(picoclock.core.transport.STOP, _INPUT_PIN, True)
 	player.start()
 
 	described = run_load(load, capture, 30)
 	status = player.status()
 	gaps = capture.gaps()
 
+	began = time.ticks_ms()
+	finger.press(80)
+	time.sleep_ms(300)
+
+	after = player.status()
+	took = time.ticks_diff(after["pressed_at"], began) if after["presses"] == status["presses"] + 1 else -1
+
+	finger.close()
 	player.close()
 	capture.close()
+	machine.Pin(_INPUT_PIN, machine.Pin.IN, None)
 
 	worst = worst_error(gaps, gap_lengths(30000, _CLUSTERED[0][0], _CLUSTERED[0][1]))
-	passed = len(gaps) >= count - _SKIP and worst <= 2 and sound(status)
+	stopped = not after["running"] and 0 <= took <= _HELD_PRESS
+	passed = len(gaps) >= count - _SKIP and worst <= 2 and sound(status) and stopped
 
-	report("cluster", passed, "pulses=%d worst_cycles=%d %s load=%s" % (len(gaps), worst, describe(status), described))
+	report("cluster", passed, "pulses=%d worst_cycles=%d stop_ms=%d %s load=%s" % (len(gaps), worst, took, describe(status), described))
 
 
 def test_burst (load: str = "idle") -> None:
@@ -924,6 +953,12 @@ def test_position (load: str = "idle") -> None:
 # Where the inputs test keeps its settings.
 _INPUTS_PATH = "/_rig_inputs.json"
 
+# How long the first core is held up for while a stop is pressed, as a poor
+# WiFi signal can hold it, and the longest the stop may then take to happen, in
+# milliseconds: twenty for the press to be believed, and a little to act on it.
+_HELD_FOR = 10000
+_HELD_PRESS = 50
+
 # The jumper: GP0 plays a finger on a button, and GP1 is the input the button is on.
 _FINGER_PIN = 0
 _INPUT_PIN = 1
@@ -1009,9 +1044,12 @@ def test_inputs (load: str = "idle") -> None:
 
 	A knock too short to be a press must do nothing. A press must work when
 	it is seen as it happens, and when it comes and goes while the main loop
-	is held up. The reset button must do nothing for a second's press, and
-	put every setting back when held for three. The light must come on once a
-	beat while the clock runs, and flash fast while reset is held.
+	is held up. A stop pressed while the first core is held up for ten
+	seconds, as a poor WiFi signal can hold it, must stop the clock within
+	50 ms all the same, and the clock must hear of it once the hold is over.
+	The reset button must do nothing for a second's press, and put every
+	setting back when held for three. The light must come on once a beat
+	while the clock runs, and flash fast while reset is held.
 	"""
 
 	transport = picoclock.core.transport
@@ -1027,10 +1065,11 @@ def test_inputs (load: str = "idle") -> None:
 
 	# The panel in use, what went wrong, how many presses were made, how many
 	# times the light came on in two seconds of running and in a reset's hold,
-	# and the longest and shortest hold that a reset took, in milliseconds.
+	# the longest and shortest hold that a reset took, and the longest a stop
+	# took while the first core was held up, in milliseconds.
 	panel = [None]
 	wrong = []
-	counts = [0, 0, 0, 0, 99999]
+	counts = [0, 0, 0, 0, 99999, -1]
 
 	def use (name: str, low: bool) -> None:
 
@@ -1165,6 +1204,26 @@ def test_inputs (load: str = "idle") -> None:
 
 			expect("reset went off twice in one hold, " + way, settings.tempo == 8800)
 
+			# Stop pressed with the first core held up, and nothing given a turn until the hold is over.
+			use(transport.STOP, low)
+			yield 100
+			before = player.status()["presses"]
+			began = time.ticks_ms()
+			finger.press(80)
+			counts[0] += 1
+
+			while time.ticks_diff(time.ticks_ms(), began) < _HELD_FOR:
+				pass
+
+			status = player.status()
+			took = time.ticks_diff(status["pressed_at"], began)
+			counts[5] = max(counts[5], took)
+
+			expect("a stop pressed while held up wasn't carried out, " + way, status["presses"] == before + 1 and not status["running"])
+			expect("a stop pressed while held up took over 50 ms, " + way, 0 <= took <= _HELD_PRESS)
+			yield 100
+			expect("the clock didn't hear of a stop pressed while held up, " + way, clock.transport.state == transport.STOPPED)
+
 			clock.press(transport.STOP)
 			panel[0].close()
 			panel[0] = None
@@ -1181,6 +1240,7 @@ def test_inputs (load: str = "idle") -> None:
 		if panel[0] is not None:
 			panel[0].look()
 
+		clock.catch_up()
 		clock.flush()
 
 		if never.over or time.ticks_diff(time.ticks_ms(), due[0]) < 0:
@@ -1206,9 +1266,9 @@ def test_inputs (load: str = "idle") -> None:
 	# With nothing else to do, the buttons and the light are looked at often
 	# enough to count the light's flashes and to time the reset closely.
 	steady = load != "idle" or (3 <= counts[1] <= 5 and 20 <= counts[2] <= 30 and counts[3] <= 3100)
-	passed = never.over and not wrong and counts[0] == 10 and steady and sound(status)
+	passed = never.over and not wrong and counts[0] == 12 and steady and sound(status)
 
-	report("inputs", passed, "presses=%d wrong=%d beat_flashes=%d hold_flashes=%d reset_after_ms=%d..%d first_wrong=%s %s load=%s" % (counts[0], len(wrong), counts[1], counts[2], counts[4], counts[3], wrong[0].replace(" ", "_") if wrong else "none", describe(status), described))
+	report("inputs", passed, "presses=%d wrong=%d beat_flashes=%d hold_flashes=%d reset_after_ms=%d..%d stop_while_held_ms=%d first_wrong=%s %s load=%s" % (counts[0], len(wrong), counts[1], counts[2], counts[4], counts[3], counts[5], wrong[0].replace(" ", "_") if wrong else "none", describe(status), described))
 
 
 # How far each flash of the panel LED may be from what it should be, in

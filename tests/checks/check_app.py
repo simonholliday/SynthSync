@@ -364,7 +364,7 @@ def check_a_change_sent_as_json_is_carried_out () -> None:
 		response = await post(client, {"do": "start"})
 
 		assert response.status_code == 200
-		assert engine.calls == [("set_tempo", 9870), ("start",)]
+		assert engine.calls == [("set_tempo", 9870), ("press", "start")]
 
 		response = await post(client, {"do": "scan"})
 
@@ -480,7 +480,7 @@ def check_the_socket_is_wired_up_and_refuses_another_sites_page () -> None:
 		await through_socket(client, page, dict(OWN_SITE))
 
 		assert app.clock.settings.tempo == 14000
-		assert engine.calls == [("set_tempo", 14000), ("start",)]
+		assert engine.calls == [("set_tempo", 14000), ("press", "start")]
 		assert app.pages == []
 
 	tests.checks.check_clock.run(work())
@@ -672,7 +672,7 @@ def check_start_pause_and_stop_from_a_page () -> None:
 			first.say({"do": command})
 			await settle(app)
 
-		assert engine.calls == [("start",), ("pause",), ("resume",), ("stop",)]
+		assert engine.calls == [("press", command) for command in ("start", "start", "pause", "pause", "start", "stop", "stop")]
 
 		for socket in (first, second):
 			assert [message["state"] for message in socket.of("transport")] == ["running", "paused", "running", "stopped"]
