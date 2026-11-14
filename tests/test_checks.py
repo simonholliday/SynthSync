@@ -16,9 +16,9 @@ import sys
 import pytest
 
 import tests.run_checks
+import tools.stage
 
 ROOT = pathlib.Path(__file__).parent.parent
-
 
 def all_checks () -> list[tuple[str, str]]:
 
@@ -55,13 +55,23 @@ def find_micropython () -> str | None:
 	return shutil.which("micropython")
 
 
-def run_under (interpreter: list[str], folder: pathlib.Path) -> subprocess.CompletedProcess[str]:
+def run_under (interpreter: list[str], folder: pathlib.Path, library: pathlib.Path | None = None) -> subprocess.CompletedProcess[str]:
 
-	"""Run the shared checks found under one folder, with one interpreter."""
+	"""Run the shared checks found under one folder, with one interpreter.
+
+	`library` is a folder of extra packages for MicroPython to import from.
+	"""
+
+	environment = dict(os.environ)
+
+	if library is not None:
+		# This replaces MicroPython's whole search path, so its built-in modules go first.
+		environment["MICROPYPATH"] = ".frozen:%s" % library
 
 	return subprocess.run(
 		interpreter + ["-m", "tests.run_checks"],
 		cwd = folder,
+		env = environment,
 		capture_output = True,
 		text = True,
 		timeout = 300,
@@ -90,7 +100,7 @@ def test_check_passes_here (module: str, check: str) -> None:
 	getattr(importlib.import_module("tests.checks." + module), check)()
 
 
-def test_checks_pass_under_micropython () -> None:
+def test_checks_pass_under_micropython (tmp_path: pathlib.Path) -> None:
 
 	"""Every shared check passes on MicroPython too. A skip here is worth noticing."""
 
@@ -99,7 +109,10 @@ def test_checks_pass_under_micropython () -> None:
 	if micropython is None:
 		pytest.skip("this machine has no MicroPython to run the shared checks under")
 
-	result = run_under([micropython], ROOT)
+	# The same parts of Microdot the Pico gets, and the test client the checks use.
+	tools.stage.copy_microdot(tmp_path, test_client=True)
+
+	result = run_under([micropython], ROOT, tmp_path)
 
 	assert result.returncode == 0, result.stdout + result.stderr
 	assert " 0 failed, on micropython" in result.stdout, result.stdout

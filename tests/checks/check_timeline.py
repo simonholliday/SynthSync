@@ -417,6 +417,42 @@ def check_changes_while_stopped_take_hold_at_the_next_start () -> None:
 	assert player.rises[1][1] == 250000
 
 
+def check_position_says_how_far_the_clock_has_played () -> None:
+
+	"""The position, in thousandths of a beat, keeps to the exact one through any number of tempo changes."""
+
+	timeline = make([(1, 1), (3, 1), (4, 3)], 12000)
+	player = Player(timeline)
+	shuffle = Shuffle(7)
+
+	assert timeline.position() == -1
+
+	timeline.start()
+
+	# No word has been played yet, so no beat has begun.
+	assert timeline.position() == -1
+
+	player.play_until(625000)
+
+	assert player.tick == 625000
+	assert timeline.position() == 1250
+
+	for _ in range(300):
+
+		timeline.set_tempo(2000 + shuffle.below(28001))
+		player.play(1 + shuffle.below(60))
+
+		exact = player.position * 1000 // UNITS
+
+		assert abs(timeline.position() - exact) <= 1, (timeline.position(), exact)
+
+	assert timeline.position() > 3000
+
+	timeline.stop()
+
+	assert timeline.position() == -1
+
+
 def refused (timeline: picoclock.core.timeline.Timeline, what: str, first: int, second: int, third: int) -> bool:
 
 	"""Try one change and say whether it was refused."""

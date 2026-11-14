@@ -1,0 +1,14 @@
+rounds=10 out_of_step=0 requests=180 failed=0 changes=1500 heard=1351 worst_file_ms=3401 worst_echo_ms=1356 worst_catch_up_ms=1121 faults=0
+rounds=6 out_of_step=1 requests=108 failed=8 changes=900 heard=786 worst_file_ms=1566 worst_echo_ms=1358 worst_catch_up_ms=6028 faults=0
+rounds=10 out_of_step=0 requests=180 failed=0 changes=1500 heard=1462 worst_file_ms=1825 worst_echo_ms=1743 worst_catch_up_ms=1571 faults=0
+rounds=5 out_of_step=1 requests=92 failed=6 changes=750 heard=610 worst_file_ms=1646 worst_echo_ms=2242 worst_catch_up_ms=6027 faults=0
+PicoClock didn't answer at the Pico's address.
+rounds=9 out_of_step=0 requests=162 failed=0 changes=1350 heard=1117 worst_file_ms=2581 worst_echo_ms=1159 worst_catch_up_ms=355 faults=0
+rounds=5 out_of_step=1 requests=93 failed=14 changes=750 heard=563 worst_file_ms=1485 worst_echo_ms=1743 worst_catch_up_ms=6047 faults=0
+rounds=10 out_of_step=0 requests=180 failed=0 changes=1500 heard=1357 worst_file_ms=5397 worst_echo_ms=1283 worst_catch_up_ms=305 faults=0
+rounds=9 out_of_step=1 requests=162 failed=9 changes=1350 heard=1109 worst_file_ms=4829 worst_echo_ms=2363 worst_catch_up_ms=6030 faults=0
+rounds=10 out_of_step=0 requests=180 failed=0 changes=1500 heard=1343 worst_file_ms=2303 worst_echo_ms=1515 worst_catch_up_ms=507 faults=0
+rounds=5 out_of_step=1 requests=91 failed=9 changes=750 heard=635 worst_file_ms=1656 worst_echo_ms=834 worst_catch_up_ms=6042 faults=0
+run finished at 00:57:10
+
+[exited with code 0]

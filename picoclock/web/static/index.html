@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+	<meta name="theme-color" content="#14161a">
+	<title>PicoClock</title>
+
+	<!-- An empty icon, so a browser doesn't ask the Pico for one. -->
+	<link rel="icon" href="data:,">
+	<link rel="stylesheet" href="page.css">
+	<script type="module" src="page.js"></script>
+</head>
+<body class="lost">
+
+	<header>
+		<h1>PicoClock</h1>
+		<p id="link" role="status">Connecting…</p>
+		<a id="to-settings" class="button" href="#settings">Settings</a>
+		<a id="to-main" class="button" href="#" hidden>Done</a>
+	</header>
+
+	<main id="main-view" inert>
+
+		<section class="tempo" aria-label="Tempo">
+			<div id="tempo-knob"></div>
+			<div class="tempo-number">
+				<input id="tempo-text" type="text" inputmode="decimal" autocomplete="off" aria-label="Tempo in BPM" aria-describedby="tempo-problem">
+				<span aria-hidden="true">BPM</span>
+			</div>
+			<p id="tempo-problem" class="problem" role="alert"></p>
+		</section>
+
+		<section class="transport" aria-label="Start, pause and stop">
+			<button id="start" type="button" aria-pressed="false">Start</button>
+			<button id="pause" type="button" aria-pressed="false">Pause</button>
+			<button id="stop" type="button" aria-pressed="false">Stop</button>
+		</section>
+
+		<section id="outputs" aria-label="Outputs"></section>
+
+	</main>
+
+	<main id="settings-view" hidden inert>
+
+		<section id="wifi" class="panel" aria-labelledby="wifi-title">
+			<h2 id="wifi-title">WiFi</h2>
+			<p id="wifi-status"></p>
+			<p id="wifi-problem" class="problem" role="alert"></p>
+
+			<button id="scan" type="button">Join a WiFi network…</button>
+			<p id="scan-status" class="note" role="status"></p>
+			<ul id="networks"></ul>
+
+			<form id="join" class="part" hidden>
+				<label class="field" id="join-name-field">Network name
+					<input id="join-name" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+				</label>
+				<label class="field" id="join-password-field">Password
+					<input id="join-password" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+				</label>
+				<label class="switch" id="join-show-switch"><input id="join-show" type="checkbox"><span>Show password</span></label>
+				<p id="join-problem" class="problem" role="alert"></p>
+				<p id="join-warning" class="note"></p>
+				<div class="buttons">
+					<button id="join-go" type="submit" class="go">Join</button>
+					<button id="join-cancel" type="button">Cancel</button>
+				</div>
+			</form>
+
+			<button id="forget" type="button" hidden></button>
+
+			<form id="host" class="part">
+				<label class="field">Its name on your WiFi
+					<span class="with-ending"><input id="host-name" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="host-problem"><span>.local</span></span>
+				</label>
+				<button id="host-go" type="submit">Change name</button>
+			</form>
+			<p id="host-problem" class="problem" role="alert"></p>
+		</section>
+
+		<section id="own" class="panel" aria-labelledby="own-title">
+			<h2 id="own-title">PicoClock's own network</h2>
+			<p id="own-status"></p>
+
+			<form id="own-form">
+				<label class="field">New password
+					<input id="own-password" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="own-problem">
+				</label>
+				<label class="switch"><input id="own-show" type="checkbox"><span>Show password</span></label>
+				<p class="note">PicoClock's own network starts again with the new password, so anything joined to it has to join again.</p>
+				<button id="own-go" type="submit">Change password</button>
+			</form>
+			<p id="own-problem" class="problem" role="alert"></p>
+			<p id="own-done" class="note" role="status"></p>
+		</section>
+
+		<section id="reset" class="panel" aria-labelledby="reset-title">
+			<h2 id="reset-title">Start again</h2>
+			<button id="reset-ask" type="button">Reset every setting…</button>
+
+			<div id="reset-confirm" hidden>
+				<p class="note">Every setting goes back to how a new PicoClock has it. Your WiFi is forgotten, and PicoClock's own network comes back with the password <b>picoclock</b>. The clock carries on as it is.</p>
+				<div class="buttons">
+					<button id="reset-go" type="button" class="go">Reset every setting</button>
+					<button id="reset-cancel" type="button">Cancel</button>
+				</div>
+			</div>
+			<p id="reset-done" class="note" role="status"></p>
+		</section>
+
+		<section id="about" class="panel" aria-labelledby="about-title">
+			<h2 id="about-title">About</h2>
+			<p id="version"></p>
+			<p id="faults"></p>
+		</section>
+
+	</main>
+
+	<!-- One output's row. The page makes as many as the Pico says it has outputs. -->
+	<template id="output-row">
+		<article class="output">
+			<div class="row">
+				<label class="power">
+					<span class="tag"><span class="light" aria-hidden="true"></span><span class="name"></span></span>
+					<input class="on" type="checkbox" role="switch">
+					<span class="track" aria-hidden="true"></span>
+				</label>
+				<div class="ratio-knob"></div>
+				<input class="ratio-text" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+				<p class="fixed-ratio">×1 <span>main clock</span></p>
+				<label class="switch snap-switch"><input class="snap" type="checkbox"><span>Snap</span></label>
+				<button class="more" type="button" aria-expanded="false">⋯</button>
+			</div>
+			<p class="problem" role="alert"></p>
+			<div class="extra" hidden>
+				<label class="field role-field">Role
+					<select class="role">
+						<option value="clock">Clock</option>
+						<option value="start">Start pulse</option>
+						<option value="stop">Stop pulse</option>
+						<option value="run">Run: high while running</option>
+					</select>
+				</label>
+				<label class="field">Pulse
+					<select class="pulse-kind">
+						<option value="length">A set length</option>
+						<option value="half">Half the gap</option>
+					</select>
+				</label>
+				<label class="field pulse-field">Length in ms
+					<input class="pulse" type="number" inputmode="numeric" step="1">
+				</label>
+			</div>
+		</article>
+	</template>
+
+</body>
+</html>

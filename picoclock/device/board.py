@@ -22,8 +22,13 @@ PAUSE_PIN = 18
 STOP_PIN = 19
 
 # Whether an input reads as pressed when its pin is pulled low. A bare push
-# button between the pin and ground does that, against the Pico's own pull-up.
-# Set one to False for an input driven high by other gear.
+# button between the pin and ground does that, against the Pico's own pull-up,
+# and needs no other part.
+#
+# Set one to False for an input that goes high when pressed. That one also
+# needs a resistor of 8.2 kΩ or less from its pin to ground: the Pico 2's own
+# pull-down can't bring a pin low again once it has been high, so a bare
+# button to 3V3 reads as pressed for ever after its first press.
 PRESSED_IS_LOW = {
 	RESET_PIN: True,
 	START_PIN: True,

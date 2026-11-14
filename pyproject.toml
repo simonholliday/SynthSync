@@ -42,6 +42,10 @@ dev = [
 	"mypy",
 	# Copies files to a real Pico and runs them there, by hand. No test reaches one.
 	"mpremote",
+	# Opens the page in a real browser, at a phone's size and by touch. It needs
+	# a Chromium of its own, which `playwright install chromium` fetches. Where
+	# either is missing those tests are skipped.
+	"playwright",
 ]
 
 [tool.hatch.version]

@@ -163,7 +163,7 @@ class Settings:
 
 		self.tempo = tempo
 
-	def set_output (self, index: object, name: str, value: object) -> None:
+	def set_output (self, index: object, name: object, value: object) -> None:
 
 		"""Change one setting of one output.
 

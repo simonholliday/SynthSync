@@ -56,6 +56,9 @@ LEAD_TICKS = 10000
 _BEAT_FACTOR = 6000
 _MILLION = 1000000
 
+# The count of changes wraps here, well inside a small whole number.
+_CHANGES_WRAP = 0xFFFFFF
+
 # The limits a ratio must keep, as picoclock.core.ratio enforces them.
 _LARGEST_PART = 9600
 _SLOWEST_BEATS = 128
@@ -142,6 +145,11 @@ class Timeline:
 		# How many pulses began while the one before was still high, and so made
 		# no edge. It should stay at zero: see _trim.
 		self.merged = 0
+
+		# Counts every change to where the clock is, once as it begins and once
+		# as it ends, so it is odd while a change is half-made. `position`
+		# looks at it to know whether what it has just read hangs together.
+		self.changes = 0
 
 		for slot in range(slots):
 			self._load(slot)
@@ -311,6 +319,8 @@ class Timeline:
 		if tempo < SLOWEST_TEMPO or tempo > FASTEST_TEMPO:
 			raise ValueError("The tempo has to be between 20 and 300 BPM")
 
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
+
 		# Any lead still running is plain time, so it is set aside and only the
 		# musical part of each wait is stretched or shrunk.
 		waits = self.held if self.paused else self.until
@@ -328,6 +338,8 @@ class Timeline:
 		for slot in range(self.slots):
 			self._load(slot)
 			self._trim(slot)
+
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 	def set_ratio (self, output: int, pulses: int, beats: int) -> None:
 
@@ -472,6 +484,8 @@ class Timeline:
 		if there is a start pulse or a run output for it to follow.
 		"""
 
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
+
 		self.mask = 0
 		self.beat = 0
 		self.running = True
@@ -508,6 +522,8 @@ class Timeline:
 		if lead:
 			self.fall[self.master] = lead
 
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
+
 		return lead
 
 	def pause (self) -> None:
@@ -521,6 +537,8 @@ class Timeline:
 
 		if not self.running or self.paused:
 			return
+
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 		# A lead cut short by the pause is set aside, and waited out afterwards.
 		lead = self._lead()
@@ -539,6 +557,8 @@ class Timeline:
 		self.fall[self.master] = -1
 		self.paused = True
 
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
+
 	def resume (self) -> int:
 
 		"""Carry on from a pause, and say how many ticks it is until the clocks continue.
@@ -550,6 +570,8 @@ class Timeline:
 
 		if not self.paused:
 			return 0
+
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 		lead = self.owed
 
@@ -571,11 +593,15 @@ class Timeline:
 		if lead:
 			self.fall[self.master] = lead
 
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
+
 		return lead
 
 	def stop (self) -> None:
 
 		"""Set every output low and forget the position. Stop pulses then fire."""
+
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 		self.mask = 0
 		self.beat = 0
@@ -593,6 +619,8 @@ class Timeline:
 			if self.role[slot] == STOP_PULSE and not self.muted[slot]:
 				self._pulse(slot)
 
+		self.changes = (self.changes + 1) & _CHANGES_WRAP
+
 	def quiet (self) -> bool:
 
 		"""Say whether the clock is stopped or paused with nothing left to play.
@@ -609,6 +637,44 @@ class Timeline:
 				return False
 
 		return True
+
+	def position (self) -> int:
+
+		"""Say how far the clock has played, in thousandths of a beat, or -1 before its first beat.
+
+		This is for showing where the clock is, such as a light on the page,
+		and not for timing anything. It may ask for memory, so on the Pico it
+		is for the first core only.
+		"""
+
+		master = self.master
+
+		# The second core may be half-way through a change or a word while this
+		# reads. So it reads, then looks whether anything moved meanwhile, and
+		# reads again if it did.
+		for _ in range(4):
+
+			mark = self.changes
+			beat = self.beat
+			answer = -1
+
+			if self.running and beat > 0:
+
+				gap = self.period[master]
+
+				# The time left of the present beat. A pause has already set any lead aside.
+				if self.paused:
+					left = self.held[master]
+				else:
+					left = self.until[master] - self._lead()
+
+				if 0 <= left <= gap:
+					answer = (beat - 1) * 1000 + (gap - left) * 1000 // gap
+
+			if not mark & 1 and self.changes == mark and self.beat == beat:
+				return answer
+
+		return -1
 
 	def next_word (self) -> int:
 

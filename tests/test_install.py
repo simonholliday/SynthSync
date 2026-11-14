@@ -1,0 +1,524 @@
+"""What gets laid out for a Pico, and what the install tool does with it.
+
+No Pico is needed for these. The tool's talk with the Pico is stood in for,
+and what it lays out is checked as files on this machine.
+"""
+
+import ast
+import gzip
+import pathlib
+import subprocess
+import time
+
+import pytest
+
+import picoclock.web.app
+import tools.install
+import tools.stage
+
+ROOT = pathlib.Path(__file__).parent.parent
+
+
+def names (folder: pathlib.Path) -> set[str]:
+
+	"""Name every file under a folder, by its path within it."""
+
+	return {str(path.relative_to(folder)) for path in folder.rglob("*") if path.is_file()}
+
+
+def sources () -> set[str]:
+
+	"""Name every Python file of PicoClock that a Pico needs, without its ending."""
+
+	found = set()
+
+	for path in (ROOT / "picoclock").rglob("*.py"):
+
+		parts = path.relative_to(ROOT).parts
+
+		if "sim" not in parts and "static" not in parts:
+			found.add(str(path.relative_to(ROOT).with_suffix("")))
+
+	return found
+
+
+@pytest.fixture()
+def compiler () -> str:
+
+	"""Give the compiler for the Pico, or skip the test on a machine that has none."""
+
+	found = tools.stage.find_tool("mpy-cross")
+
+	if found is None:
+		pytest.skip("this machine has no mpy-cross to compile for the Pico with")
+
+	return found
+
+
+def test_the_page_unpacks_to_exactly_what_was_written (tmp_path: pathlib.Path) -> None:
+
+	"""Each gzipped file is the page's own file and nothing else, and packs the same way every time."""
+
+	tools.stage.pack_page(tmp_path)
+	tools.stage.pack_page(tmp_path / "again")
+
+	for name in picoclock.web.app.PAGE_FILES:
+
+		packed = (tmp_path / "picoclock" / "web" / "static" / (name + ".gz")).read_bytes()
+
+		assert gzip.decompress(packed) == (ROOT / "picoclock" / "web" / "static" / name).read_bytes()
+		assert packed == (tmp_path / "again" / "picoclock" / "web" / "static" / (name + ".gz")).read_bytes()
+
+
+def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (tmp_path: pathlib.Path, compiler: str) -> None:
+
+	"""The Pico gets PicoClock and Microdot compiled, the page gzipped, the one file it runs at power-up, and nothing a laptop alone uses."""
+
+	top = tools.stage.stage_for_pico(tmp_path, compiler)
+	laid_out = names(tmp_path)
+
+	expected = {name + ".mpy" for name in sources()}
+	expected |= {"microdot/" + pathlib.Path(part).stem + ".mpy" for part in tools.stage.MICRODOT_PARTS}
+	expected |= {"picoclock/web/static/" + name + ".gz" for name in picoclock.web.app.PAGE_FILES}
+	expected.add(tools.stage.MAIN)
+
+	assert laid_out == expected
+	assert sorted(top) == sorted({name.split("/")[0] for name in expected})
+
+	assert not [name for name in laid_out if "test_client" in name or "/sim/" in name or "__pycache__" in name]
+	assert [name for name in laid_out if name.endswith(".py")] == [tools.stage.MAIN]
+
+	for name in laid_out:
+		if name.endswith(".mpy"):
+			assert (tmp_path / name).read_bytes()[:1] == b"M", name
+
+	# A file compiled for one processor says which in its third byte. Bytecode runs on any.
+	# The scheduler has to be the first kind: as bytecode it would stumble whenever the Pico tidied its memory.
+	scheduler = (tmp_path / "picoclock" / "core" / "timeline.mpy").read_bytes()
+	plain = (tmp_path / "picoclock" / "core" / "ratio.mpy").read_bytes()
+
+	assert scheduler[2] >> 2 != 0
+	assert plain[2] >> 2 == 0
+
+
+def test_every_function_the_second_core_runs_is_native () -> None:
+
+	"""An ordinary function called on the second core waits for the first core's garbage collector, so none may be.
+
+	This reads the player's source. Starting from the function the second
+	core runs, it follows every call to one of the player's own methods, and
+	each one reached has to be marked native.
+	"""
+
+	tree = ast.parse((ROOT / "picoclock" / "device" / "player.py").read_text())
+	player = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Player"][0]
+	methods = {node.name: node for node in player.body if isinstance(node, ast.FunctionDef)}
+
+	reached = set()
+	waiting = ["_feed"]
+
+	while waiting:
+
+		name = waiting.pop()
+
+		if name in reached:
+			continue
+
+		reached.add(name)
+
+		for node in ast.walk(methods[name]):
+
+			called = node.func if isinstance(node, ast.Call) else None
+
+			if isinstance(called, ast.Attribute) and isinstance(called.value, ast.Name) and called.value.id == "self" and called.attr in methods:
+				waiting.append(called.attr)
+
+	# The walk has to have found the ones that matter, or it is checking nothing.
+	assert {"_feed", "_take_under_cover", "_take", "_ahead", "_build", "_play_out"} <= reached
+
+	for name in sorted(reached):
+		assert [ast.unparse(decorator) for decorator in methods[name].decorator_list] == ["micropython.native"], name
+
+	# And the scheduler it calls into is compiled native as a whole.
+	assert "picoclock/core/timeline.py" in tools.stage.NATIVE
+
+
+def test_everything_asked_of_the_radio_chip_goes_through_the_guard () -> None:
+
+	"""An interrupt that lands while the radio chip is being worked leaves it half started, so nothing may work it unguarded.
+
+	This reads the source of the two files that use the chip. Whatever
+	switches a network, joins, leaves, listens or sets the Pico's own light
+	has to be handed to `picoclock.device.chip.unbroken`, never called
+	straight.
+	"""
+
+	def guarded (tree: ast.Module) -> set[str]:
+
+		"""Name what is handed to the guard: the first thing in each call to it."""
+
+		return {ast.unparse(node.args[0]) for node in ast.walk(tree) if isinstance(node, ast.Call) and ast.unparse(node.func) == "picoclock.device.chip.unbroken"}
+
+	def called_in (tree: ast.Module, working: set[str], asking: set[str] = set()) -> dict[str, set[str]]:
+
+		"""Give, for each function, the calls it makes that work the chip.
+
+		A call named in `asking` only works the chip when it is given
+		something: with nothing, it asks how things stand.
+		"""
+
+		found: dict[str, set[str]] = {}
+
+		for function in ast.walk(tree):
+
+			if not isinstance(function, ast.FunctionDef):
+				continue
+
+			for node in ast.walk(function):
+
+				if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in working):
+					continue
+
+				if node.func.attr not in asking or node.args or node.keywords:
+					found.setdefault(function.name, set()).add(ast.unparse(node.func))
+
+		return found
+
+	# The radio: switching a side on or off, naming a network, joining, leaving and listening.
+	radio = ast.parse((ROOT / "picoclock" / "device" / "radio.py").read_text())
+	handed = guarded(radio)
+	working = called_in(radio, {"active", "config", "connect", "disconnect", "scan"}, {"active"})
+
+	assert sorted(working) == ["_listen", "_start_join", "_start_own", "_stop_join"]
+	assert {"self." + name for name in working} <= handed
+	assert "self._own.active" in handed
+
+	# None of those four is ever called straight.
+	for node in ast.walk(radio):
+		if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+			assert node.func.attr not in working, ast.unparse(node)
+
+	# The panel: taking hold of the Pico's own light, and setting it.
+	panel = ast.parse((ROOT / "picoclock" / "device" / "panel.py").read_text())
+	handed = guarded(panel)
+
+	assert handed == {"self._find_light", "self._light.value"}
+	assert called_in(panel, {"value"}, {"value"}) == {}
+	assert [function.name for function in ast.walk(panel) if isinstance(function, ast.FunctionDef) and "'LED'" in ast.unparse(function)] == ["_find_light"]
+
+	for node in ast.walk(panel):
+		if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+			assert node.func.attr != "_find_light", ast.unparse(node)
+
+
+def test_nothing_but_the_clock_is_loaded_before_the_first_pulse () -> None:
+
+	"""The buttons, the network and the page are loaded after the clock has started, so none of them can hold it up.
+
+	This reads the source of what runs at power-up. Loading Microdot and the
+	page's code takes the Pico a good part of a second, which would otherwise
+	come before the first pulse.
+	"""
+
+	tree = ast.parse((ROOT / "picoclock" / "device" / "start.py").read_text())
+	at_once = {alias.name for node in tree.body if isinstance(node, ast.Import) for alias in node.names}
+	later = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names} - at_once
+
+	assert at_once == {
+		"asyncio", "gc", "sys", "time",
+		"picoclock.core.clock", "picoclock.core.settings", "picoclock.core.transport",
+		"picoclock.device.board", "picoclock.device.chip", "picoclock.device.player", "picoclock.device.storage",
+	}
+	assert later == {"picoclock.device.panel", "picoclock.device.radio", "picoclock.web.app"}
+
+	# And the file the Pico runs at power-up loads nothing else.
+	main = ast.parse((ROOT / "main.py").read_text())
+
+	assert {alias.name for node in ast.walk(main) if isinstance(node, ast.Import) for alias in node.names} == {"picoclock.device.start"}
+
+
+def test_the_modules_the_pico_is_asked_to_load_are_all_of_picoclock (tmp_path: pathlib.Path) -> None:
+
+	"""Every part of PicoClock is named for the Pico to load, compiled or not, and nothing else is."""
+
+	tools.stage.copy_picoclock(tmp_path)
+
+	found = tools.install.modules(tmp_path)
+
+	assert "picoclock.core.timeline" in found
+	assert "picoclock.device.player" in found
+	assert "picoclock.web.app" in found
+	assert sorted(found) == sorted(name.replace("/", ".") for name in sources() if not name.endswith("__init__"))
+
+
+def test_a_pico_that_has_just_been_restarted_is_waited_for (monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""For a second or two after a restart the Pico isn't on its USB port, and a tool run straight after another must not fail for that."""
+
+	answers = [
+		subprocess.CompletedProcess([], 1, "", "mpremote: failed to access /dev/one (it may be in use by another program)\n"),
+		subprocess.CompletedProcess([], 1, "", "mpremote: no device found\n"),
+		subprocess.CompletedProcess([], 0, "LOADED 1\n", ""),
+	]
+	asked: list[list[str]] = []
+	waits: list[float] = []
+
+	def run (command: list[str], **options: object) -> "subprocess.CompletedProcess[str]":
+
+		asked.append(command)
+
+		return answers[len(asked) - 1]
+
+	monkeypatch.setattr(subprocess, "run", run)
+	monkeypatch.setattr(time, "sleep", waits.append)
+
+	assert tools.install.on_pico("/dev/one", ["exec", "pass"]) == (True, "LOADED 1\n")
+	assert len(asked) == 3 and len(waits) == 2
+	assert asked[0][-4:] == ["/dev/one", "soft-reset", "exec", "pass"]
+
+	# Anything else that goes wrong is said at once, and a Pico that never comes back is given up on.
+	answers[:] = [subprocess.CompletedProcess([], 1, "", "Traceback: boom\n")]
+	asked.clear()
+
+	assert tools.install.on_pico("/dev/one", ["exec", "pass"]) == (False, "Traceback: boom\n")
+	assert len(asked) == 1
+
+	answers[:] = [subprocess.CompletedProcess([], 1, "", "mpremote: no device found\n")] * tools.install.ASK_TIMES
+	asked.clear()
+
+	assert tools.install.on_pico("/dev/one", ["exec", "pass"])[0] is False
+	assert len(asked) == tools.install.ASK_TIMES
+
+
+class Pico:
+
+	"""Stands in for the Pico: it notes what it was asked, and answers as told to."""
+
+	def __init__ (self, fail: str | None = None, loads: bool = True, ran: str = "PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=picoclock own=PicoClock AB78D9\n") -> None:
+
+		"""Answer well to everything, bar a command containing `fail`, or the loading if `loads` is false.
+
+		`ran` is what comes back when PicoClock is tried.
+		"""
+
+		self.fail = fail
+		self.loads = loads
+		self.ran = ran
+		self.asked: list[list[str]] = []
+		self.copied: set[str] = set()
+
+	def __call__ (self, device: str, arguments: list[str], folder: pathlib.Path | None = None, timeout: int = 180) -> tuple[bool, str]:
+
+		"""Take one set of commands, as `tools.install.on_pico` does."""
+
+		self.asked.append(arguments)
+
+		if self.fail is not None and self.fail in " ".join(arguments):
+			return False, "boom"
+
+		if arguments[0] == "fs" and folder is not None:
+			self.copied = names(folder)
+			return True, ""
+
+		if arguments[0] == "exec" and "REMOVED" in arguments[1]:
+			return True, "REMOVED\n"
+
+		if arguments[0] == "exec" and "start.run" in arguments[1]:
+			return True, self.ran
+
+		if arguments[0] == "exec":
+			return True, "LOADED 400000\n" if self.loads else "ImportError: incompatible .mpy file\n"
+
+		return True, ""
+
+
+@pytest.mark.usefixtures("compiler")
+def test_an_install_takes_the_old_copy_off_copies_the_new_tries_it_and_only_then_lets_it_start_by_itself (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""The Pico's saved settings are left alone, and what starts PicoClock at power-up goes on last, once the rest has run."""
+
+	pico = Pico()
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main([]) == 0
+
+	removing, copying, loading, trying, starting, restarting = pico.asked
+
+	assert removing[0] == "exec" and "['picoclock', 'microdot', 'main.py']" in removing[1]
+	assert copying[:3] == ["fs", "cp", "-r"] and copying[-1] == ":"
+	assert sorted(copying[3:-1]) == ["microdot", "picoclock"]
+	assert "picoclock.core.timeline" in loading[1] and "picoclock.device.start" in loading[1]
+	assert "picoclock.device.start.run(3000)" in trying[1]
+	assert starting == ["fs", "cp", "main.py", ":"]
+	assert restarting == ["reset"]
+
+	assert "picoclock/web/static/page.js.gz" in pico.copied
+
+	said = capsys.readouterr().out
+
+	assert "/dev/one" in said
+	assert "Every part loads" in said
+	assert "41 ms" in said
+	assert "304 KB" in said
+
+	# It ends by saying how to reach the page, and never says a password that may have been changed.
+	assert said.strip().splitlines()[-1].startswith('To use it, join the WiFi network "PicoClock AB78D9" from a phone and open http://192.168.4.1.')
+
+
+@pytest.mark.usefixtures("compiler")
+@pytest.mark.parametrize("ran", [
+	"PICOCLOCK RAN started_in_ms=41 beat=7 faults=3 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=picoclock own=PicoClock AB78D9\n",
+	"PICOCLOCK RAN started_in_ms=41 beat=0 faults=0 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=picoclock own=PicoClock AB78D9\n",
+	"PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0 page=0 free=312000 mode=own address=192.168.4.1 host=picoclock own=PicoClock AB78D9\n",
+	"PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=own address=none host=picoclock own=PicoClock AB78D9\n",
+	"PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0\n",
+	"Traceback (most recent call last):\nValueError\n",
+	"",
+])
+def test_a_copy_that_does_not_run_when_tried_is_never_left_to_start_by_itself (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], ran: str) -> None:
+
+	"""If the trial faults, never reaches a beat, has no page or no network, fails or says nothing, `main.py` stays off the Pico, so it can still be reached."""
+
+	pico = Pico(ran=ran)
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main([]) == 1
+	assert not [asked for asked in pico.asked if "main.py" in asked or asked == ["reset"]]
+	assert "unplug" in capsys.readouterr().out
+
+
+@pytest.mark.usefixtures("compiler")
+def test_a_pico_with_a_network_saved_passes_its_trial_while_still_joining (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""Three seconds isn't long enough to join a network, so having no address yet isn't held against it, and the network is never named."""
+
+	pico = Pico(ran="PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=joining address=none host=studio-clock own=PicoClock AB78D9\n")
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main([]) == 0
+	assert ["fs", "cp", "main.py", ":"] in pico.asked
+
+	last = capsys.readouterr().out.strip().splitlines()[-1]
+
+	assert "http://studio-clock.local" in last
+	assert '"PicoClock AB78D9"' in last and "http://192.168.4.1" in last
+
+
+@pytest.mark.usefixtures("compiler")
+def test_an_install_told_not_to_start_leaves_the_pico_as_it_is (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""`--no-start` copies everything and doesn't restart the Pico."""
+
+	pico = Pico()
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main(["--no-start"]) == 0
+	assert ["fs", "cp", "main.py", ":"] in pico.asked
+	assert ["reset"] not in pico.asked
+
+	said = capsys.readouterr().out
+
+	assert "next time" in said
+	assert "PicoClock AB78D9" in said
+
+
+@pytest.mark.usefixtures("compiler")
+def test_wiping_empties_the_pico_first (monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""`--wipe` names nothing to take off, which takes off everything, saved settings included."""
+
+	pico = Pico()
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main(["--wipe"]) == 0
+	assert "for name in [] or os.listdir" in pico.asked[0][1]
+
+
+def test_removing_takes_picoclock_off_and_copies_nothing (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""`--remove` takes off PicoClock's own files and stops there."""
+
+	pico = Pico()
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main(["--remove"]) == 0
+	assert len(pico.asked) == 1
+	assert "['picoclock', 'microdot', 'main.py']" in pico.asked[0][1]
+	assert "settings" in capsys.readouterr().out
+
+
+@pytest.mark.usefixtures("compiler")
+@pytest.mark.parametrize("fail", ["REMOVED", "cp"])
+def test_a_step_the_pico_refuses_stops_the_install_and_says_so (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], fail: str) -> None:
+
+	"""If the old copy can't be taken off or the new one can't be copied, the tool fails and shows what the Pico said."""
+
+	pico = Pico(fail=fail)
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main([]) == 1
+	assert "boom" in capsys.readouterr().out
+
+
+@pytest.mark.usefixtures("compiler")
+def test_a_copy_the_pico_cannot_load_fails_the_install (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""A copy that went across but won't load is a failure, found now and not at the next power-up."""
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", Pico(loads=False))
+
+	assert tools.install.main([]) == 1
+	assert "incompatible" in capsys.readouterr().out
+
+
+def test_without_a_compiler_nothing_is_installed (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""PicoClock left for the Pico to compile would stumble whenever the Pico tidied its memory, so the tool stops before touching it."""
+
+	pico = Pico()
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+	monkeypatch.setattr(tools.stage, "find_tool", lambda name: None)
+
+	assert tools.install.main([]) == 1
+	assert pico.asked == []
+	assert "mpy-cross" in capsys.readouterr().out
+
+
+@pytest.mark.usefixtures("compiler")
+def test_no_pico_or_more_than_one_stops_before_anything_is_changed (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""With nothing plugged in, or two and neither named, nothing is touched. Naming one goes ahead."""
+
+	pico = Pico()
+
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+	monkeypatch.setattr(tools.install, "find_devices", lambda: [])
+
+	assert tools.install.main([]) == 1
+	assert "No Pico" in capsys.readouterr().out
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one", "/dev/two"])
+
+	assert tools.install.main([]) == 1
+	assert "/dev/two" in capsys.readouterr().out
+	assert pico.asked == []
+
+	assert tools.install.main(["--device", "/dev/two"]) == 0
+	assert "/dev/two" in capsys.readouterr().out

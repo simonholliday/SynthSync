@@ -293,6 +293,99 @@ def check_a_lead_cut_short_by_a_pause_is_waited_out_afterwards () -> None:
 	assert player.rises[0][:2] == [resumed_at + 7500, resumed_at + 507500]
 
 
+def check_position_holds_through_a_pause_and_stands_still_through_a_lead () -> None:
+
+	"""Where the clock says it is doesn't move while it is paused, or while clocks wait for a run output."""
+
+	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1)], 12000)
+	timeline.set_role(1, picoclock.core.timeline.RUN)
+	player = tests.checks.check_timeline.Player(timeline)
+
+	assert timeline.start() == 10000
+
+	player.play_until(5000)
+
+	# Still in the lead, so the first beat hasn't begun.
+	assert timeline.position() == -1
+
+	player.play_until(135000)
+
+	assert player.tick == 135000
+	assert timeline.position() == 250
+
+	timeline.pause()
+	player.play_for(40000)
+
+	assert timeline.position() == 250
+
+	assert timeline.resume() == 10000
+
+	player.play_for(5000)
+
+	# Half-way through the lead after carrying on, and the beat hasn't moved.
+	assert timeline.position() == 250
+
+	player.play_for(5000 + 125000)
+
+	assert timeline.position() == 500
+
+	timeline.pause()
+	timeline.stop()
+
+	assert timeline.position() == -1
+
+
+def check_position_is_not_given_while_a_change_is_half_made () -> None:
+
+	"""Every change to where the clock is counts twice, and a position read part-way through one is withheld."""
+
+	timeline = tests.checks.check_timeline.make([(1, 1), (2, 1)], 12000)
+	player = tests.checks.check_timeline.Player(timeline)
+	counted = [timeline.changes]
+
+	def moved () -> bool:
+
+		"""Say whether the count has moved on by a whole change since it was last looked at."""
+
+		before = counted[0]
+		counted[0] = timeline.changes
+
+		return timeline.changes == before + 2
+
+	assert timeline.changes % 2 == 0
+
+	timeline.start()
+	assert moved()
+
+	player.play_until(125000)
+	assert not moved()
+	assert timeline.position() == 250
+
+	timeline.set_tempo(24000)
+	assert moved()
+
+	timeline.pause()
+	assert moved()
+
+	timeline.resume()
+	assert moved()
+
+	assert timeline.position() == 250
+
+	# As the second core leaves things half-way through any of those.
+	timeline.changes += 1
+
+	assert timeline.position() == -1
+
+	timeline.changes += 1
+
+	assert timeline.position() == 250
+	assert moved()
+
+	timeline.stop()
+	assert moved()
+
+
 def check_pause_and_resume_out_of_turn_change_nothing () -> None:
 
 	"""Pausing a stopped or paused clock, or resuming one that isn't paused, does nothing."""
