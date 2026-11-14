@@ -15,7 +15,8 @@ its fastest output in the busiest pattern, `sweep` changes the tempo many
 times a second, `pause` pauses and carries on a dozen times, `startstop`
 starts and stops over and over, `position` asks where the clock has got to
 and checks the answers against the Pico's own clock, `inputs` presses each
-button through the jumper and watches the light, `powerup` starts the clock
+button through the jumper and watches the light, `led` times every flash of
+the panel LED against output 1, `powerup` starts the clock
 as switching on does, from good, damaged and missing settings, `network`
 brings the Pico's own WiFi network up, changes its password and looks for
 other networks, `page` asks for the page and its API over and over, and `save`
@@ -51,7 +52,7 @@ import tools.stage
 
 ROOT = pathlib.Path(__file__).parent.parent
 
-TESTS = ("freerun", "player", "cluster", "sweep", "burst", "pause", "startstop", "position", "inputs", "powerup", "network", "page", "air", "save", "saved")
+TESTS = ("freerun", "player", "cluster", "sweep", "burst", "pause", "startstop", "position", "inputs", "led", "powerup", "network", "page", "air", "save", "saved")
 
 # The test that needs the Pico's address on a network, and how long to give a round of
 # requests that failed to be seen as the end of the test, in seconds.

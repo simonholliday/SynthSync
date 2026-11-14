@@ -28,6 +28,7 @@ import picoclock.core.clock
 import picoclock.core.settings
 import picoclock.core.transport
 import picoclock.device.board
+import picoclock.device.led
 import picoclock.device.panel
 import picoclock.device.player
 import picoclock.device.start
@@ -1210,6 +1211,195 @@ def test_inputs (load: str = "idle") -> None:
 	report("inputs", passed, "presses=%d wrong=%d beat_flashes=%d hold_flashes=%d reset_after_ms=%d..%d first_wrong=%s %s load=%s" % (counts[0], len(wrong), counts[1], counts[2], counts[4], counts[3], wrong[0].replace(" ", "_") if wrong else "none", describe(status), described))
 
 
+# How far each flash of the panel LED may be from what it should be, in
+# cycles: from output 1's rise to the LED's, and in how long it is lit. The
+# program takes a few cycles to see a pin change and act on it.
+_LED_LATE = 10
+_LED_SLACK = 20
+
+
+def _flash_program (watched: int):
+
+	"""Build a program that times each flash of the panel LED from a rise of output 1.
+
+	For each flash it gives how long the LED took to come on after output 1
+	rose, and then how long it stayed on, two cycles to a count. The LED's
+	pin is the jump pin.
+	"""
+
+	def flashes ():
+
+		wrap_target()
+		wait(0, gpio, watched)
+		wait(1, gpio, watched)
+
+		mov(x, invert(null))
+		label("dark")
+		jmp(pin, "lit")
+		jmp(x_dec, "dark")
+		label("lit")
+		mov(isr, invert(x))
+		push(noblock)
+
+		mov(x, invert(null))
+		label("on")
+		jmp(x_dec, "still")
+		label("still")
+		jmp(pin, "on")
+		mov(isr, invert(x))
+		push(noblock)
+		wrap()
+
+	return rp2.asm_pio(fifo_join=rp2.PIO.JOIN_RX)(flashes)
+
+
+def test_led (load: str = "idle") -> None:
+
+	"""Time every flash of the panel LED against output 1, through a tempo change, a long pulse and output 1 switched off.
+
+	Each flash must start within a few cycles of output 1's pulse. It must
+	last a quarter of a beat, at most 100 ms, or for as long as the pulse
+	when that is longer. With output 1 off the LED must stay dark. The tempo
+	and the pulse are changed through the clock, as the page changes them,
+	and the panel tells the LED, as it does at power-up.
+	"""
+
+	board = picoclock.device.board
+	cycles = SYSTEM_HZ // 1000000
+	player = picoclock.device.player.Player(board.FIRST_OUTPUT_PIN, 4)
+	settings = picoclock.core.settings.Settings(4)
+	clock = picoclock.core.clock.Clock(settings, player)
+	never = Never()
+
+	clock.load()
+
+	# The LED's pin is only named here, not set up, so the LED's program keeps it.
+	timer = rp2.StateMachine(_CAPTURE_MACHINE, _flash_program(board.FIRST_OUTPUT_PIN), freq=SYSTEM_HZ, jmp_pin=machine.Pin(board.LED_PIN))
+	led = picoclock.device.led.Led(settings.tempo)
+	panel = picoclock.device.panel.Panel(clock, player, {}, Light(), led)
+
+	timer.active(1)
+	clock.press(picoclock.core.transport.START)
+
+	# Each stage: the tempo, output 1's pulse in milliseconds, whether output 1
+	# is on, how long to watch for in milliseconds, and how long each flash
+	# should be lit for in cycles, or 0 for no flash at all.
+	stages = (
+		(30000, 10, True, 2400, 50000 * cycles),
+		(30000, 80, True, 2400, 80000 * cycles),
+		(6000, 10, True, 7500, 100000 * cycles),
+		(6000, 10, False, 3500, 0),
+	)
+
+	# Per stage: the flashes counted, and the latest start and the furthest length
+	# of those. The LED takes a new time after a flash, and only once the first
+	# core has given it, so a stage's flashes count from the first after the LED
+	# has taken its time and the player its pulse, less one that may already have
+	# begun.
+	seen = [[0, 0, 0] for _ in stages]
+	stage = [0]
+	waiting = [-1]
+	ready = [False]
+
+	def take () -> None:
+
+		"""Take every count the timer has given, in pairs: how late the LED came on, then how long it was on."""
+
+		while timer.rx_fifo():
+
+			count = timer.get()
+
+			# A start is a few counts at most and a length is millions, so a pair split by a full queue is never mistaken.
+			if count < 1000:
+				waiting[0] = count
+				continue
+
+			if waiting[0] < 0:
+				continue
+
+			late = 2 * waiting[0]
+			lit = 2 * count
+			waiting[0] = -1
+
+			if not ready[0]:
+				continue
+
+			counts = seen[stage[0]]
+			counts[0] += 1
+
+			if counts[0] <= 1:
+				continue
+
+			counts[1] = max(counts[1], late)
+			expected = stages[stage[0]][4]
+			counts[2] = max(counts[2], abs(lit - expected) if expected else lit)
+
+	def script ():
+
+		"""Set each stage up as the page would, and watch it for its time."""
+
+		for index in range(len(stages)):
+
+			tempo, pulse, on, watch, lit = stages[index]
+
+			take()
+			stage[0] = index
+			ready[0] = False
+			clock.set_tempo(tempo)
+			clock.set_output(0, "pulse", pulse)
+			clock.set_output(0, "muted", not on)
+			clock.flush()
+			player.settle()
+			panel.look()
+			yield watch
+
+		never.over = True
+		yield 0
+
+	steps = script()
+	due = [time.ticks_ms()]
+
+	def meanwhile () -> None:
+
+		"""Look at the panel as the main loop would, take what the timer has, and move on when a stage is over."""
+
+		panel.look()
+		clock.flush()
+
+		# What came before the LED took this stage's time is set aside, unjudged.
+		if not ready[0] and led.holds(stages[stage[0]][0]):
+			take()
+			ready[0] = True
+
+		take()
+
+		if never.over or time.ticks_diff(time.ticks_ms(), due[0]) < 0:
+			return
+
+		due[0] = time.ticks_add(time.ticks_ms(), next(steps))
+
+	described = run_load(load, never, 60, meanwhile)
+	status = player.status()
+
+	take()
+	timer.active(0)
+	panel.close()
+	led.close()
+	player.close()
+
+	flashes = [counts[0] for counts in seen]
+	late = max(counts[1] for counts in seen[:3])
+	worst = max(counts[2] for counts in seen[:3])
+	dark = seen[3][0]
+
+	# Over two seconds at 300 BPM is twelve flashes, and seven and a half at 60 is
+	# seven. Under load the LED may take its time a second or so late.
+	enough = flashes[0] >= 5 and flashes[1] >= 5 and flashes[2] >= 3
+	passed = never.over and enough and late <= _LED_LATE and worst <= _LED_SLACK and dark == 0 and sound(status)
+
+	report("led", passed, "flashes=%d,%d,%d late_cycles=%d worst_cycles=%d flashes_when_off=%d %s load=%s" % (flashes[0], flashes[1], flashes[2], late, worst, dark, describe(status), described))
+
+
 def test_powerup (load: str = "idle") -> None:
 
 	"""Start the clock as power-up does, from no saved settings, from a damaged file and from a good one, and then everything that follows it.
@@ -2138,6 +2328,7 @@ TESTS = {
 	"cluster": test_cluster,
 	"freerun": test_freerun,
 	"inputs": test_inputs,
+	"led": test_led,
 	"network": test_network,
 	"page": test_page,
 	"player": test_player,

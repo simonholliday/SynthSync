@@ -1,9 +1,10 @@
-"""The buttons and the light on the Pico itself.
+"""The buttons and the lights on the Pico itself.
 
 Start, pause and stop each have a pin with a push button on it, and do just
 what the page's buttons do. A fourth button, held for three seconds, puts
 every setting back as new. The Pico's own light comes on once a beat while the
-clock runs.
+clock runs. The panel LED flashes with output 1 by itself, and is only told
+here when the tempo changes, so its flash stays a quarter of a beat long.
 
 All of this is the first core's work, and none of it is urgent. The pins are
 looked at every few milliseconds from the main loop. Each pin also notes,
@@ -22,6 +23,7 @@ import picoclock.core.buttons
 import picoclock.core.transport
 import picoclock.device.board
 import picoclock.device.chip
+import picoclock.device.led
 
 # How often the buttons are looked at and the light is set, in milliseconds.
 LOOK_EVERY = 5
@@ -48,20 +50,22 @@ def wiring () -> dict:
 
 class Panel:
 
-	"""Reads the buttons, tells the clock what was pressed, and works the light."""
+	"""Reads the buttons, tells the clock what was pressed, and works the lights."""
 
-	def __init__ (self, clock, player, inputs: "dict | None" = None, light=None) -> None:
+	def __init__ (self, clock, player, inputs: "dict | None" = None, light=None, led=None) -> None:
 
-		"""Set the pins up as inputs and the light as off.
+		"""Set the pins up as inputs, the light as off, and the panel LED flashing.
 
 		`inputs` gives a (pin, pressed is low) for each of "start", "pause",
 		"stop" and "reset" that has a button, and is the wiring in `board`
 		unless given. `light` is anything with a `value` to set, and is the
-		Pico's own light unless given.
+		Pico's own light unless given. `led` is anything with a `follow` to
+		give the tempo to, and is the panel LED unless given.
 		"""
 
 		self.clock = clock
 		self.player = player
+		self._led = led if led is not None else picoclock.device.led.Led(clock.settings.tempo)
 
 		if inputs is None:
 			inputs = wiring()
@@ -140,7 +144,7 @@ class Panel:
 
 	def look (self) -> None:
 
-		"""Read every button once, act on any that was pressed, and set the light."""
+		"""Read every button once, act on any that was pressed, and set the lights."""
 
 		now = time.ticks_ms()
 		elapsed = time.ticks_diff(now, self._looked)
@@ -174,6 +178,8 @@ class Panel:
 			else:
 				self.clock.press(self._names[index])
 
+		self._led.follow(self.clock.settings.tempo)
+
 		running = self.clock.transport.state == picoclock.core.transport.RUNNING
 		lit = picoclock.core.buttons.light(running, self.player.position() if running else -1, self._hold)
 
@@ -183,7 +189,7 @@ class Panel:
 
 	async def run (self) -> None:
 
-		"""Look at the buttons and set the light for as long as the Pico is on."""
+		"""Look at the buttons and set the lights for as long as the Pico is on."""
 
 		while True:
 			self.look()
@@ -191,7 +197,10 @@ class Panel:
 
 	def close (self) -> None:
 
-		"""Stop listening to the pins and put the light out."""
+		"""Stop listening to the pins and put the light out.
+
+		The panel LED goes on flashing with output 1: the clock plays on.
+		"""
 
 		for pin in self._pins:
 			pin.irq(None)

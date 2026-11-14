@@ -277,3 +277,26 @@ def check_the_light_flashes_fast_while_reset_is_held_and_stays_on_once_it_is_don
 	assert not light(False, -1, hold)
 	assert light(True, 100, hold)
 	assert not light(True, 600, hold)
+
+
+def check_the_panel_led_is_lit_for_a_quarter_of_a_beat_but_never_more_than_a_tenth_of_a_second () -> None:
+
+	led_time = picoclock.core.buttons.led_time
+
+	# A quarter of a beat at 300 BPM is 50 ms, and at 200 BPM 75 ms.
+	assert led_time(30000) == 50000
+	assert led_time(20000) == 75000
+
+	# At 150 BPM a quarter is 100 ms, and slower than that it stays at 100 ms.
+	assert led_time(15000) == 100000
+	assert led_time(12000) == 100000
+	assert led_time(2000) == 100000
+
+	# An odd tempo is within a quarter of a millisecond of a quarter of its beat.
+	for tempo in (15001, 17777, 23456, 29999):
+		quarter = 6000000000 // tempo // 4
+		assert 0 <= quarter - led_time(tempo) < 250, tempo
+
+	# Faster is never longer, so a speeding clock never sees its flashes run together.
+	for tempo in range(2000, 30001, 7):
+		assert led_time(tempo + 7) <= led_time(tempo), tempo
