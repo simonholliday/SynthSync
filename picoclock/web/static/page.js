@@ -39,6 +39,10 @@ const SINGLE_FLASH = 120;
 // A pulse that comes round faster than this, in milliseconds, is a glow, not a blink.
 const FASTEST_BLINK = 70;
 
+// What an output does, as said under its number. A multivider pulses at a
+// multiple or a division of the tempo, which is what an output's role "clock" means.
+const ROLE_WORDS = {clock: "multivider", start: "start pulse", stop: "stop pulse", run: "run"};
+
 // How far the page's idea of where the clock is may be from the Pico's, in
 // thousandths of a beat, before it stops easing towards it and jumps.
 const FAR_OUT = 60;
@@ -485,6 +489,7 @@ function build (count) {
 			pulseKind: element.querySelector(".pulse-kind"),
 			pulse: element.querySelector(".pulse"),
 			pulseField: element.querySelector(".pulse-field"),
+			kind: element.querySelector(".ratio-kind"),
 			knob: null,
 		};
 
@@ -503,18 +508,18 @@ function build (count) {
 			element.querySelector(".ratio-knob").remove();
 			element.querySelector(".snap-switch").remove();
 			element.querySelector(".role-field").remove();
-			row.text.remove();
+			element.querySelector(".ratio-number").remove();
 
 		} else {
 
 			element.querySelector(".fixed-ratio").remove();
 
-			row.text.setAttribute("aria-label", "Output " + number + " ratio");
+			row.text.setAttribute("aria-label", "Output " + number + " multivider");
 			row.text.setAttribute("aria-describedby", row.problem.id);
 			row.snap.setAttribute("aria-label", "Snap output " + number + " to musical values");
 
 			row.knob = new Knob(element.querySelector(".ratio-knob"), {
-				label: "Output " + number + " ratio",
+				label: "Output " + number + " multivider",
 				origin: ratio.along("1", now.fixed.slowest_ratio, now.fixed.fastest_ratio),
 				onStep: (steps) => turnRatio(index, steps),
 			});
@@ -643,6 +648,7 @@ function showOutput (index) {
 	row.snap.checked = output.snap;
 	row.snap.disabled = !clock;
 	row.role.value = output.role;
+	row.kind.textContent = ROLE_WORDS[output.role] || "";
 	row.text.disabled = !clock;
 
 	row.knob.disable(!clock);

@@ -135,7 +135,10 @@
 					<span class="track" aria-hidden="true"></span>
 				</label>
 				<div class="ratio-knob"></div>
-				<input class="ratio-text" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+				<div class="ratio-number">
+					<input class="ratio-text" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+					<span class="ratio-kind" aria-hidden="true"></span>
+				</div>
 				<p class="fixed-ratio">×1 <span>main clock</span></p>
 				<label class="switch snap-switch"><input class="snap" type="checkbox"><span>Snap</span></label>
 				<button class="more" type="button" aria-expanded="false">⋯</button>
@@ -144,7 +147,7 @@
 			<div class="extra" hidden>
 				<label class="field role-field">Role
 					<select class="role">
-						<option value="clock">Clock</option>
+						<option value="clock">Multivider</option>
 						<option value="start">Start pulse</option>
 						<option value="stop">Stop pulse</option>
 						<option value="run">Run: high while running</option>

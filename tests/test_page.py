@@ -120,13 +120,17 @@ def test_the_page_opens_showing_how_things_stand (phone: "playwright.sync_api.Pa
 	assert phone.locator(".output").count() == 4
 	assert phone.locator(".output .name").all_inner_texts() == ["1", "2", "3", "4"]
 
-	# Output 1 is the main clock, so it has nothing to set a ratio with.
-	assert row(phone, 1).locator(".knob, .ratio-text, .snap, .role").count() == 0
+	# Output 1 is the main clock, so it has nothing to set a ratio with, and isn't a multivider.
+	assert row(phone, 1).locator(".knob, .ratio-text, .ratio-kind, .snap, .role").count() == 0
 	assert "main clock" in row(phone, 1).inner_text()
+	assert "multivider" not in row(phone, 1).inner_text()
 
+	# The others are multividers, and say so under their numbers, as the tempo says BPM.
 	for number in (2, 3, 4):
 		assert row(phone, number).locator(".knob").count() == 1
 		assert row(phone, number).locator(".ratio-text").input_value() == "×1"
+		assert row(phone, number).locator(".ratio-kind").inner_text() == "multivider"
+		assert row(phone, number).get_by_role("textbox", name="Output %d multivider" % number).count() == 1
 		assert row(phone, number).locator(".snap").is_checked()
 		assert row(phone, number).locator(".extra").is_hidden()
 
@@ -497,16 +501,30 @@ def test_pulse_and_role_are_folded_away_until_wanted (phone: "playwright.sync_ap
 	assert tests.pages.eventually(lambda: row(phone, 2).locator(".problem").inner_text() == "A pulse lasts between 1 and 100 milliseconds, or half the gap between pulses")
 	assert tests.pages.eventually(lambda: extra.locator(".pulse").input_value() == "25")
 
-	# An output that isn't a clock has no ratio to set, so its knob and number are shut.
-	extra.locator(".role").select_option("run")
+	# What the output does is said under its number, and a clock is a multivider, in the list as there.
+	kind = row(phone, 2).locator(".ratio-kind")
 
-	assert tests.pages.eventually(lambda: stand.now("output", 1)["role"] == "run")
-	assert tests.pages.eventually(lambda: row(phone, 2).locator(".knob").get_attribute("aria-disabled") == "true")
-	assert row(phone, 2).locator(".ratio-text").is_disabled()
+	assert kind.inner_text() == "multivider"
+	assert extra.locator(".role option[value=clock]").inner_text() == "Multivider"
+
+	# An output that isn't a multivider has no ratio to set, so its knob and number are shut, and say what it is instead.
+	for role, said in (("start", "start pulse"), ("stop", "stop pulse"), ("run", "run")):
+
+		extra.locator(".role").select_option(role)
+
+		assert tests.pages.eventually(lambda: stand.now("output", 1)["role"] == role)
+		assert tests.pages.eventually(lambda: kind.inner_text() == said)
+		assert tests.pages.eventually(lambda: row(phone, 2).locator(".knob").get_attribute("aria-disabled") == "true")
+		assert row(phone, 2).locator(".ratio-text").is_disabled()
+
+		# Greyed as the knob is, so nothing looks as if it could be set.
+		for part in (".ratio-text", ".snap-switch span"):
+			assert float(row(phone, 2).locator(part).evaluate("element => getComputedStyle(element).opacity")) < 0.5, part
 
 	extra.locator(".role").select_option("clock")
 
 	assert tests.pages.eventually(lambda: row(phone, 2).locator(".knob").get_attribute("aria-disabled") == "false")
+	assert tests.pages.eventually(lambda: kind.inner_text() == "multivider")
 
 	more.tap()
 

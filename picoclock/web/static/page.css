@@ -380,10 +380,27 @@ and brought in with the switch. A refusal stays at full strength, to be read.
 	height: 3.75rem;
 }
 
-.ratio-text {
+/* An output's number, with what the output does under it, as BPM is under the tempo. */
+
+.ratio-number {
 	flex: 1 1 5.5rem;
 	min-width: 0;
+	display: grid;
+	gap: 0.1rem;
+	color: var(--quiet);
+	font-size: 0.8rem;
+}
+
+.ratio-kind {
+	padding-left: 0.5rem;
+	white-space: nowrap;
+}
+
+.ratio-text {
+	width: 100%;
+	min-width: 0;
 	padding: 0.2rem 0.5rem;
+	color: var(--text);
 	font-size: 1.3rem;
 	font-weight: 600;
 }
@@ -450,6 +467,16 @@ and brought in with the switch. A refusal stays at full strength, to be read.
 .switch input:focus-visible + span {
 	outline: 2px solid var(--lit);
 	outline-offset: 2px;
+}
+
+/* An output that isn't a multivider has no ratio to set, so its number and snap switch are greyed as its knob is. */
+
+.ratio-text:disabled, .switch input:disabled + span {
+	opacity: 0.3;
+}
+
+.switch:has(input:disabled) {
+	cursor: default;
 }
 
 /* What's folded away in each row: role and pulse. */
