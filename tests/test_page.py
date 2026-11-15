@@ -136,7 +136,7 @@ def test_the_page_opens_showing_how_things_stand (phone: "playwright.sync_api.Pa
 
 	# Every output is on, and says so to a screen reader by its number.
 	for number in (1, 2, 3, 4):
-		assert row(phone, number).locator(".on").is_checked()
+		assert row(phone, number).locator("input.on").is_checked()
 		assert row(phone, number).get_by_role("switch", name="Output %d" % number).count() == 1
 
 
@@ -474,13 +474,22 @@ def test_pulse_and_role_are_folded_away_until_wanted (phone: "playwright.sync_ap
 	more = row(phone, 2).locator(".more")
 	extra = row(phone, 2).locator(".extra")
 
+	def turned () -> str:
+
+		"""Give how the button's arrow is turned: "none" while it points down."""
+
+		return str(more.locator("svg").evaluate("element => getComputedStyle(element).transform"))
+
 	assert extra.is_hidden()
 	assert more.get_attribute("aria-expanded") == "false"
+	assert turned() == "none"
 
 	more.tap()
 
+	# Open, the arrow points up, so the same button plainly closes it again.
 	assert extra.is_visible()
 	assert more.get_attribute("aria-expanded") == "true"
+	assert turned() == "matrix(-1, 0, 0, -1, 0, 0)"
 
 	extra.locator(".pulse-kind").select_option("half")
 
@@ -529,6 +538,8 @@ def test_pulse_and_role_are_folded_away_until_wanted (phone: "playwright.sync_ap
 	more.tap()
 
 	assert extra.is_hidden()
+	assert more.get_attribute("aria-expanded") == "false"
+	assert turned() == "none"
 
 
 def test_an_output_switched_off_is_dimmed_and_can_still_be_changed_then_comes_back_with_the_changes (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
@@ -548,7 +559,7 @@ def test_an_output_switched_off_is_dimmed_and_can_still_be_changed_then_comes_ba
 
 	assert tests.pages.eventually(lambda: stand.now("output", 2)["muted"] is True)
 	assert tests.pages.eventually(lambda: "off" in (third.get_attribute("class") or "").split())
-	assert not third.locator(".on").is_checked()
+	assert not third.locator("input.on").is_checked()
 
 	# What it was set to is still there to read: fainter, and with no line through it.
 	assert text.input_value() == "÷1.5"
@@ -596,7 +607,7 @@ def test_an_output_switched_off_is_dimmed_and_can_still_be_changed_then_comes_ba
 	assert stand.now("output", 2)["ratio"] == "3/2"
 
 	# The other rows are untouched.
-	assert row(phone, 2).locator(".on").is_checked()
+	assert row(phone, 2).locator("input.on").is_checked()
 	assert "off" not in (row(phone, 2).get_attribute("class") or "").split()
 
 	# On again, it comes back with everything it was given while off.
@@ -642,7 +653,7 @@ def test_two_pages_open_at_once_stay_in_step (chromium: "playwright.sync_api.Bro
 	row(laptop, 3).locator(".power").click()
 
 	assert tests.pages.eventually(lambda: "off" in (row(phone, 3).get_attribute("class") or "").split())
-	assert not row(phone, 3).locator(".on").is_checked()
+	assert not row(phone, 3).locator("input.on").is_checked()
 
 	row(laptop, 2).locator(".knob").focus()
 	laptop.keyboard.press("PageUp")

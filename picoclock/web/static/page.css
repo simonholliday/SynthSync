@@ -419,17 +419,37 @@ and brought in with the switch. A refusal stays at full strength, to be read.
 	font-weight: 400;
 }
 
+/*
+The button that opens the rest of an output's settings in place, and closes
+them again. Its arrow points down while they are folded away and up while they
+are open, the usual sign for a panel that opens where it is.
+*/
+
 .more {
 	flex: none;
+	display: grid;
+	place-items: center;
 	width: 2.75rem;
 	padding: 0;
-	font-size: 1.3rem;
-	line-height: 1;
+}
+
+.more svg {
+	width: 1.4rem;
+	height: 1.4rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2.5;
+	stroke-linecap: round;
+	stroke-linejoin: round;
 }
 
 .more[aria-expanded="true"] {
 	border-color: var(--lit);
 	color: var(--lit);
+}
+
+.more[aria-expanded="true"] svg {
+	transform: rotate(180deg);
 }
 
 /* A switch: a checkbox drawn as a pill that lights when it's on. */
