@@ -270,9 +270,16 @@ function connected (up) {
 
 	// When PicoClock has changed networks, trying again here won't find it, so the page says where it has gone instead.
 	const where = up ? [] : settings.whereNext();
+	const panel = document.getElementById("where");
+	const news = where.length > 0 && panel.childNodes.length === 0;
 
 	document.getElementById("link").textContent = up ? "" : where.length > 0 ? "Not connected." : "Not connected. Trying again…";
-	document.getElementById("where").replaceChildren(...where);
+	panel.replaceChildren(...where);
+
+	// The panel is at the top of the page, out of sight of whatever was pressed lower down to send PicoClock away.
+	if (news) {
+		window.scrollTo(0, 0);
+	}
 
 	// While it's down nothing can be changed, so nothing should look as if it can.
 	document.getElementById("main-view").inert = !up;

@@ -60,6 +60,10 @@ export class Settings {
 		// and {to: "own"} when it is going back to its own. `from` is the mode it was in when this was last decided.
 		this.going = null;
 
+		// Whether this page asked to try a network and has yet to hear how it went. It survives the line
+		// going and coming back, which a trial from PicoClock's own network may or may not take with it.
+		this.trying = false;
+
 		find("scan").addEventListener("click", () => this.scan());
 		find("join-cancel").addEventListener("click", () => this.pick(null));
 		find("join-show").addEventListener("change", (event) => showAs(find("join-password"), event.target.checked));
@@ -99,6 +103,7 @@ export class Settings {
 	ask (what, message) {
 
 		this.asked = what;
+		this.trying = message.do === "join";
 
 		for (const id of ["join-problem", "host-problem", "own-problem", "own-done", "reset-done"]) {
 			find(id).textContent = "";
@@ -127,10 +132,19 @@ export class Settings {
 		if (message.type === "network") {
 
 			const mine = message.by === this.link.me;
+			const yes = mine && this.asked === "join";
 
 			this.network = message;
 			this.follow(message);
 			this.showNetwork();
+
+			// How a trial went, found or back on the own network with why, is news after the Pico's yes to the
+			// asking, which carries this page's number too. It is shown at the top of the WiFi section, out of
+			// sight of the form that asked.
+			if (this.trying && !yes && (message.mode === "found" || message.mode === "own")) {
+				this.trying = false;
+				find("wifi").scrollIntoView({block: "start"});
+			}
 
 			// News of the network that this page caused is the Pico's yes to what was asked.
 			if (mine && this.asked === "join") {
@@ -173,6 +187,7 @@ export class Settings {
 		}
 
 		this.asked = null;
+		this.trying = false;
 	}
 
 	/* Say how PicoClock is reached just now, and offer what can be done about it. */

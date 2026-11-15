@@ -71,6 +71,25 @@ def pick (page: "playwright.sync_api.Page", name: str) -> None:
 	page.locator(".found", has_text=name).tap()
 
 
+def in_sight (page: "playwright.sync_api.Page", selector: str) -> bool:
+
+	"""Say whether the whole of one element is on the phone's screen, as the page is scrolled just now."""
+
+	return bool(page.evaluate(
+		"(selector) => { const box = document.querySelector(selector).getBoundingClientRect(); return box.top >= 0 && box.bottom <= window.innerHeight; }",
+		selector,
+	))
+
+
+def scroll_to (page: "playwright.sync_api.Page", selector: str) -> None:
+
+	"""Scroll one element to the top of the screen, as far down as it is on a phone with many networks in range, so the WiFi section's first lines are out of sight."""
+
+	page.evaluate("(selector) => document.querySelector(selector).scrollIntoView({block: 'start'})", selector)
+
+	assert not in_sight(page, "#wifi-status")
+
+
 def test_the_settings_open_from_the_main_view_and_close_again (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
 
 	"""Settings swaps the main view for the settings, and Done or the phone's back button swaps them back."""
@@ -158,6 +177,7 @@ def test_a_join_is_tried_first_says_where_picoclock_will_be_and_switches_when_as
 	assert stand.now("network")["saved"] == ""
 
 	phone.fill("#join-password", "studio wifi")
+	scroll_to(phone, "#join-go")
 	phone.tap("#join-go")
 
 	# The stand-in's line never goes, so this page sees the trial come back as a phone on the Pico's own network does.
@@ -166,6 +186,9 @@ def test_a_join_is_tried_first_says_where_picoclock_will_be_and_switches_when_as
 
 	assert tests.pages.eventually(lambda: text(phone, "#wifi-status") == "PicoClock can join Studio. Once it has, this page will be at http://localhost.")
 	assert phone.is_visible("#trial")
+
+	# Where PicoClock will be is brought into sight, from wherever the form that asked had been scrolled to.
+	assert tests.pages.eventually(lambda: in_sight(phone, "#wifi-status") and in_sight(phone, "#trial-address"))
 	assert text(phone, "#trial-address") == "http://localhost"
 	assert "Note that address down" in text(phone, "#trial-words")
 	assert "two minutes" in text(phone, "#trial-words")
@@ -214,16 +237,19 @@ def test_a_trial_that_nobody_acts_on_switches_by_itself (phone: "playwright.sync
 	assert phone.is_hidden("#trial")
 
 
-def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[[dict[str, typing.Any]], dict[str, typing.Any]] | None" = None) -> None:
+def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[[dict[str, typing.Any]], dict[str, typing.Any]] | None" = None, back: "list[bool] | None" = None) -> None:
 
-	"""Pass the page's socket through to the stand-in, and drop it for good once the page has asked `do` and heard the answer.
+	"""Pass the page's socket through to the stand-in, and drop it once the page has asked `do` and heard the answer.
 
 	That is what a Pico does when it changes networks. It answers at once and
 	acts half a second later, which takes the line with it, so the page hears
 	its own asking come back unchanged and then nothing, and trying again
 	finds nothing either. `last`, if given, makes one more word of the
 	network from that answer, for the page to hear just as the line goes, as
-	a Pico might just manage to say as it begins a join.
+	a Pico might just manage to say as it begins a join. With `back`, trying
+	again is turned away until the test sets `back[0]`, and then finds the
+	stand-in, as a phone that stayed on PicoClock's own network finds the
+	Pico once that network is back.
 	"""
 
 	gone = [False]
@@ -237,10 +263,20 @@ def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[
 		Playwright, so a test still running when the page tries again would hang.
 		"""
 
-		if gone[0]:
+		if gone[0] and back is None:
 			return
 
 		server = socket.connect_to_server()
+
+		# Left without handlers of its own, a socket passes everything through both ways. Until the
+		# line is let back, it is ended at once, as one is that finds the Pico's own network still off.
+		if gone[0]:
+
+			if back is not None and not back[0]:
+				socket.close()
+				server.close()
+
+			return
 
 		def from_page (message: "str | bytes") -> None:
 
@@ -278,7 +314,7 @@ def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[
 
 
 @contextlib.contextmanager
-def settings_cut_when (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand, do: str, last: "typing.Callable[[dict[str, typing.Any]], dict[str, typing.Any]] | None" = None) -> "typing.Iterator[playwright.sync_api.Page]":
+def settings_cut_when (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand, do: str, last: "typing.Callable[[dict[str, typing.Any]], dict[str, typing.Any]] | None" = None, back: "list[bool] | None" = None) -> "typing.Iterator[playwright.sync_api.Page]":
 
 	"""Open the settings view on a phone whose line will go as soon as it asks `do`, and close it afterwards, however the test went.
 
@@ -289,7 +325,7 @@ def settings_cut_when (chromium: "playwright.sync_api.Browser", stand: tests.sta
 	page = tests.pages.phone(chromium)
 
 	try:
-		cut_when(page, do, last)
+		cut_when(page, do, last, back)
 		page.goto(stand.address + "/#settings")
 		page.wait_for_function("!document.body.classList.contains('lost') && document.getElementById('wifi-status').textContent !== ''")
 
@@ -312,6 +348,7 @@ def test_once_picoclock_changes_networks_the_page_says_where_it_has_gone (chromi
 
 		pick(page, "Studio")
 		page.fill("#join-password", "studio wifi")
+		scroll_to(page, "#join-go")
 		page.tap("#join-go")
 
 		assert tests.pages.eventually(lambda: text(page, "#link") == "Not connected.")
@@ -319,6 +356,9 @@ def test_once_picoclock_changes_networks_the_page_says_where_it_has_gone (chromi
 			f"PicoClock is trying Studio. In a few seconds its own network, {own}, comes back to say where PicoClock will be. "
 			f"If this phone has gone to another network meanwhile, join it to {own} again."
 		)
+
+		# What it says is brought into sight, from wherever the button that sent PicoClock away had been scrolled to.
+		assert in_sight(page, "#where")
 
 	# A switch, from where a trial that worked leaves PicoClock. The page hears the join begin just as
 	# the line goes, which is still the switch, not another trial.
@@ -346,10 +386,41 @@ def test_once_picoclock_changes_networks_the_page_says_where_it_has_gone (chromi
 
 	with settings_cut_when(chromium, stand, "forget") as page:
 
+		scroll_to(page, "#forget")
 		page.tap("#forget")
 
 		assert tests.pages.eventually(lambda: text(page, "#link") == "Not connected.")
 		assert text(page, "#where") == f"PicoClock is going back to its own network, {own}. Join this phone to it, then open http://192.168.4.1."
+		assert in_sight(page, "#where")
+
+
+def test_a_trial_that_took_the_line_says_how_it_went_once_the_line_is_back (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
+
+	"""A phone that stays on PicoClock's own network through a trial finds the Pico again when that network is back, and the page then shows what was found, in sight."""
+
+	stand.as_new()
+
+	back = [False]
+
+	with settings_cut_when(chromium, stand, "join", back=back) as page:
+
+		pick(page, "Studio")
+		page.fill("#join-password", "studio wifi")
+		scroll_to(page, "#join-go")
+		page.tap("#join-go")
+
+		assert tests.pages.eventually(lambda: text(page, "#link") == "Not connected.")
+		assert in_sight(page, "#where")
+
+		# Scrolled away while waiting, as anyone might be, and then the line comes back.
+		scroll_to(page, "#own-go")
+		back[0] = True
+
+		assert tests.pages.eventually(lambda: text(page, "#link") == "" and page.is_visible("#trial"))
+		assert text(page, "#wifi-status") == "PicoClock can join Studio. Once it has, this page will be at http://localhost."
+		assert text(page, "#trial-address") == "http://localhost"
+		assert text(page, "#where") == ""
+		assert tests.pages.eventually(lambda: in_sight(page, "#wifi-status") and in_sight(page, "#trial-address"))
 
 
 def test_a_join_that_fails_says_why (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
@@ -358,10 +429,12 @@ def test_a_join_that_fails_says_why (phone: "playwright.sync_api.Page", stand: t
 
 	pick(phone, "Studio")
 	phone.fill("#join-password", "not the password")
+	scroll_to(phone, "#join-go")
 	phone.tap("#join-go")
 
 	assert tests.pages.eventually(lambda: text(phone, "#wifi-problem") == "Studio didn't accept that password")
 	assert "its own network" in text(phone, "#wifi-status")
+	assert tests.pages.eventually(lambda: in_sight(phone, "#wifi-problem"))
 	assert stand.now("network")["mode"] == "own"
 
 	# A network that never worked isn't kept, so there is nothing to forget.
