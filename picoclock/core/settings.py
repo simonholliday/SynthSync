@@ -87,9 +87,9 @@ def tempo_text (tempo: int) -> str:
 	return "%d.%02d" % (whole, places)
 
 
-def _attempt (problems: list[str], what: str, change: "typing.Callable[[], None]") -> None:
+def _attempt (problems: list[str], what: str, change: "typing.Callable[[], object]") -> None:
 
-	"""Make one change from a saved file, and note it rather than fail if it can't be made."""
+	"""Make one change from a saved file, and note it rather than fail if it can't be made. What the change gives back isn't wanted."""
 
 	try:
 		change()
@@ -163,13 +163,16 @@ class Settings:
 
 		self.tempo = tempo
 
-	def set_output (self, index: object, name: object, value: object) -> None:
+	def set_output (self, index: object, name: object, value: object) -> "tuple[str, ...]":
 
-		"""Change one setting of one output.
+		"""Change one setting of one output, and give the names of every setting that changed with it.
 
 		The setting is "ratio", "snap", "muted", "pulse" or "role". Outputs are
-		numbered from 0 here, and from 1 on the page.
+		numbered from 0 here, and from 1 on the page. Turning snap on moves the
+		ratio to the nearest snap value, so that change gives ("snap", "ratio").
 		"""
+
+		changed: "tuple[str, ...]" = (str(name),)
 
 		if isinstance(index, bool) or not isinstance(index, int) or index < 0 or index >= self.count:
 			raise ValueError("There is no such output")
@@ -194,7 +197,18 @@ class Settings:
 				raise ValueError("That setting is either on or off")
 
 			if name == "snap":
+
+				# Turned on, snap takes a ratio set freely to the nearest value the knob would have stopped on.
+				if value and not output.snap:
+
+					nearest = picoclock.core.ratio.nearest_snap(output.ratio)
+
+					if nearest != output.ratio:
+						output.ratio = nearest
+						changed = ("snap", "ratio")
+
 				output.snap = value
+
 			else:
 				output.muted = value
 
@@ -221,6 +235,8 @@ class Settings:
 
 		else:
 			raise ValueError("An output has a ratio, a snap switch, a mute, a pulse and a role")
+
+		return changed
 
 	def set_own_password (self, password: object) -> None:
 

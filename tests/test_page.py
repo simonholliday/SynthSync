@@ -424,15 +424,31 @@ def test_with_snap_off_a_ratio_knob_moves_freely (phone: "playwright.sync_api.Pa
 
 	assert tests.pages.eventually(lambda: stand.now("output", 2)["ratio"] == "97/100")
 
-	# Back on, the next step goes to the nearest musical value that way.
+	# Back on, the ratio goes at once to the nearest musical value, and the knob steps on from there.
 	row(phone, 3).locator(".snap-switch").tap()
 
 	assert tests.pages.eventually(lambda: stand.now("output", 2)["snap"] is True)
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["ratio"] == "1")
+	assert tests.pages.eventually(lambda: text.input_value() == "×1")
 
 	knob.focus()
 	phone.keyboard.press("ArrowUp")
 
-	assert tests.pages.eventually(lambda: stand.now("output", 2)["ratio"] == "1")
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["ratio"] == "4/3")
+
+	# Typed with snap off, a ratio is taken to the nearest musical value as snap goes back on, as it sounds: 2.9 to ×3.
+	row(phone, 3).locator(".snap-switch").tap()
+
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["snap"] is False)
+
+	type_into(text, "2.9")
+
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["ratio"] == "29/10")
+
+	row(phone, 3).locator(".snap-switch").tap()
+
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["ratio"] == "3")
+	assert tests.pages.eventually(lambda: text.input_value() == "×3")
 
 
 def test_typing_a_ratio_sets_it_and_a_bad_one_is_explained (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:

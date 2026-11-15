@@ -106,8 +106,9 @@ _ROLE = 4
 _MUTE = 8
 _WHOLE_OUTPUT = 15
 
-# Which part of an output each of its settings changes. Snap is only for the
-# page's knob, so the engine never hears of it.
+# Which part of an output each of its settings changes. Snap itself is only for
+# the page's knob, so the engine never hears of it, though turning it on can
+# move the ratio, which the engine then hears of as a ratio.
 _PARTS = {
 	"ratio": _RATIO,
 	"pulse": _WIDTH,
@@ -204,15 +205,17 @@ class Clock:
 
 		"""Change one setting of one output: its "ratio", "snap", "muted", "pulse" or "role".
 
-		Outputs are numbered from 0 here, and from 1 on the page.
+		Outputs are numbered from 0 here, and from 1 on the page. Turning snap
+		on can move the ratio to the nearest snap value too.
 		"""
 
-		self.settings.set_output(index, name, value)
+		changed = self.settings.set_output(index, name, value)
 
 		# The settings have just checked that the output and the setting exist.
 		assert isinstance(index, int) and isinstance(name, str)
 
-		self._stale[index] |= _PARTS[name]
+		for each in changed:
+			self._stale[index] |= _PARTS[each]
 		self._keep()
 		self._tell(index, by)
 

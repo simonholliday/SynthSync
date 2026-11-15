@@ -327,6 +327,39 @@ def check_a_partly_damaged_file_keeps_what_it_can () -> None:
 	assert settings.network_name == "Home WiFi"
 
 
+def check_a_ratio_saved_with_snap_on_loads_as_it_was_saved () -> None:
+
+	"""A ratio typed with snap on is saved as typed, and loads as typed, even into settings whose snap was off: loading starts afresh, with snap on, so nothing turns it on."""
+
+	settings = picoclock.core.settings.Settings(4)
+	settings.set_output(1, "ratio", "29/10")
+
+	text = settings.to_text()
+	loaded = picoclock.core.settings.Settings(4)
+
+	loaded.set_output(1, "snap", False)
+
+	assert loaded.load_text(text) == []
+	assert loaded.outputs[1].snap is True
+	assert loaded.outputs[1].ratio == (29, 10)
+
+
+def check_turning_snap_on_says_the_ratio_changed_only_when_it_did () -> None:
+
+	"""The settings give the names of what a change changed: the ratio too when turning snap on moved it."""
+
+	settings = picoclock.core.settings.Settings(4)
+
+	assert settings.set_output(1, "snap", False) == ("snap",)
+	assert settings.set_output(1, "ratio", "2.9") == ("ratio",)
+	assert settings.set_output(1, "snap", True) == ("snap", "ratio")
+	assert settings.outputs[1].ratio == (3, 1)
+
+	settings.set_output(1, "snap", False)
+
+	assert settings.set_output(1, "snap", True) == ("snap",)
+
+
 def check_a_file_for_more_or_fewer_outputs_still_loads () -> None:
 
 	"""Outputs the file doesn't mention keep their defaults, and ones this Pico lacks are ignored."""

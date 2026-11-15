@@ -308,6 +308,63 @@ def check_snap_is_saved_and_told_but_never_reaches_the_engine () -> None:
 	assert engine.calls == []
 
 
+def check_turning_snap_on_takes_a_ratio_set_freely_to_the_nearest_snap_value () -> None:
+
+	"""With snap off any ratio can be set. Turned back on, snap moves it to the nearest snap value, judged as it sounds, and the engine is given that ratio."""
+
+	clock, engine, storage = make()
+	watcher = Watcher(clock)
+
+	clock.set_output(2, "snap", False)
+	clock.set_output(2, "ratio", "2.9")
+	clock.flush()
+
+	engine.calls = []
+	watcher.told = []
+
+	clock.set_output(2, "snap", True)
+
+	assert clock.settings.outputs[2].snap is True
+	assert clock.settings.outputs[2].ratio == (3, 1)
+	assert watcher.told == [(2, None)]
+
+	clock.flush()
+
+	assert engine.calls == [("set_ratio", 2, 3, 1)]
+
+	# By proportion, 2.8 is nearer ×8/3 than ×3.
+	clock.set_output(2, "snap", False)
+	clock.set_output(2, "ratio", "2.8")
+	clock.set_output(2, "snap", True)
+
+	assert clock.settings.outputs[2].ratio == (8, 3)
+
+
+def check_turning_snap_on_leaves_a_snap_value_where_it_is () -> None:
+
+	"""A ratio that is already a snap value doesn't move, and the engine hears nothing. Nor does saying snap is on when it already is."""
+
+	clock, engine, storage = make()
+
+	clock.set_output(2, "snap", False)
+	clock.set_output(2, "ratio", "1.5")
+	clock.flush()
+
+	engine.calls = []
+
+	clock.set_output(2, "snap", True)
+	clock.flush()
+
+	assert clock.settings.outputs[2].ratio == (3, 2)
+	assert engine.calls == []
+
+	# Typed with snap on, a ratio stays as it was typed, even when snap is said to be on again.
+	clock.set_output(2, "ratio", "2.9")
+	clock.set_output(2, "snap", True)
+
+	assert clock.settings.outputs[2].ratio == (29, 10)
+
+
 def check_a_bad_value_changes_nothing_and_tells_nobody () -> None:
 
 	"""A value the settings refuse is refused in their words, and nothing else happens."""
