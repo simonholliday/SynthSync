@@ -8,8 +8,9 @@ It resolves 2 cycles, which is 13 ns at 150 MHz.
 While it captures, it can load the Pico the way real use would: collecting
 garbage, writing to flash, running the radio.
 
-`tools/rig.py` copies this to the board and runs it. It is not part of
-PicoClock itself, and it only runs on MicroPython.
+`tools/rig.py` copies this to the board and runs it, and `tools/soak.py`
+runs its `soak` for hours. It is not part of PicoClock itself, and it only
+runs on MicroPython.
 
 Pins: the test board has GP0 jumpered to GP1, so a pulse sent on GP0 is read on
 GP1. GP13, GP14 and GP15 carry a clock chip and are never touched.
@@ -22,12 +23,14 @@ import json
 import machine
 import os
 import rp2
+import sys
 import time
 
 import picoclock.core.clock
 import picoclock.core.settings
 import picoclock.core.transport
 import picoclock.device.board
+import picoclock.device.chip
 import picoclock.device.led
 import picoclock.device.panel
 import picoclock.device.player
@@ -106,11 +109,34 @@ class Capture:
 		self.counts = array.array("I", [0] * count)
 		self.machine = rp2.StateMachine(_CAPTURE_MACHINE, _capture_program, freq=SYSTEM_HZ, jmp_pin=machine.Pin(pin, machine.Pin.IN))
 		self.dma = rp2.DMA()
+		self.control = self.dma.pack_ctrl(size=2, inc_read=False, inc_write=True, treq_sel=_CAPTURE_REQUEST)
 
-		control = self.dma.pack_ctrl(size=2, inc_read=False, inc_write=True, treq_sel=_CAPTURE_REQUEST)
-
-		self.dma.config(read=_RXF0 + 4 * _CAPTURE_MACHINE, write=self.counts, count=count, ctrl=control, trigger=True)
+		self.dma.config(read=_RXF0 + 4 * _CAPTURE_MACHINE, write=self.counts, count=count, ctrl=self.control, trigger=True)
 		self.machine.active(1)
+
+	def again (self, count: int) -> None:
+
+		"""Begin a fresh capture of this many gaps into the same memory, at most as many as it was made for.
+
+		Whatever was waiting from before is dropped. Every count the state
+		machine gives is a whole gap, so the first one taken after this is too.
+		The soak times window after window this way, asking nothing new of the
+		memory.
+		"""
+
+		self.halt()
+
+		while self.machine.rx_fifo():
+			self.machine.get()
+
+		self.count = min(count, len(self.counts))
+		self.dma.config(read=_RXF0 + 4 * _CAPTURE_MACHINE, write=self.counts, count=self.count, ctrl=self.control, trigger=True)
+
+	def halt (self) -> None:
+
+		"""Stop taking gaps, keeping those already taken."""
+
+		self.dma.active(0)
 
 	def taken (self) -> int:
 
@@ -2461,6 +2487,334 @@ def test_air (load: str = "idle") -> None:
 
 	# How often and for how long everything but the clock was held up for over a second, the longest of those, and the pages given up on.
 	report("air", passed, "saved=%d joined=%d pages_opened=%d saves=%d free_kb=%d holds=%d held_ms=%d longest_hold_ms=%d given_up=%d pulses=%d worst_cycles=%d %s" % (saved, joined, opened, saves, free // 1024, kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), pulses, worst, describe(status)))
+
+
+# ---------------------------------------------------------------------------
+# The soak: the whole of PicoClock for hours, timed in windows.
+
+# How long each window times output 2 for, in milliseconds, and the most gaps
+# one holds: a minute at the fastest the soak sets output 2, 120 pulses a second.
+_SOAK_WINDOW = 60000
+_SOAK_MOST = 7300
+
+# How long the tempo, the transport and output 2 must have been left alone
+# before a window begins: this many milliseconds, and at least this many of
+# output 2's gaps, so that no gap a window judges began before a change.
+_SOAK_QUIET = 3000
+_SOAK_QUIET_GAPS = 3
+
+# The pause after each window, in milliseconds, which is when the laptop half
+# makes its changes, and how far past its time a window may run before it is
+# taken to have lost pulses.
+_SOAK_BETWEEN = 5000
+_SOAK_LATE = 2000
+
+# How long the soak goes without printing before it says it is still there, in
+# milliseconds, and where it keeps the settings it found until it puts them back,
+# in case it is cut short.
+_SOAK_ALIVE = 60000
+_SOAK_KEPT = "/_rig_soak_kept.json"
+
+
+class Settled:
+
+	"""Hears every change to the tempo, the transport or output 2, which a window timing output 2 can't span."""
+
+	def __init__ (self, clock) -> None:
+
+		"""Begin listening to the clock."""
+
+		self.changes = 0
+		self.at = time.ticks_ms()
+
+		clock.watch(self.heard)
+
+	def heard (self, what, by) -> None:
+
+		"""Count a change, if it is one that moves output 2's pulses."""
+
+		if what == picoclock.core.clock.TEMPO or what == picoclock.core.clock.TRANSPORT or what == picoclock.core.clock.EVERYTHING or what == 1:
+			self.changes += 1
+			self.at = time.ticks_ms()
+
+	def since (self) -> int:
+
+		"""Say how long since the last change, in milliseconds."""
+
+		return time.ticks_diff(time.ticks_ms(), self.at)
+
+
+def soak_lengths (tempo: int, pulses: int, beats: int) -> tuple:
+
+	"""Give the two lengths output 2's gaps may be, in cycles: the exact gap in ticks, rounded down and up.
+
+	`gap_lengths` finds them by playing the first pulses through, which
+	misses the longer one when the exact gap is a hair over a whole number of
+	ticks. After hours of changes a window starts anywhere in the pattern, so
+	both are allowed.
+	"""
+
+	whole, part = divmod(beats * _UNITS, pulses * tempo)
+	per_tick = SYSTEM_HZ // 1000000
+
+	return (whole * per_tick, (whole + (1 if part else 0)) * per_tick)
+
+
+async def soak_judge (capture: Capture, lengths: tuple) -> tuple:
+
+	"""Count a window's gaps after the first few and give the furthest any is from a length it may be, in cycles, giving the other jobs a turn as it goes."""
+
+	taken = capture.taken()
+	shorter, longer = lengths
+	worst = 0
+
+	for index in range(_SKIP, taken):
+
+		cycles = 2 * capture.counts[index] + 4
+		error = min(abs(cycles - shorter), abs(cycles - longer))
+
+		if error > worst:
+			worst = error
+
+		if index % 500 == 0:
+			await asyncio.sleep_ms(0)
+
+	return max(taken - _SKIP, 0), worst
+
+
+def soak_playing (parts) -> bool:
+
+	"""Say whether output 2 is pulsing as a clock: the transport running, and output 2 not muted."""
+
+	output = parts.clock.settings.outputs[1]
+
+	return parts.clock.transport.state == picoclock.core.transport.RUNNING and not output.muted and output.role == picoclock.core.settings.ROLES[0]
+
+
+async def soak_window (parts, capture: Capture, settled: Settled, counts: dict) -> bool:
+
+	"""Time output 2 for one window, once it has been left alone long enough, and print a line saying how it went. Say whether a window was timed.
+
+	A change to the tempo, the transport or output 2 during the window spoils
+	it, and it is counted as spoiled rather than judged.
+	"""
+
+	settings = parts.clock.settings
+	tempo = settings.tempo
+	pulses, beats = settings.outputs[1].ratio
+	gap_ms = 6000000 * beats // (tempo * pulses) + 1
+
+	if not soak_playing(parts) or settled.since() < max(_SOAK_QUIET, _SOAK_QUIET_GAPS * gap_ms):
+		return False
+
+	# Enough gaps for the window's length, and the few at the start that aren't judged.
+	wanted = min(_SOAK_MOST, _SOAK_WINDOW * tempo * pulses // (6000000 * beats) + _SKIP)
+	due = wanted * gap_ms
+	changes = settled.changes
+	began = time.ticks_ms()
+
+	capture.again(wanted)
+
+	while not capture.full() and settled.changes == changes and time.ticks_diff(time.ticks_ms(), began) < due + _SOAK_LATE:
+		await asyncio.sleep_ms(100)
+
+	capture.halt()
+	took = time.ticks_diff(time.ticks_ms(), began)
+
+	if settled.changes != changes:
+		counts["spoiled"] += 1
+		print("SOAK spoiled after_ms=%d" % took)
+		return True
+
+	timed, worst = await soak_judge(capture, soak_lengths(tempo, pulses, beats))
+	short = not capture.full()
+
+	gc.collect()
+	free = gc.mem_free()
+	status = parts.player.status()
+	kept_up = parts.app.health() if parts.app is not None else {}
+	network = parts.wifi.status() if parts.wifi is not None else {}
+
+	counts["windows"] += 1
+	counts["pulses"] += timed
+	counts["short"] += 1 if short else 0
+	counts["worst"] = max(counts["worst"], worst)
+	counts["least_free"] = min(counts["least_free"], free) if counts["least_free"] else free
+	counts["first_free"] = counts["first_free"] or free
+	counts["last_free"] = free
+
+	print("SOAK window n=%d tempo=%d ratio=%d/%d pulses=%d worst_cycles=%d short=%d took_ms=%d free=%d saves=%d mode=%s address=%s holds=%d held=%d longest_hold=%d given_up=%d pages=%d %s" % (counts["windows"], tempo, pulses, beats, timed, worst, 1 if short else 0, took, free, parts.storage.saves, network.get("mode") or "none", network.get("address") or "none", kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), kept_up.get("pages", -1), describe(status)))
+
+	return True
+
+
+async def soak_windows (parts, capture: Capture, settled: Settled, counts: dict) -> None:
+
+	"""Time output 2 in one window after another, for as long as the soak lasts.
+
+	Anything that goes wrong here is printed and counted, and the windows
+	carry on: the soak is for what PicoClock does, and a mistake in the
+	measuring shouldn't end it unseen.
+	"""
+
+	said = time.ticks_ms()
+
+	while True:
+
+		try:
+			timed = await soak_window(parts, capture, settled, counts)
+
+		except Exception as problem:
+			counts["broke"] += 1
+			print("SOAK broke")
+			sys.print_exception(problem)
+			timed = True
+
+		if timed:
+			said = time.ticks_ms()
+			await asyncio.sleep_ms(_SOAK_BETWEEN)
+			continue
+
+		# Paused, stopped or muted for a while: worth a line, so a quiet soak can be told from a dead one.
+		if time.ticks_diff(time.ticks_ms(), said) > _SOAK_ALIVE:
+			print("SOAK waiting playing=%d quiet_ms=%d" % (1 if soak_playing(parts) else 0, settled.since()))
+			said = time.ticks_ms()
+
+		await asyncio.sleep_ms(200)
+
+
+async def soaking (parts, capture: Capture, settled: Settled, counts: dict, minutes: int) -> None:
+
+	"""Run the whole of PicoClock and the windows beside it, for this many minutes."""
+
+	windows = asyncio.create_task(soak_windows(parts, capture, settled, counts))
+
+	try:
+		await picoclock.device.start.carry_on(parts, minutes * 60000, _PAGE_FOLDER)
+
+	finally:
+		windows.cancel()
+		await asyncio.sleep_ms(50)
+
+
+def soak (minutes: int) -> None:
+
+	"""Run the whole of PicoClock on the WiFi network it has saved for this many minutes, timing output 2 in windows of a minute throughout.
+
+	This is the air test made long. The laptop half, `tools/soak.py`, uses
+	the page throughout and changes the tempo, the transport and output 2
+	between windows. Each window is held to the cycle against whatever the
+	tempo and output 2 were set to when it began. A line is printed for each
+	window, and one result line at the end.
+
+	The settings it found are kept on the Pico's storage too while it runs,
+	and put back at the end. A soak cut short by restarting the Pico leaves
+	them there, and the next soak puts those back instead.
+	"""
+
+	import picoclock.core.wifi
+
+	start = picoclock.device.start
+	board = picoclock.device.board
+	path = picoclock.device.storage.PATH
+	names = page_files()
+
+	try:
+		with open(_SOAK_KEPT) as handle:
+			kept = handle.read()
+
+	except OSError:
+
+		try:
+			with open(path) as handle:
+				kept = handle.read()
+
+		except OSError:
+			kept = None
+
+	if kept is not None and _SOAK_KEPT[1:] not in os.listdir("/"):
+		with open(_SOAK_KEPT, "w") as handle:
+			handle.write(kept)
+
+	try:
+		os.mkdir(_PAGE_FOLDER)
+	except OSError:
+		pass
+
+	for name in names:
+		copy_page_file(name)
+
+	# Made before the player, which would otherwise lose the pin to it.
+	capture = Capture(board.FIRST_OUTPUT_PIN + 1, _SOAK_MOST)
+	parts = start.begin()
+	saved = bool(parts.clock.settings.network_name)
+	settled = Settled(parts.clock)
+	counts = {"windows": 0, "spoiled": 0, "short": 0, "pulses": 0, "worst": 0, "first_free": 0, "last_free": 0, "least_free": 0, "broke": 0}
+
+	print("SOAK began minutes=%d saved=%d" % (minutes, saved))
+
+	try:
+
+		# Output 2 begins at 48 pulses a second: 120 BPM, 24 pulses a beat.
+		parts.clock.set_tempo(12000)
+		parts.clock.set_output(1, "ratio", "24")
+
+		asyncio.run(soaking(parts, capture, settled, counts, minutes))
+
+		status = parts.player.status()
+		joined = parts.wifi is not None and parts.wifi.mode == picoclock.core.wifi.JOINED
+		opened = parts.app._opened if parts.app is not None else 0
+		kept_up = parts.app.health() if parts.app is not None else {}
+		saves = parts.storage.saves
+
+	finally:
+
+		# Whatever went wrong, the Pico is left as it was found: stopped, with the
+		# settings it had, the network among them. A soak stopped early is
+		# interrupted from the laptop, and an interrupt tends to come twice, so the
+		# stopping is seen through as `start.run` sees it through, and the rest is
+		# done with interrupts held off.
+		while True:
+
+			try:
+				start.stop(parts)
+				break
+
+			except KeyboardInterrupt:
+				pass
+
+		picoclock.device.chip.hold()
+
+		try:
+
+			parts.player.close()
+			capture.close()
+
+			for name in names:
+
+				try:
+					os.remove(_PAGE_FOLDER + "/" + name + ".gz")
+				except OSError:
+					pass
+
+			try:
+				os.rmdir(_PAGE_FOLDER)
+			except OSError:
+				pass
+
+			if kept is not None:
+
+				with open(path, "w") as handle:
+					handle.write(kept)
+
+				os.remove(_SOAK_KEPT)
+
+		finally:
+			picoclock.device.chip.release()
+
+	passed = saved and joined and counts["windows"] >= 1 and counts["worst"] <= 2 and counts["short"] == 0 and counts["broke"] == 0 and sound(status)
+
+	report("soak", passed, "windows=%d spoiled=%d short=%d broke=%d pulses=%d worst_cycles=%d free_kb=%d..%d least_free_kb=%d saves=%d joined=%d pages_opened=%d holds=%d held_ms=%d longest_hold_ms=%d given_up=%d %s" % (counts["windows"], counts["spoiled"], counts["short"], counts["broke"], counts["pulses"], counts["worst"], counts["first_free"] // 1024, counts["last_free"] // 1024, counts["least_free"] // 1024, saves, joined, opened, kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), describe(status)))
 
 
 TESTS = {
