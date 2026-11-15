@@ -150,6 +150,9 @@ def test_the_page_is_used_and_output_2_changed_after_windows (log: tools.soak.Lo
 		assert stand.now("transport")["state"] == "running"
 		assert stand.now("output", 1)["muted"] is False
 
+		# Each round of hammering ends with a pulse no round sets, so that there is something new to save.
+		assert stand.now("output", 3)["pulse"] in tools.soak.SAVED_PULSES
+
 		written = log.path.read_text()
 
 		assert "change " in written and "health pages=" in written and "page   round 1:" in written

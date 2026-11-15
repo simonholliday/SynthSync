@@ -10,7 +10,8 @@ each. Meanwhile this computer uses the page as people would, and harder:
 
 - a page stays open throughout, as a phone left on the page does;
 - every half a minute the page is used hard for a few seconds, as
-  `tools/hammer.py` does, changing outputs 3 and 4 and causing saves;
+  `tools/hammer.py` does, changing outputs 3 and 4, and each round ends with
+  a change that causes a save;
 - after most windows, output 2, the tempo or the transport is changed: a new
   tempo or ratio, a pause, a stop, a mute, a new pulse length, or snap
   turned off for a free ratio and on again;
@@ -71,6 +72,11 @@ RATIOS = ("1", "2", "3", "4", "6", "8", "12", "16", "24", "3/2")
 FREE_RATIOS = ("7/3", "5/4", "11/2", "5")
 PULSES = (5, 10, 20)
 CHANGES = ("tempo", "ratio", "pause", "stop", "mute", "pulse", "snap")
+
+# Output 4's pulse after each round of hammering, in turn. A round always ends on
+# the same settings, which would leave nothing new to save, so this makes each
+# round end in a save: none of these is a pulse hammer.py sets.
+SAVED_PULSES = (15, 25, 40)
 
 # How long the transport is left paused or stopped, or output 2 muted, before
 # it is put back, in seconds.
@@ -363,7 +369,7 @@ async def phone (soak: Soak) -> None:
 
 async def hammering (soak: Soak) -> None:
 
-	"""Every half a minute, use the page hard for a round, as hammer.py does, and log how the round went."""
+	"""Every half a minute, use the page hard for a round, as hammer.py does, log how the round went, and leave something new to save."""
 
 	totals = tools.hammer.new_totals()
 	turn = 0
@@ -396,6 +402,8 @@ async def hammering (soak: Soak) -> None:
 			soak.log.write("page", "  " + words)
 
 		tools.hammer.notes.clear()
+
+		await soak.send({"do": "output", "index": 3, "name": "pulse", "value": SAVED_PULSES[turn % len(SAVED_PULSES)]})
 
 
 async def asking (soak: Soak) -> None:
