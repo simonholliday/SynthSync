@@ -43,13 +43,14 @@ class Network:
 
 		self.mode = "own"
 		self.problem = ""
+		self.found_at = ""
 		self.scans = 0
 
 	def status (self) -> "dict[str, typing.Any]":
 
 		"""Say how the network stands."""
 
-		return {"mode": self.mode, "name": "PicoClock 1A2B3C", "address": "192.168.4.1", "problem": self.problem, "own": "PicoClock 1A2B3C"}
+		return {"mode": self.mode, "name": "PicoClock 1A2B3C", "address": "192.168.4.1", "problem": self.problem, "own": "PicoClock 1A2B3C", "found_at": self.found_at}
 
 	def scan (self) -> "list[dict[str, typing.Any]]":
 
@@ -977,6 +978,39 @@ def check_network_changes_are_remembered_and_no_password_is_ever_sent () -> None
 		assert "password" not in everything
 
 		await close_pages(app, first, second, third)
+
+	tests.checks.check_clock.run(work())
+
+
+def check_a_switch_from_the_page_reaches_the_clock_and_every_page_hears_of_it () -> None:
+
+	"""Asking to switch now to the network a trial found is counted on the clock, which whatever runs the WiFi acts on, and the other pages are told who asked."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		first = await open_page(app)
+		second = await open_page(app)
+		heard = len(second.of("network"))
+
+		first.say({"do": "switch"})
+		await settle(app)
+
+		assert app.clock.switches == 1
+		assert len(second.of("network")) > heard
+		assert second.of("network")[-1]["by"] == 1
+		assert second.of("network")[-1]["found_at"] == ""
+
+		# Where a trial found PicoClock will be reaches every page, as the WiFi says it.
+		network.mode = "found"
+		network.found_at = "192.168.1.23"
+		first.say({"do": "switch"})
+		await settle(app)
+
+		assert second.of("network")[-1]["mode"] == "found"
+		assert second.of("network")[-1]["found_at"] == "192.168.1.23"
+
+		await close_pages(app, first, second)
 
 	tests.checks.check_clock.run(work())
 

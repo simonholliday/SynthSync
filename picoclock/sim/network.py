@@ -31,12 +31,14 @@ _STRENGTHS = {
 	"Cafe": -83,
 }
 
-# How long a join is tried for, how long a joined network may be lost for, and
-# how long is left between tries, in milliseconds. Each is a fraction of what a
-# Pico allows, so that nobody trying the page has to wait as long.
+# How long a join is tried for, how long a joined network may be lost for, how
+# long is left between tries, and how long the own network stays up after a
+# trial join, in milliseconds. Each is a fraction of what a Pico allows, so
+# that nobody trying the page has to wait as long.
 JOIN_FOR = 1000
 LOST_FOR = 3000
 AGAIN_AFTER = 250
+STAY_FOR = 5000
 
 # How often the pretend radio is looked at, in milliseconds.
 LOOK_EVERY = 50
@@ -107,7 +109,7 @@ def make (clock: picoclock.core.clock.Clock) -> picoclock.core.wifi.Wifi:
 
 	"""Make the stand-in's WiFi for a clock, with its own network already up as a Pico's is by the time a page can open."""
 
-	wifi = picoclock.core.wifi.Wifi(clock, Radio(), OWN_NAME, JOIN_FOR, LOST_FOR, AGAIN_AFTER)
+	wifi = picoclock.core.wifi.Wifi(clock, Radio(), OWN_NAME, JOIN_FOR, LOST_FOR, AGAIN_AFTER, STAY_FOR)
 	wifi.look(0)
 
 	return wifi

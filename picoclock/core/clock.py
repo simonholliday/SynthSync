@@ -142,6 +142,9 @@ class Clock:
 		# when the request names the network the settings already hold.
 		self.joins = 0
 
+		# How many times the page has asked to switch now to a network a trial join found, for the same reason.
+		self.switches = 0
+
 		# What the engine hasn't yet been given: the tempo, and parts of each output.
 		self._stale_tempo = False
 		self._stale = [0] * settings.count
@@ -290,6 +293,13 @@ class Clock:
 		self.settings.forget_network()
 
 		self._keep()
+		self._tell(NETWORK, by)
+
+	def switch_network (self, by: object = None) -> None:
+
+		"""Have the Pico join for good, without waiting, the network a trial join found. Nothing is saved: the settings already hold it."""
+
+		self.switches += 1
 		self._tell(NETWORK, by)
 
 	def set_own_password (self, password: object, by: object = None) -> None:

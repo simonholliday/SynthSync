@@ -79,15 +79,17 @@ else:
 
 	waited = 0
 
-	while waited < 30000 and wifi.mode != picoclock.core.wifi.JOINED and not wifi.reason:
+	# A join from the page is a trial, which ends with the Pico back on its own network and the address known.
+	# The settings then hold the network, so the restart that follows joins it for good.
+	while waited < 30000 and wifi.mode != picoclock.core.wifi.FOUND and not wifi.reason:
 		time.sleep_ms(100)
 		wifi.look(100)
 		waited += 100
 
 	took = time.ticks_diff(time.ticks_ms(), began)
 
-	if wifi.mode == picoclock.core.wifi.JOINED:
-		print("JOINED", wifi.status()["address"], settings.host_name, took)
+	if wifi.mode == picoclock.core.wifi.FOUND:
+		print("JOINED", wifi.status()["found_at"], settings.host_name, took)
 	else:
 		print("FAILED", wifi.reason or picoclock.core.wifi.TRYING, took)
 

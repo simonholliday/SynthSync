@@ -11,11 +11,26 @@ a refusal appears beside what was typed.
 // How strong a network has to be, in dBm, to be called each of these. Anything weaker is weak.
 const STRENGTHS = [[-55, "strong"], [-67, "good"], [-75, "fair"]];
 
+// Where the page is on PicoClock's own network, which MicroPython chooses.
+const OWN_ADDRESS = "192.168.4.1";
+
 
 /* Find one of the page's elements by its id. */
 function find (id) {
 
 	return document.getElementById(id);
+}
+
+
+/* Make a link to an address, showing the address itself. */
+function addressLink (address) {
+
+	const link = document.createElement("a");
+
+	link.href = address;
+	link.textContent = address;
+
+	return link;
 }
 
 
@@ -40,11 +55,17 @@ export class Settings {
 		// What has been asked of the Pico and not yet answered: "join", "own_password", "host_name" or "reset".
 		this.asked = null;
 
+		// Where PicoClock is heading when it changes networks, which takes this page's line with it, or null:
+		// {to: "trial", name} while it tries a network, {to: "switch", name, at} once it is going to one it found,
+		// and {to: "own"} when it is going back to its own. `from` is the mode it was in when this was last decided.
+		this.going = null;
+
 		find("scan").addEventListener("click", () => this.scan());
 		find("join-cancel").addEventListener("click", () => this.pick(null));
 		find("join-show").addEventListener("change", (event) => showAs(find("join-password"), event.target.checked));
 		find("own-show").addEventListener("change", (event) => showAs(find("own-password"), event.target.checked));
-		find("forget").addEventListener("click", () => this.ask("join", {do: "forget"}));
+		find("forget").addEventListener("click", () => this.forget());
+		find("switch").addEventListener("click", () => this.switchNow());
 
 		find("join").addEventListener("submit", (event) => {
 
@@ -95,6 +116,7 @@ export class Settings {
 		find("scan-status").textContent = "";
 
 		this.asked = null;
+		this.going = null;
 		this.pick(null);
 		this.confirmReset(false);
 	}
@@ -107,6 +129,7 @@ export class Settings {
 			const mine = message.by === this.link.me;
 
 			this.network = message;
+			this.follow(message);
 			this.showNetwork();
 
 			// News of the network that this page caused is the Pico's yes to what was asked.
@@ -170,13 +193,24 @@ export class Settings {
 		let own = `It is called ${network.own}, and it is on now.`;
 
 		if (network.mode === "joined") {
-			status = `PicoClock is on ${network.name}. This page is at http://${network.host_name}.local, or http://${network.address}.`;
+			status = `PicoClock is on ${network.name}. This page is at http://${network.address}, or http://${network.host_name}.local.`;
 			own = `It is called ${network.own}. It is off while PicoClock is on ${network.name}.`;
 
 		} else if (network.mode === "joining") {
 			status = `PicoClock is joining ${network.saved}…`;
 			own = `It is called ${network.own}. It is off while PicoClock tries to join ${network.saved}.`;
+
+		} else if (network.mode === "found") {
+			status = `PicoClock can join ${network.name}. Once it has, this page will be at http://${network.found_at}.`;
+			own = `It is called ${network.own}, and it is on until PicoClock switches to ${network.name}.`;
 		}
+
+		find("trial").hidden = network.mode !== "found";
+		find("trial-address").textContent = `http://${network.found_at}`;
+		find("trial-words").textContent =
+			`Note that address down. Then switch, join this phone to ${network.name}, and open the address there. `
+			+ "If nobody switches, PicoClock does by itself two minutes after it found the network.";
+		find("switch").textContent = `Switch to ${network.name} now`;
 
 		find("wifi-status").textContent = status;
 		find("wifi-problem").textContent = network.problem;
@@ -257,8 +291,8 @@ export class Settings {
 		}
 
 		const name = network.unlisted ? "that network" : network.name;
-		const leaving = this.network && this.network.mode === "joined" ? `leave ${this.network.name}` : "switch its own network off";
-		const host = this.network ? this.network.host_name : "picoclock";
+		const joined = this.network !== null && this.network.mode === "joined";
+		const own = this.network ? this.network.own : "its own network";
 
 		find("join-name").value = "";
 		find("join-name-field").hidden = !network.unlisted;
@@ -266,10 +300,14 @@ export class Settings {
 		find("join-show-switch").hidden = !network.secure;
 		find("join-go").textContent = network.unlisted ? "Join" : "Join " + network.name;
 
-		find("join-warning").textContent =
-			`PicoClock will ${leaving} and join ${name}, and this page will stop responding. `
-			+ `Join this phone to ${name} too, then open http://${host}.local. `
-			+ "If PicoClock can't join within about 20 seconds, its own network comes back and this page says why.";
+		// PicoClock always says how a join went on its own network, which a page on another network can't see.
+		find("join-warning").textContent = joined
+			? `PicoClock will leave ${this.network.name} to try ${name}, and this page will stop responding. `
+				+ `To see how it went, join this phone to PicoClock's own network, ${own}, and open http://${OWN_ADDRESS}. `
+				+ `It says there where PicoClock will be on ${name}, or why it couldn't join.`
+			: `PicoClock will switch its own network off to try ${name}, and this page will stop responding for a few seconds. `
+				+ `Once PicoClock has joined, its own network comes back, and this page says where PicoClock will be on ${name}. `
+				+ "If it can't join within about 20 seconds, its own network comes back and this page says why.";
 
 		(network.unlisted ? find("join-name") : find("join-password")).focus({preventScroll: true});
 		form.scrollIntoView({block: "nearest"});
@@ -282,11 +320,93 @@ export class Settings {
 			return;
 		}
 
+		const name = this.picked.unlisted ? find("join-name").value : this.picked.name;
+
+		this.going = {to: "trial", name, from: this.mode()};
+
 		this.ask("join", {
 			do: "join",
-			name: this.picked.unlisted ? find("join-name").value : this.picked.name,
+			name,
 			password: this.picked.secure ? find("join-password").value : "",
 		});
+	}
+
+	/* Ask the Pico to forget its network, which takes it back to its own. */
+	forget () {
+
+		// Forgotten from a page on that network, PicoClock takes the line with it.
+		if (this.mode() === "joined") {
+			this.going = {to: "own", from: "joined"};
+		}
+
+		this.ask("join", {do: "forget"});
+	}
+
+	/* Ask the Pico to join now the network it found, without waiting. */
+	switchNow () {
+
+		const network = this.network;
+
+		this.going = {to: "switch", name: network.name, at: network.found_at, from: "found"};
+		this.ask("switch", {do: "switch"});
+	}
+
+	/* Say what the network was last heard to be doing, or "none". */
+	mode () {
+
+		return this.network ? this.network.mode : "none";
+	}
+
+	/*
+	Keep up with where PicoClock is heading from what the Pico says of its network.
+
+	News in the mode PicoClock was in when that was last decided says nothing new: it is
+	the answer to what this page asked, sent before the Pico has acted on it.
+	*/
+	follow (network) {
+
+		if (this.going !== null && network.mode === this.going.from) {
+			return;
+		}
+
+		if (network.mode === "joining") {
+
+			// The join that ends a stay on the own network is as much a switch as the one asked for.
+			if (this.going === null || this.going.to !== "switch") {
+				this.going = {to: "trial", name: network.name, from: "joining"};
+			}
+
+		} else if (network.mode === "found") {
+			// From here PicoClock only ever goes to the network it found, when asked or two minutes on.
+			this.going = {to: "switch", name: network.name, at: network.found_at, from: "found"};
+
+		} else {
+			this.going = null;
+		}
+	}
+
+	/* Say where to find PicoClock, as things to show, when the line has gone because PicoClock changed networks, or nothing. */
+	whereNext () {
+
+		const going = this.going;
+		const own = this.network ? this.network.own : "its own network";
+
+		if (going === null) {
+			return [];
+		}
+
+		if (going.to === "trial") {
+			return [
+				`PicoClock is trying ${going.name}. In a few seconds its own network, ${own}, comes back to say where PicoClock will be. `
+				+ `If this phone has gone to another network meanwhile, join it to ${own} again.`,
+			];
+		}
+
+		if (going.to === "switch") {
+			return [`PicoClock is switching to ${going.name}. Join this phone to ${going.name} too, then open `, addressLink(`http://${going.at}`), "."];
+		}
+
+		return [`PicoClock is going back to its own network, ${own}. Join this phone to it, then open `, addressLink(`http://${OWN_ADDRESS}`), "."];
 	}
 
 	/* Show the question that comes before a reset, or put it away. */

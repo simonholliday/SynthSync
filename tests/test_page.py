@@ -729,7 +729,7 @@ def test_the_rows_follow_how_many_outputs_the_pico_has (chromium: "playwright.sy
 
 def test_losing_the_pico_is_said_and_mended_when_it_comes_back (chromium: "playwright.sync_api.Browser") -> None:
 
-	"""When the Pico can't be reached the page says so and can't be worked, and it picks up again by itself."""
+	"""When the Pico can't be reached the page says so, can't be worked and shows no lights, and it picks up again by itself."""
 
 	stand = tests.stand.Stand()
 	page = tests.pages.phone(chromium)
@@ -740,13 +740,20 @@ def test_losing_the_pico_is_said_and_mended_when_it_comes_back (chromium: "playw
 
 		assert page.inner_text("#link") == ""
 		assert page.evaluate("document.getElementById('main-view').inert") is False
+		assert page.evaluate(WATCH_LIGHT, [0, 1000])["rises"] >= 1
 
 		stand.stop()
 
 		assert tests.pages.eventually(lambda: page.inner_text("#link") == "Not connected. Trying again…")
+		assert page.inner_text("#where") == ""
 		assert page.evaluate("document.body.classList.contains('lost')") is True
 		assert page.evaluate("document.getElementById('main-view').inert") is True
 		assert page.evaluate("document.getElementById('settings-view').inert") is True
+
+		# The clock may well play on, but the page can't know, so its lights mustn't say it does.
+		dark = page.evaluate(WATCH_LIGHT, [0, 1000])
+
+		assert dark["lit"] == 0 and dark["glows"] == 0, dark
 
 		# It comes back at the same address with a different tempo, as after a power cut.
 		stand = tests.stand.Stand(port=stand.port)
@@ -755,6 +762,7 @@ def test_losing_the_pico_is_said_and_mended_when_it_comes_back (chromium: "playw
 		assert tests.pages.eventually(lambda: page.inner_text("#link") == "", within=10)
 		assert tests.pages.eventually(lambda: page.input_value("#tempo-text") == "99")
 		assert page.evaluate("document.getElementById('main-view').inert") is False
+		assert page.evaluate(WATCH_LIGHT, [0, 1500])["rises"] >= 1
 
 		# And it works again.
 		page.tap("#stop")

@@ -20,6 +20,8 @@
 		<a id="to-main" class="button" href="#" hidden>Done</a>
 	</header>
 
+	<p id="where" role="status"></p>
+
 	<main id="main-view" inert>
 
 		<section class="tempo" aria-label="Tempo">
@@ -47,6 +49,12 @@
 			<h2 id="wifi-title">WiFi</h2>
 			<p id="wifi-status"></p>
 			<p id="wifi-problem" class="problem" role="alert"></p>
+
+			<div id="trial" class="part" hidden>
+				<p id="trial-address" class="address"></p>
+				<p id="trial-words"></p>
+				<button id="switch" type="button" class="go"></button>
+			</div>
 
 			<button id="scan" type="button">Join a WiFi network…</button>
 			<p id="scan-status" class="note" role="status"></p>

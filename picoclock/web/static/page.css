@@ -65,6 +65,43 @@ h1 {
 	font-size: 0.9rem;
 }
 
+/* Where PicoClock has gone, while the page can't reach it because it changed networks. */
+#where {
+	margin: 0.75rem 0;
+	padding: 0.9rem;
+	border: 1px solid var(--lit);
+	border-radius: 0.8rem;
+	background: var(--panel);
+	overflow-wrap: anywhere;
+}
+
+#where:empty {
+	display: none;
+}
+
+#where a {
+	color: var(--lit);
+	font-weight: 600;
+}
+
+/* What a trial join found, spaced as the rest of the panel is, with its button no wider than its words. */
+#trial {
+	display: grid;
+	gap: 0.7rem;
+}
+
+#trial .go {
+	justify-self: start;
+}
+
+/* Where PicoClock will be once it switches networks: the one thing on the page worth writing down. */
+.panel .address {
+	font-size: 1.5rem;
+	font-weight: 600;
+	color: var(--lit);
+	user-select: all;
+}
+
 /* While the Pico can't be reached, what's shown may be out of date, so it is dimmed and can't be worked. */
 body.lost main {
 	opacity: 0.35;

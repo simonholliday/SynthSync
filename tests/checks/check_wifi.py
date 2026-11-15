@@ -159,7 +159,7 @@ def spend (wifi: picoclock.core.wifi.Wifi, milliseconds: int, step: int = 100) -
 
 def joined (network: str = "Studio", password: str = "studio wifi") -> "tuple[picoclock.core.wifi.Wifi, Radio, picoclock.core.clock.Clock]":
 
-	"""Make a PicoClock that has joined a network from the page, and forget what the radio was asked on the way."""
+	"""Make a PicoClock that has joined a network from the page, switching to it once the trial worked, and forget what the radio was asked on the way."""
 
 	wifi, radio, clock = make()
 
@@ -167,7 +167,29 @@ def joined (network: str = "Studio", password: str = "studio wifi") -> "tuple[pi
 	clock.set_network(network, password)
 	spend(wifi, 1000)
 
+	assert wifi.mode == picoclock.core.wifi.FOUND
+
+	clock.switch_network()
+	spend(wifi, 1000)
+
 	assert wifi.mode == picoclock.core.wifi.JOINED
+
+	radio.calls = []
+
+	return wifi, radio, clock
+
+
+def found () -> "tuple[picoclock.core.wifi.Wifi, Radio, picoclock.core.clock.Clock]":
+
+	"""Make a PicoClock whose trial join of Studio has worked, so it is back on its own network to say where it will be, and forget what the radio was asked on the way."""
+
+	wifi, radio, clock = make()
+
+	wifi.look(0)
+	clock.set_network("Studio", "studio wifi")
+	spend(wifi, 1000)
+
+	assert wifi.mode == picoclock.core.wifi.FOUND
 
 	radio.calls = []
 
@@ -319,7 +341,7 @@ def check_a_new_picoclock_runs_its_own_network () -> None:
 	wifi.look(0)
 
 	assert radio.calls == [("own_up", OWN_NAME, "picoclock", "picoclock")]
-	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "", "own": OWN_NAME}
+	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": ""}
 
 	spend(wifi, 5000)
 
@@ -385,7 +407,7 @@ def check_a_new_name_for_the_pico_starts_nothing_again () -> None:
 	assert radio.calls[1:] == [("own_up", OWN_NAME, "a new password", "studio-clock")]
 
 
-def check_a_join_switches_the_own_network_off_and_then_joins () -> None:
+def check_a_join_is_tried_first_and_the_own_network_comes_back_to_say_where_picoclock_will_be () -> None:
 
 	wifi, radio, clock = make()
 
@@ -398,16 +420,127 @@ def check_a_join_switches_the_own_network_off_and_then_joins () -> None:
 	wifi.look(100)
 
 	assert radio.calls[1:] == [("own_down",), ("join", "Studio", "studio wifi", "picoclock")]
-	assert wifi.status() == {"mode": "joining", "name": "Studio", "address": "", "problem": "", "own": OWN_NAME}
+	assert wifi.status() == {"mode": "joining", "name": "Studio", "address": "", "problem": "", "own": OWN_NAME, "found_at": ""}
+
+	# Joined and given an address, it notes the address, leaves, and is straight back on its own network to say it.
+	wifi.look(100)
+
+	assert radio.calls[3:] == [("leave",), ("own_up", OWN_NAME, "picoclock", "picoclock")]
+	assert wifi.status() == {"mode": "found", "name": "Studio", "address": OWN_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": JOINED_ADDRESS}
+	assert clock.settings.network_name == "Studio"
+
+	# It waits two minutes for the page to say so, and then joins for good by itself.
+	spend(wifi, 119900)
+
+	assert wifi.mode == picoclock.core.wifi.FOUND
+	assert len(radio.calls) == 5
+
+	spend(wifi, 100)
+
+	assert radio.calls[5:] == [("own_down",), ("join", "Studio", "studio wifi", "picoclock")]
 
 	wifi.look(100)
 
-	assert wifi.status() == {"mode": "joined", "name": "Studio", "address": JOINED_ADDRESS, "problem": "", "own": OWN_NAME}
-	assert clock.settings.network_name == "Studio"
+	assert wifi.status() == {"mode": "joined", "name": "Studio", "address": JOINED_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": ""}
 
 	spend(wifi, 30000)
 
-	assert len(radio.calls) == 3
+	assert len(radio.calls) == 7
+	assert not radio.together
+
+
+def check_the_page_can_have_it_switch_at_once_to_the_network_found () -> None:
+
+	wifi, radio, clock = found()
+
+	clock.switch_network()
+	spend(wifi, 500)
+
+	# Half a second first, as for any change, so the page that asked hears its answer.
+	assert radio.calls == []
+
+	spend(wifi, 200)
+
+	assert radio.calls == [("own_down",), ("join", "Studio", "studio wifi", "picoclock")]
+	assert wifi.status() == {"mode": "joined", "name": "Studio", "address": JOINED_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": ""}
+	assert not radio.together
+
+
+def check_asking_to_switch_when_nothing_was_found_does_nothing () -> None:
+
+	wifi, radio, clock = make()
+
+	wifi.look(0)
+	radio.calls = []
+	clock.switch_network()
+	spend(wifi, 1000)
+
+	assert radio.calls == []
+	assert wifi.mode == picoclock.core.wifi.OWN
+
+	wifi, radio, clock = joined()
+
+	clock.switch_network()
+	spend(wifi, 1000)
+
+	assert radio.calls == []
+	assert wifi.mode == picoclock.core.wifi.JOINED
+
+
+def check_a_switch_that_fails_brings_the_own_network_back_and_keeps_the_network () -> None:
+
+	wifi, radio, clock = found()
+
+	# The router goes off between the trial and the switch.
+	del radio.networks["Studio"]
+	clock.switch_network()
+	spend(wifi, 21000)
+
+	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "There was no network called Studio in range", "own": OWN_NAME, "found_at": ""}
+
+	# It has worked, so it is tried again at the next power-up.
+	assert clock.settings.network_name == "Studio"
+	assert not radio.together
+
+
+def check_forgetting_the_network_found_leaves_the_own_network_up_as_it_is () -> None:
+
+	wifi, radio, clock = found()
+
+	clock.forget_network()
+	spend(wifi, 1000)
+
+	assert radio.calls == []
+	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": ""}
+
+	# Nor does anything join by itself when the two minutes would have been up.
+	spend(wifi, 130000)
+
+	assert radio.calls == []
+
+
+def check_a_new_password_for_the_own_network_while_found_starts_it_again_and_keeps_what_was_found () -> None:
+
+	wifi, radio, clock = found()
+
+	clock.set_own_password("a new password")
+	spend(wifi, 1000)
+
+	assert radio.calls == [("own_up", OWN_NAME, "a new password", "picoclock")]
+	assert wifi.status()["mode"] == "found"
+	assert wifi.status()["found_at"] == JOINED_ADDRESS
+
+
+def check_another_join_while_found_is_tried_afresh () -> None:
+
+	wifi, radio, clock = found()
+
+	clock.set_network("Cafe", "")
+	spend(wifi, 1000)
+
+	assert radio.calls == [("own_down",), ("join", "Cafe", "", "picoclock"), ("leave",), ("own_up", OWN_NAME, "picoclock", "picoclock")]
+	assert wifi.status()["name"] == "Cafe"
+	assert wifi.status()["mode"] == "found"
 	assert not radio.together
 
 
@@ -420,7 +553,7 @@ def check_an_open_network_is_joined_with_no_password () -> None:
 	spend(wifi, 1000)
 
 	assert radio.named("join") == [("join", "Cafe", "", "picoclock")]
-	assert wifi.mode == picoclock.core.wifi.JOINED
+	assert wifi.mode == picoclock.core.wifi.FOUND
 
 
 def check_a_password_refused_twice_ends_the_trying_early_and_the_network_is_forgotten () -> None:
@@ -448,7 +581,7 @@ def check_a_password_refused_twice_ends_the_trying_early_and_the_network_is_forg
 		("leave",),
 		("own_up", OWN_NAME, "picoclock", "picoclock"),
 	]
-	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "Studio didn't accept that password", "own": OWN_NAME}
+	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "Studio didn't accept that password", "own": OWN_NAME, "found_at": ""}
 	assert wifi.reason == picoclock.core.wifi.WRONG_PASSWORD
 
 	# It never worked, so it isn't left to be tried at every power-up.
@@ -495,7 +628,7 @@ def check_a_network_that_isnt_there_is_looked_for_until_twenty_seconds_are_up ()
 
 	spend(wifi, 100)
 
-	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "There was no network called Garden in range", "own": OWN_NAME}
+	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "There was no network called Garden in range", "own": OWN_NAME, "found_at": ""}
 	assert wifi.reason == picoclock.core.wifi.NOT_FOUND
 	assert radio.calls[-2:] == [("leave",), ("own_up", OWN_NAME, "picoclock", "picoclock")]
 	assert clock.settings.network_name == ""
@@ -515,10 +648,12 @@ def check_a_network_that_turns_up_late_is_joined () -> None:
 	radio.networks["Garden"] = "garden wifi"
 	spend(wifi, 2500)
 
-	assert wifi.status()["mode"] == "joined"
+	assert wifi.status()["mode"] == "found"
 	assert wifi.status()["name"] == "Garden"
 	assert clock.settings.network_name == "Garden"
-	assert len(radio.named("own_up")) == 1
+
+	# Its own network came up at the start, and again once the trial had worked.
+	assert len(radio.named("own_up")) == 2
 
 
 def check_a_join_that_never_answers_ends_when_the_time_is_up () -> None:
@@ -579,7 +714,7 @@ def check_at_power_up_the_saved_network_is_joined_at_once () -> None:
 
 	wifi.look(100)
 
-	assert wifi.status() == {"mode": "joined", "name": "Studio", "address": JOINED_ADDRESS, "problem": "", "own": OWN_NAME}
+	assert wifi.status() == {"mode": "joined", "name": "Studio", "address": JOINED_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": ""}
 	assert not radio.together
 
 
@@ -594,7 +729,7 @@ def check_a_saved_network_that_cant_be_joined_at_power_up_is_kept_and_the_own_ne
 
 	spend(wifi, 300)
 
-	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "There was no network called Garden in range", "own": OWN_NAME}
+	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "There was no network called Garden in range", "own": OWN_NAME, "found_at": ""}
 
 	# It has worked before, so it is tried again the next time the Pico is switched on.
 	assert clock.settings.network_name == "Garden"
@@ -637,7 +772,7 @@ def check_asking_again_for_the_saved_network_tries_it_again () -> None:
 	clock.set_network("Garden", "garden wifi")
 	spend(wifi, 1000)
 
-	assert wifi.status()["mode"] == "joined"
+	assert wifi.status()["mode"] == "found"
 	assert wifi.status()["problem"] == ""
 	assert not radio.together
 
@@ -657,7 +792,7 @@ def check_a_network_lost_for_a_minute_brings_the_own_network_back_and_is_kept ()
 
 	spend(wifi, 300)
 
-	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "PicoClock lost Studio and couldn't get it back", "own": OWN_NAME}
+	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "PicoClock lost Studio and couldn't get it back", "own": OWN_NAME, "found_at": ""}
 	assert wifi.reason == picoclock.core.wifi.LOST
 	assert radio.calls[-2:] == [("leave",), ("own_up", OWN_NAME, "picoclock", "picoclock")]
 	assert clock.settings.network_name == "Studio"
@@ -719,7 +854,7 @@ def check_forgetting_the_network_brings_the_own_network_back () -> None:
 	spend(wifi, 100)
 
 	assert radio.calls == [("leave",), ("own_up", OWN_NAME, "picoclock", "picoclock")]
-	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "", "own": OWN_NAME}
+	assert wifi.status() == {"mode": "own", "name": OWN_NAME, "address": OWN_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": ""}
 	assert not radio.together
 
 
@@ -760,9 +895,10 @@ def check_joining_another_network_leaves_the_first () -> None:
 	clock.set_network("Cafe", "")
 	spend(wifi, 1000)
 
-	assert radio.calls == [("leave",), ("join", "Cafe", "", "picoclock")]
+	# It is a trial too, so the Pico comes back on its own network to say where it will be.
+	assert radio.calls == [("leave",), ("join", "Cafe", "", "picoclock"), ("leave",), ("own_up", OWN_NAME, "picoclock", "picoclock")]
 	assert wifi.status()["name"] == "Cafe"
-	assert wifi.status()["mode"] == "joined"
+	assert wifi.status()["mode"] == "found"
 	assert not radio.together
 
 
@@ -932,7 +1068,7 @@ def check_the_two_networks_are_never_up_together_whatever_is_asked () -> None:
 			assert not radio.together
 			assert radio.own_is_up != radio.away
 
-	assert wifi.status()["mode"] in ("own", "joining", "joined")
+	assert wifi.status()["mode"] in ("own", "joining", "found", "joined")
 
 
 def check_the_networks_in_range_are_listed_tidily_and_a_radio_that_cant_listen_says_so_in_words () -> None:
@@ -977,7 +1113,7 @@ def check_nothing_is_listened_for_in_the_middle_of_a_join () -> None:
 	except ValueError as problem:
 		assert "busy joining" in str(problem)
 
-	# Once it has joined, it listens as usual.
+	# Once the trial has worked, its own network is back, and it listens as usual.
 	radio.deaf = False
 	radio.result = picoclock.core.wifi.LINKED
 	spend(wifi, 200)

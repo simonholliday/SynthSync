@@ -21,6 +21,7 @@ under "do". `FROM_PAGE` lists them all.
     {"do": "scan"}                             which networks are in range
     {"do": "join", "name": "...", "password": "..."}
     {"do": "forget"}                           back to the Pico's own network
+    {"do": "switch"}                           now, to the network a trial join found
     {"do": "own_password", "value": "..."}
     {"do": "host_name", "value": "..."}
     {"do": "heard", "batch": 7}                the last batch it was sent
@@ -128,10 +129,13 @@ if TYPE_CHECKING:
 
 			"""Say how the network stands.
 
-			"mode" is "own", "joining" or "joined". "name" is the network's
-			name, "address" is where the page is on it, and "problem" says
-			why the last attempt to join failed, or is empty. "own" is the
-			name of the Pico's own network, whether or not it is up.
+			"mode" is "own", "joining", "found" or "joined". "name" is the
+			network's name, "address" is where the page is on whichever
+			network is up, and "problem" says why the last attempt to join
+			failed, or is empty. "own" is the name of the Pico's own
+			network, whether or not it is up. "found_at" is where PicoClock
+			will be on a network a trial join found, once it has switched to
+			it, and is empty unless the mode is "found".
 			"""
 
 		def scan (self) -> "list[Message]":
@@ -164,6 +168,7 @@ FROM_PAGE = {
 	"scan": (),
 	"join": ("name", "password"),
 	"forget": (),
+	"switch": (),
 	"own_password": ("value",),
 	"host_name": ("value",),
 	"heard": ("batch",),
@@ -179,7 +184,7 @@ TO_PAGE = {
 	"output": ("index", "ratio", "label", "snap", "muted", "pulse", "role", "by", "id"),
 	"transport": ("state", "by", "id"),
 	"clock": ("position", "faults"),
-	"network": ("mode", "name", "address", "problem", "own", "host_name", "saved", "by", "id"),
+	"network": ("mode", "name", "address", "problem", "own", "found_at", "host_name", "saved", "by", "id"),
 	"networks": ("found",),
 	"error": ("message", "do", "id"),
 }
@@ -596,13 +601,13 @@ class App:
 
 		if key == NETWORK:
 
-			message: "Message" = {"type": "network", "mode": "none", "name": "", "address": "", "problem": "", "own": ""}
+			message: "Message" = {"type": "network", "mode": "none", "name": "", "address": "", "problem": "", "own": "", "found_at": ""}
 
 			if self.network is not None:
 
 				status = self.network.status()
 
-				for name in ("mode", "name", "address", "problem", "own"):
+				for name in ("mode", "name", "address", "problem", "own", "found_at"):
 					message[name] = status.get(name, "")
 
 			message["host_name"] = settings.host_name
@@ -800,6 +805,9 @@ class App:
 		elif do == "forget":
 			clock.forget_network(by)
 
+		elif do == "switch":
+			clock.switch_network(by)
+
 		elif do == "own_password":
 			clock.set_own_password(message.get("value"), by)
 
@@ -857,7 +865,7 @@ class App:
 				if isinstance(index, int) and not isinstance(index, bool) and 0 <= index < self.clock.settings.count:
 					page.stale.add(index)
 
-			elif do in ("join", "forget", "own_password", "host_name"):
+			elif do in ("join", "forget", "switch", "own_password", "host_name"):
 				page.stale.add(NETWORK)
 
 		if answer is not None and len(page.notes) < MOST_NOTES:

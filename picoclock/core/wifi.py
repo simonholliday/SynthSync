@@ -1,19 +1,27 @@
 """PicoClock's WiFi, apart from the radio itself.
 
-A PicoClock is always doing one of three things with its radio. Out of the box
+A PicoClock is always doing one of four things with its radio. Out of the box
 it runs a network of its own, which a phone joins to reach the page. Told of
 a WiFi network, it switches its own off and tries to join that one. Once it
 has, it is on that network, and its own stays off: the two are never up
 together.
 
-`Wifi` decides which of the three it should be doing, and when to change:
+A join asked for from the page is a trial first. Once the network has given
+the Pico an address, the Pico notes it, leaves, and puts its own network back
+up, so the page can say where PicoClock will be. That is the fourth thing,
+"found". It joins for good when the page says so, or two minutes later. A
+phone can't always find the Pico by its name on a network, so without this
+nobody would know its address there.
+
+`Wifi` decides which of the four it should be doing, and when to change:
 
 - **A join is tried for twenty seconds.** If the network isn't found it is
   looked for again, and a password refused twice ends the trying early.
 - **A join that fails brings the Pico's own network back,** with the reason
   for the page to show. A network that has never worked is forgotten, so it
   isn't tried again at every power-up. One that has worked before is kept.
-- **At power-up the saved network is tried,** in the same way.
+- **At power-up the saved network is joined,** in the same way, but with no
+  trial: it has worked before.
 - **A network that is lost for a minute** counts as a join that failed.
 
 Nothing tells it what to do. It watches the clock, as everything else does,
@@ -83,6 +91,7 @@ OWN_ADDRESS = "192.168.4.1"
 # What the radio is doing, as the page is told.
 OWN = "own"
 JOINING = "joining"
+FOUND = "found"
 JOINED = "joined"
 
 # How a join is going, as whatever works the radio reports it.
@@ -107,6 +116,12 @@ LOST_FOR = 60000
 
 # How long to leave between one try that failed and the next, in milliseconds.
 AGAIN_AFTER = 2000
+
+# How long the Pico's own network stays up to say where a trial join found
+# PicoClock will be, before it joins for good, in milliseconds. A phone that
+# wandered off while the own network was down has time to come back, and the
+# clock plays on meanwhile.
+STAY_FOR = 120000
 
 # How many times a password may be refused before the trying ends early. Once
 # could be a bad moment on the air. Twice is the wrong password.
@@ -181,13 +196,14 @@ class Wifi:
 	network.
 	"""
 
-	def __init__ (self, clock: picoclock.core.clock.Clock, radio: "Radio", own: str, join_for: int = JOIN_FOR, lost_for: int = LOST_FOR, again_after: int = AGAIN_AFTER) -> None:
+	def __init__ (self, clock: picoclock.core.clock.Clock, radio: "Radio", own: str, join_for: int = JOIN_FOR, lost_for: int = LOST_FOR, again_after: int = AGAIN_AFTER, stay_for: int = STAY_FOR) -> None:
 
 		"""Follow this clock's settings, through this radio. Nothing is switched on until the first `look`.
 
 		`own` is what the Pico's own network is called. The times are how long
-		a join is tried for, how long a joined network may be lost for, and
-		how long to leave between tries, in milliseconds.
+		a join is tried for, how long a joined network may be lost for, how
+		long to leave between tries, and how long to stay on the own network
+		after a trial join before joining for good, in milliseconds.
 		"""
 
 		self.clock = clock
@@ -197,9 +213,16 @@ class Wifi:
 		self.join_for = join_for
 		self.lost_for = lost_for
 		self.again_after = again_after
+		self.stay_for = stay_for
 
-		# What the radio is doing: OWN, JOINING or JOINED, or nothing before the first look.
+		# What the radio is doing: OWN, JOINING, FOUND or JOINED, or nothing before the first look.
 		self.mode = ""
+
+		# Whether the join under way is a trial, and once one has worked, the
+		# address the network gave the Pico and how long until it joins for good.
+		self._trial = False
+		self._found = ""
+		self._stay = 0
 
 		# Why the Pico is on its own network when it was asked to be on another: in
 		# words fit to show, and as one of the names above. Both are empty when it wasn't.
@@ -222,8 +245,9 @@ class Wifi:
 		self._due: "int | None" = None
 		self._fresh = False
 
-		# How many requests to join the clock had counted when this last looked.
+		# How many requests to join, and to switch to a network a trial found, the clock had counted when this last looked.
 		self._joins = clock.joins
+		self._switches = clock.switches
 
 		# While joining: how long it has been tried for, how many times the password
 		# has been refused, and the last thing that went wrong. While joined: how
@@ -254,27 +278,46 @@ class Wifi:
 	# -----------------------------------------------------------------------
 	# Changing what the radio is doing.
 
-	def _own (self, problem: str, reason: str) -> None:
+	def _own_is_up (self) -> bool:
 
-		"""Start the Pico's own network with the password the settings hold, in place of whatever was up."""
+		"""Say whether the Pico's own network is up: on its own, or to say where a trial join found PicoClock will be."""
 
-		if self.mode == JOINING or self.mode == JOINED:
-			self.radio.leave()
+		return self.mode == OWN or self.mode == FOUND
+
+	def _start_own (self) -> None:
+
+		"""Start the Pico's own network with the password the settings hold, in place of one already up."""
 
 		self.radio.own_up(self.own, self.settings.own_password, self.settings.host_name)
 
 		self._own_password = self.settings.own_password
+
+	def _own (self, problem: str, reason: str) -> None:
+
+		"""Start the Pico's own network, in place of whatever was up, and go back to having no network to join."""
+
+		if self.mode == JOINING or self.mode == JOINED:
+			self.radio.leave()
+
+		self._start_own()
+		self._settle_own(problem, reason)
+
+	def _settle_own (self, problem: str, reason: str) -> None:
+
+		"""Note that the Pico is on its own network with no network to join, saying why, without touching the radio."""
+
 		self._target = None
 		self._again = None
+		self._found = ""
 		self.mode = OWN
 		self.problem = problem
 		self.reason = reason
 
-	def _join (self, name: str, password: str) -> None:
+	def _join (self, name: str, password: str, trial: bool = False) -> None:
 
-		"""Switch off whatever is up and begin joining a network."""
+		"""Switch off whatever is up and begin joining a network, as a trial if asked."""
 
-		if self.mode == OWN:
+		if self._own_is_up():
 			self.radio.own_down()
 			self._own_password = None
 
@@ -282,6 +325,8 @@ class Wifi:
 			self.radio.leave()
 
 		self._target = (name, password)
+		self._trial = trial
+		self._found = ""
 		self._waited = 0
 		self._refused = 0
 		self._went_wrong = TRYING
@@ -291,6 +336,20 @@ class Wifi:
 		self.reason = ""
 
 		self.radio.join(name, password, self.settings.host_name)
+
+	def _come_back (self) -> None:
+
+		"""A trial join has worked: note the address the network gave, leave it, and put the own network back up to say it."""
+
+		target = self._target
+		found = self.radio.address()
+
+		self._own("", "")
+
+		self._target = target
+		self._found = found
+		self._stay = self.stay_for
+		self.mode = FOUND
 
 	def _give_up (self, reason: str) -> None:
 
@@ -323,6 +382,7 @@ class Wifi:
 		password = self.settings.network_password
 
 		self._joins = self.clock.joins
+		self._switches = self.clock.switches
 		self._due = None
 
 		# At power-up, only a network that has been joined is in the settings, so that one has worked before.
@@ -340,23 +400,24 @@ class Wifi:
 		"""Act on a change to the settings that has had its half second."""
 
 		asked = self.clock.joins != self._joins
+		switch = self.clock.switches != self._switches
 		name = self.settings.network_name
 		password = self.settings.network_password
 
 		self._joins = self.clock.joins
+		self._switches = self.clock.switches
 
 		if not name:
 
 			# The network was forgotten, or every setting was put back as new.
 			self._proven = None
 
-			if self.mode != OWN or self.settings.own_password != self._own_password:
+			if not self._own_is_up() or self.settings.own_password != self._own_password:
 				self._own("", "")
 
 			else:
-				# Already on its own network, with nothing new to start it for: only an old reason for being there goes.
-				self.problem = ""
-				self.reason = ""
+				# Already on its own network, with nothing new to start it for: only an old reason for being there goes, and any network a trial found.
+				self._settle_own("", "")
 
 			return
 
@@ -364,13 +425,25 @@ class Wifi:
 
 			# Asked to join the network it is already on, there is nothing to do.
 			if not (self.mode == JOINED and self._target == (name, password)):
-				self._join(name, password)
+				self._join(name, password, True)
 
 			return
 
+		if switch and self.mode == FOUND:
+			self._switch()
+			return
+
 		# Any other change, such as a new password for the Pico's own network, only matters while that network is up.
-		if self.mode == OWN and self.settings.own_password != self._own_password:
-			self._own(self.problem, self.reason)
+		if self._own_is_up() and self.settings.own_password != self._own_password:
+			self._start_own()
+
+	def _switch (self) -> None:
+
+		"""Join for good the network a trial found. It has worked, so a failure keeps it saved."""
+
+		assert self._target is not None
+
+		self._join(self._target[0], self._target[1])
 
 	# -----------------------------------------------------------------------
 	# Watching a join.
@@ -403,7 +476,11 @@ class Wifi:
 			self._proven = self._target
 			self._waited = 0
 			self._again = None
-			self.mode = JOINED
+
+			if self._trial:
+				self._come_back()
+			else:
+				self.mode = JOINED
 
 			return
 
@@ -454,6 +531,15 @@ class Wifi:
 		if link != TRYING and link != NO_ADDRESS:
 			self._try_again(elapsed)
 
+	def _see_found (self, elapsed: int) -> None:
+
+		"""Count down the time the own network stays up to say where PicoClock will be, and join for good when it is up."""
+
+		self._stay -= elapsed
+
+		if self._stay <= 0:
+			self._switch()
+
 	def look (self, elapsed: int) -> None:
 
 		"""Do whatever is due, `elapsed` milliseconds after the last look.
@@ -491,6 +577,9 @@ class Wifi:
 			elif self.mode == JOINED:
 				self._see_link(elapsed)
 
+			elif self.mode == FOUND:
+				self._see_found(elapsed)
+
 		except OSError:
 
 			# Nothing is known to be up any more.
@@ -504,16 +593,23 @@ class Wifi:
 
 	def status (self) -> "dict[str, object]":
 
-		"""Say how the network stands, as the page shows it."""
+		"""Say how the network stands, as the page shows it.
 
-		away = self.mode == JOINING or self.mode == JOINED
+		"name" is the network being joined, joined or found, or else the
+		Pico's own, and "address" is where the page is on whichever network
+		is up. "found_at" is where PicoClock will be once it has switched to
+		the network a trial found, and is empty at any other time.
+		"""
+
+		away = self.mode == JOINING or self.mode == FOUND or self.mode == JOINED
 
 		return {
 			"mode": self.mode or OWN,
 			"name": self._target[0] if away and self._target is not None else self.own,
-			"address": self.radio.address() if self.mode == OWN or self.mode == JOINED else "",
+			"address": self.radio.address() if self._own_is_up() or self.mode == JOINED else "",
 			"problem": self.problem,
 			"own": self.own,
+			"found_at": self._found if self.mode == FOUND else "",
 		}
 
 	def scan (self) -> "list[dict[str, object]]":
@@ -547,5 +643,7 @@ class Wifi:
 		self.mode = ""
 		self._own_password = None
 		self._target = None
+		self._found = ""
+		self._trial = False
 		self._due = None
 		self._begun = False

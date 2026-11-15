@@ -1794,7 +1794,7 @@ def test_network (load: str = "idle") -> None:
 		expect(what + ": the own network isn't secured with WPA2", own.config("security") == 0x00400004)
 		expect(what + ": the page isn't at 192.168.4.1", own.ipconfig("addr4")[0] == "192.168.4.1")
 		expect(what + ": the joining side was left on", not other.active())
-		expect(what + ": the radio says otherwise", wifi[0].status() == {"mode": "own", "name": name, "address": "192.168.4.1", "problem": problem, "own": name})
+		expect(what + ": the radio says otherwise", wifi[0].status() == {"mode": "own", "name": name, "address": "192.168.4.1", "problem": problem, "own": name, "found_at": ""})
 
 	# The longest a change took to be in force, how many networks were in range, how long looking
 	# for them took, and the longest a join that failed took to bring the own network back.
@@ -1819,7 +1819,7 @@ def test_network (load: str = "idle") -> None:
 
 		expect(what + ": the own network is still up", not own.active())
 		expect(what + ": the joining side isn't on", other.active())
-		expect(what + ": the radio says otherwise", wifi[0].status() == {"mode": "joining", "name": missing, "address": "", "problem": "", "own": name})
+		expect(what + ": the radio says otherwise", wifi[0].status() == {"mode": "joining", "name": missing, "address": "", "problem": "", "own": name, "found_at": ""})
 
 	def script ():
 

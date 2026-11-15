@@ -204,7 +204,7 @@ def test_the_stand_in_reports_in_the_players_terms () -> None:
 
 def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
 
-	"""With the right password it joins, with the wrong one or an unknown name it says why and forgets it, and a reset goes back."""
+	"""With the right password it finds the network and switches to it, with the wrong one or an unknown name it says why and forgets it, and a reset goes back."""
 
 	engine = picoclock.sim.engine.Engine(2)
 	clock = picoclock.core.clock.Clock(picoclock.core.settings.Settings(2), engine)
@@ -217,11 +217,17 @@ def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
 		for _ in range(milliseconds // picoclock.sim.network.LOOK_EVERY):
 			network.look(picoclock.sim.network.LOOK_EVERY)
 
-	assert network.status() == {"mode": "own", "name": picoclock.sim.network.OWN_NAME, "address": "localhost", "problem": "", "own": picoclock.sim.network.OWN_NAME}
+	assert network.status() == {"mode": "own", "name": picoclock.sim.network.OWN_NAME, "address": "localhost", "problem": "", "own": picoclock.sim.network.OWN_NAME, "found_at": ""}
 	assert [found["name"] for found in network.scan()] == ["Studio", "Upstairs", "Cafe"]
 	assert [found["secure"] for found in network.scan()] == [True, True, False]
 
 	clock.set_network("Studio", "studio wifi")
+	spend(700)
+
+	assert network.status()["mode"] == "found"
+	assert network.status()["found_at"] == "localhost"
+
+	clock.switch_network()
 	spend(700)
 
 	assert network.status()["mode"] == "joined"
@@ -248,6 +254,11 @@ def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
 
 	clock.set_network("Cafe", "")
 	spend(700)
+
+	assert network.status()["mode"] == "found"
+
+	# Left alone, it switches by itself, five seconds on here where a Pico waits two minutes.
+	spend(picoclock.sim.network.STAY_FOR)
 
 	assert network.status()["mode"] == "joined"
 

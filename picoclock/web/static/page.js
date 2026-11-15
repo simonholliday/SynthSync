@@ -265,8 +265,14 @@ const BUTTON_FOR = {running: "start", paused: "pause", stopped: "stop"};
 /* The line to the Pico has come up or gone down. */
 function connected (up) {
 
+	lights.up = up;
 	document.body.classList.toggle("lost", !up);
-	document.getElementById("link").textContent = up ? "" : "Not connected. Trying again…";
+
+	// When PicoClock has changed networks, trying again here won't find it, so the page says where it has gone instead.
+	const where = up ? [] : settings.whereNext();
+
+	document.getElementById("link").textContent = up ? "" : where.length > 0 ? "Not connected." : "Not connected. Trying again…";
+	document.getElementById("where").replaceChildren(...where);
 
 	// While it's down nothing can be changed, so nothing should look as if it can.
 	document.getElementById("main-view").inert = !up;
@@ -722,6 +728,10 @@ function showProblem (shown, words) {
 
 const lights = {
 
+	// Whether the Pico can be heard. While it can't, the page doesn't know what
+	// the clock is doing, so no light is lit, though the clock may well play on.
+	up: false,
+
 	// Where the clock was, in thousandths of a beat, at a moment on the page's
 	// own clock. Before the first beat there is no position, which is -1.
 	position: -1,
@@ -849,7 +859,7 @@ const lights = {
 		for (let index = 0; index < rows.length; index++) {
 
 			const output = now.outputs[index];
-			const state = output ? this.lit(output, position, moment) : false;
+			const state = output && this.up ? this.lit(output, position, moment) : false;
 
 			rows[index].light.classList.toggle("on", state === true);
 			rows[index].light.classList.toggle("fast", state === "fast");
