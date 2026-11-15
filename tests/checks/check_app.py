@@ -282,6 +282,17 @@ def by_type (messages: "list[dict[str, typing.Any]]", kind: str) -> "list[dict[s
 	return [message for message in messages if message["type"] == kind]
 
 
+def client_for (app: picoclock.web.app.App) -> microdot.test_client.TestClient:
+
+	"""Make Microdot's test client for an app, asking for the Pico by its own address, as a page on its own network does.
+
+	Left to itself, the client names a site of its own, which the Pico would
+	send to the page while its own network is up.
+	"""
+
+	return microdot.test_client.TestClient(app.web, host=OWN_SITE["Host"])
+
+
 def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 
 	"""`/api/state` gives what never changes and one of each message, in the shapes the tables list."""
@@ -289,7 +300,7 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 	async def work () -> None:
 
 		app, engine, network = make()
-		client = microdot.test_client.TestClient(app.web)
+		client = client_for(app)
 
 		app.clock.set_tempo(12345)
 		app.clock.set_output(2, "ratio", "1.5")
@@ -356,7 +367,7 @@ def check_a_change_sent_as_json_is_carried_out () -> None:
 	async def work () -> None:
 
 		app, engine, network = make()
-		client = microdot.test_client.TestClient(app.web)
+		client = client_for(app)
 
 		response = await post(client, {"do": "tempo", "value": 13000})
 
@@ -389,7 +400,7 @@ def check_a_bad_value_is_refused_in_the_settings_own_words () -> None:
 	async def work () -> None:
 
 		app, engine, network = make()
-		client = microdot.test_client.TestClient(app.web)
+		client = client_for(app)
 
 		refused = [
 			({"do": "tempo", "value": 30001}, "The tempo has to be between 20 and 300 BPM"),
@@ -430,7 +441,7 @@ def check_a_change_must_be_json_and_from_the_pages_own_site () -> None:
 	async def work () -> None:
 
 		app, engine, network = make()
-		client = microdot.test_client.TestClient(app.web)
+		client = client_for(app)
 		wanted = json.dumps({"do": "tempo", "value": 20000})
 
 		# What a form on another site can send without the browser asking first.
@@ -473,7 +484,7 @@ def check_the_socket_is_wired_up_and_refuses_another_sites_page () -> None:
 	async def work () -> None:
 
 		app, engine, network = make()
-		client = microdot.test_client.TestClient(app.web)
+		client = client_for(app)
 
 		def page () -> "typing.Iterator[str]":
 			yield json.dumps({"do": "tempo", "value": 14000})
@@ -1457,7 +1468,7 @@ def check_how_well_things_have_kept_up_can_be_asked_for () -> None:
 	async def work () -> None:
 
 		app, engine, network = make()
-		client = microdot.test_client.TestClient(app.web)
+		client = client_for(app)
 		page = await open_page(app)
 
 		engine.faults = 3
@@ -1619,7 +1630,7 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 
 		clock, engine, storage = tests.checks.check_clock.make()
 		app = picoclock.web.app.App(clock, None, folder)
-		client = microdot.test_client.TestClient(app.web)
+		client = client_for(app)
 
 		for path in ("/", "/index.html"):
 
@@ -1655,7 +1666,7 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 
 		# With no folder there is no page, only the API.
 		clock, engine, storage = tests.checks.check_clock.make()
-		client = microdot.test_client.TestClient(picoclock.web.app.App(clock).web)
+		client = client_for(picoclock.web.app.App(clock))
 
 		assert (await client.get("/")).status_code == 404
 		assert (await client.get("/api/state")).status_code == 200
@@ -1871,5 +1882,51 @@ def check_a_page_load_that_never_ends_doesnt_keep_the_open_pages_waiting_for_goo
 
 		stuck.close()
 		await close_pages(app, page)
+
+	tests.checks.check_clock.run(work())
+
+
+def check_a_request_for_another_site_is_sent_to_the_page_only_while_the_own_network_is_up () -> None:
+
+	"""A phone's check for the internet, at whatever address on whatever site, is sent to the page at the Pico's own address. A request for the Pico is answered as itself, and so is everything once the Pico's own network is down."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		elsewhere = microdot.test_client.TestClient(app.web, host="connectivitycheck.gstatic.com")
+
+		# The checks Android, Apple and Windows phones make, and one at an address the Pico has no route for.
+		for path in ("/generate_204", "/hotspot-detect.html", "/connecttest.txt", "/library/test/success.html", "/api/health"):
+
+			response = await elsewhere.get(path)
+
+			assert response.status_code == 302, path
+			assert response.headers["Location"] == "http://192.168.4.1/", path
+
+		# By its address, of either kind, with or without the port, the Pico is asked for itself.
+		for host in ("192.168.4.1", "192.168.4.1:80", "10.0.0.7", "[fe80::1]:80"):
+
+			response = await microdot.test_client.TestClient(app.web, host=host).get("/api/health")
+
+			assert response.status_code == 200, host
+
+		# Asked of the Pico itself, an address that is none of its own is nothing.
+		response = await client_for(app).get("/generate_204")
+
+		assert response.status_code == 404
+
+		# A trial join that found a network leaves the Pico's own network up.
+		network.mode = "found"
+		response = await elsewhere.get("/generate_204")
+
+		assert response.status_code == 302
+
+		# Its own network is off while it tries one, and once it is on one, names are that network's to answer.
+		for mode in ("joining", "joined"):
+
+			network.mode = mode
+			response = await elsewhere.get("/api/health")
+
+			assert response.status_code == 200, mode
 
 	tests.checks.check_clock.run(work())

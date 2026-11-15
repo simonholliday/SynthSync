@@ -9,6 +9,7 @@ the page from the Pico and from a laptop.
     GET  /api/health   how well the page's side of things has kept up
     POST /api/change   one message from the page, as JSON
     GET  /api/socket   a WebSocket carrying messages both ways
+    GET  anything else nothing, unless it was meant for another site (below)
 
 **What a page sends.** Each message is a JSON object that says what to do
 under "do". `FROM_PAGE` lists them all.
@@ -90,6 +91,13 @@ and the clock's own count of timing faults.
 A change needs a JSON body or the socket, and both refuse a request that comes
 from a page on some other site, so a link elsewhere can't change the clock.
 
+**While PicoClock's own network is up, a request for any other site is sent to
+the page**, at the Pico's own address. That is what a phone's check for the
+internet is told, and it is how the phone comes to open the page by itself:
+`picoclock.web.portal` says how. A request for the Pico, by its name or by an
+address, is answered as above, and so is every request on a network the Pico
+has joined.
+
 A connection that is opened and then says nothing is closed after a few
 seconds. The Pico has only five connections to give, and one that never asks
 for anything would otherwise keep its place for good.
@@ -109,6 +117,7 @@ import picoclock.core.ratio
 import picoclock.core.settings
 import picoclock.core.timeline
 import picoclock.core.transport
+import picoclock.web.portal
 
 # mypy treats this name as true, and nothing else does: it lets a type be named
 # for checking without importing `typing` where MicroPython would have to find it.
@@ -1151,6 +1160,17 @@ class App:
 
 		"""Tell Microdot which address does what."""
 
+		async def elsewhere (request: microdot.Request) -> "microdot.Response | None":
+
+			"""Send a request for another site to the page, while PicoClock's own network is up, and let any other through."""
+
+			address = picoclock.web.portal.sent_to(self.network.status()) if self.network is not None else ""
+
+			if picoclock.web.portal.for_here(request.headers.get("Host"), address):
+				return None
+
+			return microdot.Response.redirect("http://%s/" % address)
+
 		async def state (request: microdot.Request) -> "Message":
 
 			"""Give everything, for a page that has just opened."""
@@ -1218,6 +1238,14 @@ class App:
 			except OSError:
 				return "", 404
 
+		async def nothing (request: microdot.Request, rest: str) -> "tuple[str, int]":
+
+			"""Answer an address that is none of the Pico's with nothing."""
+
+			return "", 404
+
+		self.web.before_request(elsewhere)
+
 		self.web.get("/api/state")(state)
 		self.web.get("/api/health")(health)
 		self.web.post("/api/change")(change)
@@ -1226,6 +1254,10 @@ class App:
 		if self.static is not None:
 			self.web.get("/")(index)
 			self.web.get("/<name>")(file)
+
+		# Last, so that it catches only what nothing above does. Microdot asks `elsewhere` only of a
+		# request with somewhere to go, and a phone's check for the internet may ask for any address.
+		self.web.get("/<path:rest>")(nothing)
 
 	def _send (self, name: str) -> microdot.Response:
 

@@ -120,7 +120,7 @@ async def keep (job) -> None:
 
 def reach (parts: Parts, static: "str | None" = None) -> list:
 
-	"""Make the Pico's network and the page's server, and give back the jobs that run them.
+	"""Make the Pico's network and the page's server, and give back the jobs that run them, with the one that sends a phone on the Pico's own network to the page.
 
 	Their code is loaded only here, with the clock long since running.
 	`static` is the folder the page's files are in, which is beside the
@@ -129,6 +129,7 @@ def reach (parts: Parts, static: "str | None" = None) -> list:
 
 	import picoclock.device.radio
 	import picoclock.web.app
+	import picoclock.web.portal
 
 	parts.wifi = picoclock.device.radio.make(parts.clock)
 
@@ -149,7 +150,13 @@ def reach (parts: Parts, static: "str | None" = None) -> list:
 
 		await parts.app.web.start_server(host="0.0.0.0", port=PAGE_PORT)
 
-	return [network, parts.app.run, serve]
+	async def names () -> None:
+
+		"""Answer the names a phone looks up on PicoClock's own network, so that it opens the page by itself."""
+
+		await picoclock.web.portal.run(lambda: picoclock.web.portal.sent_to(parts.wifi.status()))
+
+	return [network, parts.app.run, serve, names]
 
 
 def reached (parts: Parts) -> str:

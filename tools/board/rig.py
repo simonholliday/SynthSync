@@ -1469,17 +1469,20 @@ def test_powerup (load: str = "idle") -> None:
 
 	What follows the clock is the buttons, the saving, the Pico's own network
 	and the page. With all of it going, the network must be up under
-	PicoClock's own name and the page's port answered for. Stopped, the
-	network must be off and the port let go, with the clock still playing.
-	That must hold when it is interrupted from the Pico's prompt too, which
-	is how it is stopped in real life. And if the network and the page can't
-	be made at all, the rest must carry on without them.
+	PicoClock's own name, and the page's port and the port for the names a
+	phone looks up answered for. Stopped, the network must be off and both
+	ports let go, with the clock still playing. That must hold when it is
+	interrupted from the Pico's prompt too, which is how it is stopped in
+	real life. And if the network and the page can't be made at all, the
+	rest must carry on without them.
 
 	Whatever settings the Pico had saved are put back afterwards.
 	"""
 
 	import network
 	import socket
+
+	import picoclock.web.portal
 
 	path = picoclock.device.storage.PATH
 	first = machine.Pin(picoclock.device.board.FIRST_OUTPUT_PIN)
@@ -1581,6 +1584,22 @@ def test_powerup (load: str = "idle") -> None:
 		finally:
 			probe.close()
 
+	def answering () -> bool:
+
+		"""Say whether something is answering the names a phone looks up, by asking for that port as anything else would, which is refused only while it is taken."""
+
+		probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+		try:
+			probe.bind(("0.0.0.0", picoclock.web.portal.PORT))
+			return False
+
+		except OSError:
+			return True
+
+		finally:
+			probe.close()
+
 	# Everything that follows the clock, left going for a few seconds. The radio is given a
 	# name of the rig's first, so that one left over from an earlier run can't pass for PicoClock's.
 	own.config(ssid="PICO-not-ours")
@@ -1589,11 +1608,14 @@ def test_powerup (load: str = "idle") -> None:
 	asyncio.run(start.carry_on(parts, 2500))
 	stood = start.reached(parts)
 
-	if len(parts.jobs) != 6 or parts.panel is None:
+	if len(parts.jobs) != 7 or parts.panel is None:
 		wrong.append("the rest: %d jobs were started" % len(parts.jobs))
 
 	if not stood.startswith("page=1 ") or not answered():
 		wrong.append("the rest: the page isn't being served")
+
+	if not answering():
+		wrong.append("the rest: nothing answers the names a phone looks up")
 
 	if " address=192.168.4.1 " not in stood or not stood.endswith(" own=" + called) or not own.active() or own.config("ssid") != called:
 		wrong.append("the rest: the network isn't up under its own name")
@@ -1605,8 +1627,8 @@ def test_powerup (load: str = "idle") -> None:
 	if not parts.stood.startswith("page=1 "):
 		wrong.append("stopped: no note was left of how things stood")
 
-	if own.active() or answered():
-		wrong.append("stopped: the network (%d) or the page's port (%d) was left on" % (own.active(), answered()))
+	if own.active() or answered() or answering():
+		wrong.append("stopped: the network (%d), the page's port (%d) or the names' port (%d) was left on" % (own.active(), answered(), answering()))
 
 	if not (status["running"] and sound(status)):
 		wrong.append("stopped: the clock didn't play on cleanly")
@@ -1646,8 +1668,8 @@ def test_powerup (load: str = "idle") -> None:
 	if parts is None or not parts.stood.startswith("page=1 "):
 		wrong.append("interrupted: no note was left of how things stood")
 
-	if own.active() or answered():
-		wrong.append("interrupted: the network (%d) or the page's port (%d) was left on" % (own.active(), answered()))
+	if own.active() or answered() or answering():
+		wrong.append("interrupted: the network (%d), the page's port (%d) or the names' port (%d) was left on" % (own.active(), answered(), answering()))
 
 	if parts is not None:
 
@@ -2226,6 +2248,10 @@ def test_page (load: str = "idle") -> None:
 
 		response = await client.get("/settings.json", headers={"Host": "192.168.4.1"})
 		expect("a file that isn't the page's was sent", response.status_code == 404)
+
+		# A phone's check for the internet, asked of the Pico's own network, is sent to the page.
+		response = await client.get("/generate_204", headers={"Host": "connectivitycheck.gstatic.com"})
+		expect("a phone's check for the internet wasn't sent to the page", response.status_code == 302 and response.headers.get("Location") == "http://192.168.4.1/")
 
 	async def socket () -> None:
 

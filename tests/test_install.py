@@ -261,7 +261,7 @@ def test_nothing_but_the_clock_is_loaded_before_the_first_pulse () -> None:
 		"picoclock.core.clock", "picoclock.core.settings", "picoclock.core.transport",
 		"picoclock.device.board", "picoclock.device.chip", "picoclock.device.player", "picoclock.device.storage",
 	}
-	assert later == {"picoclock.device.panel", "picoclock.device.radio", "picoclock.web.app"}
+	assert later == {"picoclock.device.panel", "picoclock.device.radio", "picoclock.web.app", "picoclock.web.portal"}
 
 	# And the file the Pico runs at power-up loads nothing else.
 	main = ast.parse((ROOT / "main.py").read_text())
