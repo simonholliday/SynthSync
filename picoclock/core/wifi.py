@@ -23,6 +23,10 @@ nobody would know its address there.
 - **At power-up the saved network is joined,** in the same way, but with no
   trial: it has worked before.
 - **A network that is lost for a minute** counts as a join that failed.
+- **Back on its own network with a network still saved,** it listens for
+  that network once a minute while no phone has joined its own, and joins it
+  again once it is heard. So a router that comes up later than the Pico, or
+  comes back after a power cut, is gone back to without anyone asking.
 
 Nothing tells it what to do. It watches the clock, as everything else does,
 and acts half a second after a change: the change came over the very network
@@ -81,6 +85,10 @@ if TYPE_CHECKING:
 
 			"""Listen for networks in range, and give what was heard of each transmitter."""
 
+		def stations (self) -> int:
+
+			"""Say how many phones, or anything else, have joined the Pico's own network."""
+
 # How the name of a PicoClock's own network begins. Six characters of its
 # hardware id follow, so two in one room can be told apart.
 OWN_PREFIX = "PicoClock "
@@ -122,6 +130,11 @@ AGAIN_AFTER = 2000
 # wandered off while the own network was down has time to come back, and the
 # clock plays on meanwhile.
 STAY_FOR = 120000
+
+# How often to listen for the saved network while the Pico is back on its own,
+# in milliseconds. Listening keeps the first core for two thirds of a second,
+# so a page opened in that moment answers late. The clock doesn't notice.
+LISTEN_EVERY = 60000
 
 # How many times a password may be refused before the trying ends early. Once
 # could be a bad moment on the air. Twice is the wrong password.
@@ -196,14 +209,15 @@ class Wifi:
 	network.
 	"""
 
-	def __init__ (self, clock: picoclock.core.clock.Clock, radio: "Radio", own: str, join_for: int = JOIN_FOR, lost_for: int = LOST_FOR, again_after: int = AGAIN_AFTER, stay_for: int = STAY_FOR) -> None:
+	def __init__ (self, clock: picoclock.core.clock.Clock, radio: "Radio", own: str, join_for: int = JOIN_FOR, lost_for: int = LOST_FOR, again_after: int = AGAIN_AFTER, stay_for: int = STAY_FOR, listen_every: int = LISTEN_EVERY) -> None:
 
 		"""Follow this clock's settings, through this radio. Nothing is switched on until the first `look`.
 
 		`own` is what the Pico's own network is called. The times are how long
 		a join is tried for, how long a joined network may be lost for, how
-		long to leave between tries, and how long to stay on the own network
-		after a trial join before joining for good, in milliseconds.
+		long to leave between tries, how long to stay on the own network
+		after a trial join before joining for good, and how often to listen
+		for a saved network from the own one, in milliseconds.
 		"""
 
 		self.clock = clock
@@ -214,6 +228,10 @@ class Wifi:
 		self.lost_for = lost_for
 		self.again_after = again_after
 		self.stay_for = stay_for
+		self.listen_every = listen_every
+
+		# How long until the saved network is next listened for, while the Pico is back on its own.
+		self._listen = listen_every
 
 		# What the radio is doing: OWN, JOINING, FOUND or JOINED, or nothing before the first look.
 		self.mode = ""
@@ -309,6 +327,7 @@ class Wifi:
 		self._target = None
 		self._again = None
 		self._found = ""
+		self._listen = self.listen_every
 		self.mode = OWN
 		self.problem = problem
 		self.reason = reason
@@ -540,6 +559,45 @@ class Wifi:
 		if self._stay <= 0:
 			self._switch()
 
+	def _see_own (self, elapsed: int) -> None:
+
+		"""With a network still saved, listen for it once a minute, and join it again once it is heard.
+
+		Not while a phone has joined the Pico's own network: the join would
+		take the page from under it. The network has worked before, so the
+		join is no trial, and one that fails keeps it saved and brings the
+		own network back to listen again.
+		"""
+
+		name = self.settings.network_name
+
+		# A change waiting its half second may be a join asked for from the page, which goes its own way.
+		if not name or self._due is not None:
+			return
+
+		self._listen -= elapsed
+
+		if self._listen > 0:
+			return
+
+		self._listen = self.listen_every
+
+		if self.radio.stations():
+			return
+
+		try:
+			heard = in_range(self.radio.heard())
+
+		except OSError:
+			# The radio couldn't listen just then. A minute on, it is asked again.
+			return
+
+		for network in heard:
+
+			if network["name"] == name:
+				self._join(name, self.settings.network_password)
+				return
+
 	def look (self, elapsed: int) -> None:
 
 		"""Do whatever is due, `elapsed` milliseconds after the last look.
@@ -579,6 +637,9 @@ class Wifi:
 
 			elif self.mode == FOUND:
 				self._see_found(elapsed)
+
+			elif self.mode == OWN:
+				self._see_own(elapsed)
 
 		except OSError:
 

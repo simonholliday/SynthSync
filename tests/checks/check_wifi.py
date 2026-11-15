@@ -42,6 +42,10 @@ class Radio:
 		self.broken = False
 		self.deaf = False
 
+		# How many phones have joined the own network, and how many times the radio has listened.
+		self.phones = 0
+		self.listened = 0
+
 	def _do (self, call: "tuple[typing.Any, ...]") -> None:
 
 		"""Note one thing that was asked, or fail at it."""
@@ -121,12 +125,22 @@ class Radio:
 
 	def heard (self) -> "list[tuple[bytes, int, int]]":
 
-		"""Give what a scan would hear: one network from two transmitters, one open, one hidden."""
+		"""Give what a scan would hear of the networks in range: one network from two transmitters, one open, one hidden."""
 
 		if self.deaf:
 			raise OSError("The radio is busy")
 
-		return [(b"Studio", -70, 5), (b"Cafe", -83, 0), (b"Studio", -48, 5), (b"", -30, 5)]
+		self.listened += 1
+
+		every = [(b"Studio", -70, 5), (b"Cafe", -83, 0), (b"Studio", -48, 5), (b"", -30, 5)]
+
+		return [each for each in every if not each[0] or each[0].decode() in self.networks]
+
+	def stations (self) -> int:
+
+		"""Say how many phones have joined the own network."""
+
+		return self.phones if self.own_is_up else 0
 
 	def named (self, kind: str) -> "list[tuple[typing.Any, ...]]":
 
@@ -735,13 +749,14 @@ def check_a_saved_network_that_cant_be_joined_at_power_up_is_kept_and_the_own_ne
 	assert clock.settings.network_name == "Garden"
 	assert clock.settings.network_password == "garden wifi"
 
-	# Nothing tries it again by surprise, not even another change to the network settings.
+	# It isn't tried again until it is heard, not even for another change to the network settings.
 	asked = len(radio.named("join"))
 
 	clock.set_own_password("a new password")
-	spend(wifi, 30000)
+	spend(wifi, 121000)
 
 	assert len(radio.named("join")) == asked
+	assert radio.listened == 2
 	assert radio.calls[-1] == ("own_up", OWN_NAME, "a new password", "picoclock")
 	assert wifi.problem == "There was no network called Garden in range"
 
@@ -840,6 +855,158 @@ def check_a_radio_getting_a_lost_network_back_by_itself_is_left_to () -> None:
 
 	assert wifi.mode == picoclock.core.wifi.JOINED
 	assert radio.calls == []
+
+
+def lost () -> "tuple[picoclock.core.wifi.Wifi, Radio, picoclock.core.clock.Clock]":
+
+	"""Make a PicoClock that lost Studio, its saved network, a minute ago, and has just come back to its own network."""
+
+	wifi, radio, clock = joined()
+
+	del radio.networks["Studio"]
+	radio.lose()
+	spend(wifi, 60100)
+
+	assert wifi.mode == picoclock.core.wifi.OWN
+	assert clock.settings.network_name == "Studio"
+
+	return wifi, radio, clock
+
+
+def check_a_lost_network_that_comes_back_is_joined_again_by_itself () -> None:
+
+	"""Back on its own network, PicoClock listens for the network it lost once a minute, and joins it for good once it is heard."""
+
+	wifi, radio, clock = lost()
+
+	# A whole minute passes before it first listens.
+	spend(wifi, 59700)
+
+	assert radio.listened == 0
+
+	spend(wifi, 300)
+
+	assert radio.listened == 1
+
+	# Not heard, it stays on its own network and listens again a minute later.
+	spend(wifi, 60000)
+
+	assert radio.listened == 2
+	assert wifi.mode == picoclock.core.wifi.OWN
+	assert wifi.problem == "PicoClock lost Studio and couldn't get it back"
+
+	# The router is back.
+	radio.networks["Studio"] = "studio wifi"
+	spend(wifi, 60000)
+
+	# Heard, it is joined at once and for good: it has worked before, so there is no trial.
+	assert wifi.status() == {"mode": "joined", "name": "Studio", "address": JOINED_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": ""}
+	assert radio.named("join")[-1] == ("join", "Studio", "studio wifi", "picoclock")
+	assert not radio.together
+
+
+def check_a_saved_network_is_never_listened_for_while_a_phone_is_on_the_own_network () -> None:
+
+	"""A phone on the Pico's own network may be using the page, which a join would take from under it, so PicoClock waits until it has gone."""
+
+	wifi, radio, clock = make(("Studio", "studio wifi"))
+
+	# The router is slower to start than the Pico.
+	del radio.networks["Studio"]
+	wifi.look(0)
+	spend(wifi, 21000)
+
+	assert wifi.mode == picoclock.core.wifi.OWN
+
+	radio.phones = 1
+	radio.networks["Studio"] = "studio wifi"
+	spend(wifi, 180000)
+
+	assert radio.listened == 0
+	assert wifi.mode == picoclock.core.wifi.OWN
+
+	# Once the phone has gone, the next minute's listening hears it.
+	radio.phones = 0
+	spend(wifi, 60000)
+
+	assert radio.listened == 1
+	assert wifi.mode == picoclock.core.wifi.JOINED
+	assert not radio.together
+
+
+def check_nothing_is_listened_for_with_no_network_saved () -> None:
+
+	"""A PicoClock that has never joined a network, or has forgotten it, stays on its own network and never listens."""
+
+	wifi, radio, clock = make()
+
+	wifi.look(0)
+	spend(wifi, 300000)
+
+	assert radio.listened == 0
+
+	wifi, radio, clock = lost()
+
+	clock.forget_network()
+	spend(wifi, 300000)
+
+	assert radio.listened == 0
+	assert wifi.mode == picoclock.core.wifi.OWN
+
+
+def check_a_saved_network_heard_but_refused_brings_the_own_network_back_to_listen_again () -> None:
+
+	"""A router whose password has changed is heard and refused: PicoClock comes back to its own network, still keeping the network, and tries again only a minute on."""
+
+	wifi, radio, clock = make(("Studio", "an old password"))
+
+	wifi.look(0)
+	spend(wifi, 5000)
+
+	assert wifi.mode == picoclock.core.wifi.OWN
+
+	asked = len(radio.named("join"))
+
+	spend(wifi, 65000)
+
+	assert radio.listened == 1
+	assert len(radio.named("join")) == asked + 2
+	assert wifi.mode == picoclock.core.wifi.OWN
+	assert wifi.problem == "Studio didn't accept that password"
+	assert clock.settings.network_name == "Studio"
+	assert not radio.together
+
+
+def check_a_radio_that_cant_listen_just_then_is_asked_again_a_minute_on () -> None:
+
+	"""A radio too busy to listen leaves PicoClock on its own network, untroubled, until the next minute."""
+
+	wifi, radio, clock = lost()
+
+	radio.networks["Studio"] = "studio wifi"
+	radio.deaf = True
+	spend(wifi, 60000)
+
+	assert wifi.mode == picoclock.core.wifi.OWN
+
+	radio.deaf = False
+	spend(wifi, 60000)
+
+	assert wifi.mode == picoclock.core.wifi.JOINED
+
+
+def check_a_join_asked_for_just_as_listening_is_due_is_tried_as_asked () -> None:
+
+	"""A network picked on the page a moment before PicoClock would listen is tried once, as a trial, and not joined by the listening first."""
+
+	wifi, radio, clock = lost()
+
+	spend(wifi, 59700)
+	clock.set_network("Cafe", "")
+	spend(wifi, 1000)
+
+	assert [call for call in radio.named("join") if call[1] == "Cafe"] == [("join", "Cafe", "", "picoclock")]
+	assert wifi.mode == picoclock.core.wifi.FOUND
 
 
 def check_forgetting_the_network_brings_the_own_network_back () -> None:

@@ -182,6 +182,15 @@ class Radio:
 
 		found.extend(self._other.scan())
 
+	def stations (self) -> int:
+
+		"""Say how many phones, or anything else, have joined the Pico's own network."""
+
+		if not self._own.active():
+			return 0
+
+		return len(self._own.status("stations"))
+
 
 def make (clock) -> picoclock.core.wifi.Wifi:
 

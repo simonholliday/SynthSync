@@ -237,7 +237,39 @@ def test_a_trial_that_nobody_acts_on_switches_by_itself (phone: "playwright.sync
 	assert phone.is_hidden("#trial")
 
 
-def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[[dict[str, typing.Any]], dict[str, typing.Any]] | None" = None, back: "list[bool] | None" = None) -> None:
+class Gate:
+
+	"""Holds the sockets a page opens while the Pico's own network is off, and lets them through to the stand-in once it is back."""
+
+	def __init__ (self) -> None:
+
+		"""Begin shut, holding nothing."""
+
+		self.open = False
+		self.held: "list[playwright.sync_api.WebSocketRoute]" = []
+
+	def hold (self, socket: "playwright.sync_api.WebSocketRoute") -> None:
+
+		"""Keep a socket silent while the gate is shut, or let it through. Left without handlers of its own, it passes everything both ways."""
+
+		if self.open:
+			socket.connect_to_server()
+		else:
+			self.held.append(socket)
+
+	def let_through (self) -> None:
+
+		"""Open the gate, and let every socket held so far through at once."""
+
+		self.open = True
+
+		for socket in self.held:
+			socket.connect_to_server()
+
+		self.held = []
+
+
+def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[[dict[str, typing.Any]], dict[str, typing.Any]] | None" = None, back: "Gate | None" = None) -> None:
 
 	"""Pass the page's socket through to the stand-in, and drop it once the page has asked `do` and heard the answer.
 
@@ -247,9 +279,9 @@ def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[
 	finds nothing either. `last`, if given, makes one more word of the
 	network from that answer, for the page to hear just as the line goes, as
 	a Pico might just manage to say as it begins a join. With `back`, trying
-	again is turned away until the test sets `back[0]`, and then finds the
-	stand-in, as a phone that stayed on PicoClock's own network finds the
-	Pico once that network is back.
+	again waits at that gate, and finds the stand-in once the test lets it
+	through, as a phone that stayed on PicoClock's own network finds the Pico
+	once that network is back.
 	"""
 
 	gone = [False]
@@ -263,20 +295,14 @@ def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[
 		Playwright, so a test still running when the page tries again would hang.
 		"""
 
-		if gone[0] and back is None:
+		if gone[0]:
+
+			if back is not None:
+				back.hold(socket)
+
 			return
 
 		server = socket.connect_to_server()
-
-		# Left without handlers of its own, a socket passes everything through both ways. Until the
-		# line is let back, it is ended at once, as one is that finds the Pico's own network still off.
-		if gone[0]:
-
-			if back is not None and not back[0]:
-				socket.close()
-				server.close()
-
-			return
 
 		def from_page (message: "str | bytes") -> None:
 
@@ -314,7 +340,7 @@ def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[
 
 
 @contextlib.contextmanager
-def settings_cut_when (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand, do: str, last: "typing.Callable[[dict[str, typing.Any]], dict[str, typing.Any]] | None" = None, back: "list[bool] | None" = None) -> "typing.Iterator[playwright.sync_api.Page]":
+def settings_cut_when (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand, do: str, last: "typing.Callable[[dict[str, typing.Any]], dict[str, typing.Any]] | None" = None, back: "Gate | None" = None) -> "typing.Iterator[playwright.sync_api.Page]":
 
 	"""Open the settings view on a phone whose line will go as soon as it asks `do`, and close it afterwards, however the test went.
 
@@ -400,7 +426,7 @@ def test_a_trial_that_took_the_line_says_how_it_went_once_the_line_is_back (chro
 
 	stand.as_new()
 
-	back = [False]
+	back = Gate()
 
 	with settings_cut_when(chromium, stand, "join", back=back) as page:
 
@@ -414,7 +440,7 @@ def test_a_trial_that_took_the_line_says_how_it_went_once_the_line_is_back (chro
 
 		# Scrolled away while waiting, as anyone might be, and then the line comes back.
 		scroll_to(page, "#own-go")
-		back[0] = True
+		back.let_through()
 
 		assert tests.pages.eventually(lambda: text(page, "#link") == "" and page.is_visible("#trial"))
 		assert text(page, "#wifi-status") == "PicoClock can join Studio. Once it has, this page will be at http://localhost."
@@ -448,6 +474,56 @@ def test_a_join_that_fails_says_why (phone: "playwright.sync_api.Page", stand: t
 
 	assert tests.pages.eventually(lambda: stand.now("network")["mode"] == "found")
 	assert tests.pages.eventually(lambda: text(phone, "#wifi-problem") == "")
+
+
+def test_a_network_still_saved_is_said_to_be_gone_back_to_by_itself (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
+
+	"""Back on its own network with a network still saved, as after losing it, PicoClock is said to go back to that one by itself.
+
+	The stand-in's networks never go away, so the page is greeted as a Pico
+	that has lost one greets it.
+	"""
+
+	own = picoclock.sim.network.OWN_NAME
+
+	stand.as_new()
+	page = tests.pages.phone(chromium)
+
+	def between (socket: "playwright.sync_api.WebSocketRoute") -> None:
+
+		"""Pass the page's socket through, with the network made one that has lost Studio, whenever the page hears of it."""
+
+		server = socket.connect_to_server()
+
+		def from_stand (message: "str | bytes") -> None:
+
+			"""Send one batch on, changing the network wherever it is said, in a greeting or as news."""
+
+			batch = json.loads(message)
+
+			for each in batch["messages"]:
+				for said in [each] + (each["now"] if each["type"] == "hello" else []):
+					if said["type"] == "network":
+						said.update(saved="Studio", problem="PicoClock lost Studio and couldn't get it back")
+
+			socket.send(json.dumps(batch))
+
+		server.on_message(from_stand)
+
+	try:
+		page.route_web_socket("**/api/socket", between)
+		page.goto(stand.address + "/#settings")
+		page.wait_for_function("!document.body.classList.contains('lost') && document.getElementById('wifi-status').textContent !== ''")
+
+		assert text(page, "#wifi-status") == (
+			f"PicoClock is running its own network, {own}. This page is at http://localhost. "
+			f"When Studio is back in range, PicoClock goes back to it by itself, as soon as no phone is on {own}."
+		)
+		assert text(page, "#wifi-problem") == "PicoClock lost Studio and couldn't get it back"
+		assert text(page, "#forget") == "Forget Studio"
+
+	finally:
+		page.context.close()
 
 
 def test_a_password_the_pico_will_not_take_is_refused_beside_the_form (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:

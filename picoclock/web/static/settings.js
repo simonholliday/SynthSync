@@ -218,6 +218,10 @@ export class Settings {
 		} else if (network.mode === "found") {
 			status = `PicoClock can join ${network.name}. Once it has, this page will be at http://${network.found_at}.`;
 			own = `It is called ${network.own}, and it is on until PicoClock switches to ${network.name}.`;
+
+		} else if (network.saved) {
+			// Back on its own network with one still saved, which it listens for by itself.
+			status += ` When ${network.saved} is back in range, PicoClock goes back to it by itself, as soon as no phone is on ${network.own}.`;
 		}
 
 		find("trial").hidden = network.mode !== "found";

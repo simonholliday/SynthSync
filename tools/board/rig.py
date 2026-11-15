@@ -1818,6 +1818,9 @@ def test_network (load: str = "idle") -> None:
 		expect(what + ": the joining side was left on", not other.active())
 		expect(what + ": the radio says otherwise", wifi[0].status() == {"mode": "own", "name": name, "address": "192.168.4.1", "problem": problem, "own": name, "found_at": ""})
 
+		# Nothing is in range of the board to join its own network, so the count of those that have is nought.
+		expect(what + ": the radio counts phones on the own network that aren't there", wifi[0].radio.stations() == 0)
+
 	# The longest a change took to be in force, how many networks were in range, how long looking
 	# for them took, and the longest a join that failed took to bring the own network back.
 	counts = [0, 0, 0, 0]

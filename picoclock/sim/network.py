@@ -39,6 +39,7 @@ JOIN_FOR = 1000
 LOST_FOR = 3000
 AGAIN_AFTER = 250
 STAY_FOR = 5000
+LISTEN_EVERY = 5000
 
 # How often the pretend radio is looked at, in milliseconds.
 LOOK_EVERY = 50
@@ -104,12 +105,18 @@ class Radio:
 
 		return [(name, _STRENGTHS[name], bool(IN_RANGE[name])) for name in IN_RANGE]
 
+	def stations (self) -> int:
+
+		"""Say how many phones have joined the pretend own network: none, as a laptop's page isn't on it."""
+
+		return 0
+
 
 def make (clock: picoclock.core.clock.Clock) -> picoclock.core.wifi.Wifi:
 
 	"""Make the stand-in's WiFi for a clock, with its own network already up as a Pico's is by the time a page can open."""
 
-	wifi = picoclock.core.wifi.Wifi(clock, Radio(), OWN_NAME, JOIN_FOR, LOST_FOR, AGAIN_AFTER, STAY_FOR)
+	wifi = picoclock.core.wifi.Wifi(clock, Radio(), OWN_NAME, JOIN_FOR, LOST_FOR, AGAIN_AFTER, STAY_FOR, LISTEN_EVERY)
 	wifi.look(0)
 
 	return wifi
