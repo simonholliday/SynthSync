@@ -175,6 +175,79 @@ def test_every_function_the_second_core_runs_is_native () -> None:
 	assert "picoclock/core/buttons.py" in tools.stage.NATIVE
 
 
+# The code the second core runs: the player, and the scheduler and the buttons' rule it calls into.
+SECOND_CORE = ("picoclock/device/player.py", "picoclock/core/timeline.py", "picoclock/core/buttons.py")
+
+
+def methods_taken_out (source: str) -> list[str]:
+
+	"""Find every name given an attribute and then called, outside `__init__`, unless the attribute belongs to a module or is one an object keeps.
+
+	`put = self.machine.put` makes a new object, and so does
+	`next_word = timeline.next_word` or `take = self._take`. Reading a
+	method an object kept when it was made, `put = self._put`, doesn't, and
+	nor does reading a module's own, `ticks_ms = time.ticks_ms`.
+	"""
+
+	tree = ast.parse(source)
+	modules = {alias.asname or alias.name.split(".")[0] for node in tree.body if isinstance(node, ast.Import) for alias in node.names}
+	methods = set()
+
+	for node in ast.walk(tree):
+		if isinstance(node, ast.ClassDef):
+			methods |= {member.name for member in node.body if isinstance(member, ast.FunctionDef)}
+
+	found = []
+
+	for function in ast.walk(tree):
+
+		if not isinstance(function, ast.FunctionDef) or function.name == "__init__":
+			continue
+
+		called = {node.func.id for node in ast.walk(function) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+
+		for node in ast.walk(function):
+
+			if not (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Attribute)):
+				continue
+
+			if node.targets[0].id not in called:
+				continue
+
+			root: ast.expr = node.value
+
+			while isinstance(root, ast.Attribute):
+				root = root.value
+
+			from_module = isinstance(root, ast.Name) and root.id in modules
+			kept = isinstance(node.value.value, ast.Name) and node.value.value.id == "self" and node.value.attr not in methods
+
+			if not (from_module or kept):
+				found.append("%s: %s" % (function.name, ast.unparse(node)))
+
+	return found
+
+
+def test_nothing_the_second_core_runs_takes_a_method_out_under_a_name () -> None:
+
+	"""Taking a method out under a name of its own makes an object, which asks for memory, so the second core's code never does.
+
+	The second core then waits for any collection the first core is part way
+	through, and with the page and the network loaded, one can last longer
+	than the player's eight words. That ran the player dry, rarely, when
+	`_build` did it for every command. The player now takes out what the
+	second core calls once, when it is made.
+	"""
+
+	for path in SECOND_CORE:
+		assert methods_taken_out((ROOT / path).read_text()) == [], path
+
+	# The search finds each way of doing it, and passes over the ways that are safe.
+	found = methods_taken_out("import time\n\nclass Player:\n\n\tdef _take (self):\n\t\tpass\n\n\tdef _build (self, timeline):\n\t\tput = self.machine.put\n\t\tnext_word = timeline.next_word\n\t\ttake = self._take\n\t\tkept = self._put\n\t\tticks = time.ticks_us\n\t\tcount = self.machine.count\n\t\tput(next_word())\n\t\ttake()\n\t\tkept(ticks())\n")
+
+	assert found == ["_build: put = self.machine.put", "_build: next_word = timeline.next_word", "_build: take = self._take"]
+
+
 def test_everything_asked_of_the_radio_chip_goes_through_the_guard () -> None:
 
 	"""An interrupt that lands while the radio chip is being worked leaves it half started, so nothing may work it unguarded.

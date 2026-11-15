@@ -223,6 +223,16 @@ class Player:
 		self._dma = rp2.DMA()
 		self._dma_control = self._dma.pack_ctrl(size=2, inc_read=True, inc_write=False, treq_sel=0)
 
+		# What the second core calls to feed the player, each taken out once here.
+		# Taking a method out under a name of its own makes an object, which asks
+		# for memory, and the second core must never ask: it would wait for any
+		# collection the first core was part way through. With the page and the
+		# network loaded, one can last longer than the player's eight words.
+		self._put = self.machine.put
+		self._waiting = self.machine.tx_fifo
+		self._next_word = self.timeline.next_word
+		self._quiet = self.timeline.quiet
+
 		self._alive = True
 
 		self.machine.active(1)
@@ -241,10 +251,10 @@ class Player:
 
 		timeline = self.timeline
 		player = self.machine
-		put = player.put
-		waiting = player.tx_fifo
-		next_word = timeline.next_word
-		quiet = timeline.quiet
+		put = self._put
+		waiting = self._waiting
+		next_word = self._next_word
+		quiet = self._quiet
 		marks = self._marks
 		counts = self._counts
 		registers = machine.mem32
@@ -502,9 +512,9 @@ class Player:
 
 		timeline = self.timeline
 		backlog = self._backlog
-		put = self.machine.put
-		waiting = self.machine.tx_fifo
-		next_word = timeline.next_word
+		put = self._put
+		waiting = self._waiting
+		next_word = self._next_word
 		counts = self._counts
 		bits = timeline.pin_bits
 		cycles = timeline.cycles_per_tick

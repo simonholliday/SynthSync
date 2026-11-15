@@ -12,7 +12,8 @@ storage, apart from a small file the flash load writes and removes.
 
 `freerun` proves the rig itself. The rest test the real player: `player` times
 its fastest output in the busiest pattern, `sweep` changes the tempo many
-times a second, `pause` pauses and carries on a dozen times, `startstop`
+times a second, `collect` changes outputs while the first core collects a
+large heap straight after each change, `pause` pauses and carries on a dozen times, `startstop`
 starts and stops over and over, `position` asks where the clock has got to
 and checks the answers against the Pico's own clock, `inputs` presses each
 button through the jumper and watches the light, `led` times every flash of
@@ -52,7 +53,7 @@ import tools.stage
 
 ROOT = pathlib.Path(__file__).parent.parent
 
-TESTS = ("freerun", "player", "cluster", "sweep", "burst", "pause", "startstop", "position", "inputs", "led", "powerup", "network", "page", "air", "save", "saved")
+TESTS = ("freerun", "player", "cluster", "sweep", "burst", "collect", "pause", "startstop", "position", "inputs", "led", "powerup", "network", "page", "air", "save", "saved")
 
 # The test that needs the Pico's address on a network, and how long to give a round of
 # requests that failed to be seen as the end of the test, in seconds.

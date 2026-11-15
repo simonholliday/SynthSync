@@ -895,6 +895,80 @@ def test_burst (load: str = "idle") -> None:
 	report("burst", passed, "pulses=%d bursts=%d %s load=%s" % (edges, state[0], describe(status), described))
 
 
+# How long the collect test makes each of the first core's collections last at
+# least, in milliseconds: longer than the player's eight words last while its
+# outputs are slow, which is 20 ms at most.
+_COLLECT_LONGEST = 30
+
+
+def test_collect (load: str = "idle") -> None:
+
+	"""Change outputs while the first core collects a large heap, a collection straight after each change: the player must never run dry.
+
+	Anything the second core asks of the memory waits for a collection on
+	the first core to finish. With PicoClock's page and network loaded, one
+	can take longer than the player's words last, so carrying out a command
+	must ask for nothing. Here the heap is filled, beside whatever the load
+	holds, until a collection takes longer than the words last, and output 2
+	is timed throughout.
+	"""
+
+	count = 600
+	tempo = 12000
+	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN + 1, count)
+
+	# Output 2 at 16 pulses a second, the rest slow, so each word holds the pins as long as a word can.
+	player = make_player(((1, 1), (8, 1), (1, 1), (1, 1)), tempo)
+
+	# Small pieces, added a few at a time until a collection takes long enough.
+	held = []
+
+	ratios = ((3, 2), (2, 1), (1, 4), (5, 1), (4, 3), (1, 2), (3, 1), (7, 1))
+	widths = (5000, 8000, 12000, 20000, 35000, 50000)
+
+	# How many changes have been sent, and the longest collection after one, in milliseconds.
+	state = [0, 0]
+
+	def meanwhile () -> None:
+
+		"""Change output 3's ratio or output 4's pulse, collect the heap at once, and make the heap larger if that was quick."""
+
+		step = state[0]
+
+		if step % 2:
+			player.set_width(3, widths[(step // 2) % len(widths)])
+		else:
+			pulses, beats = ratios[(step // 2) % len(ratios)]
+			player.set_ratio(2, pulses, beats)
+
+		state[0] += 1
+
+		began = time.ticks_ms()
+		gc.collect()
+		took = time.ticks_diff(time.ticks_ms(), began)
+
+		if took > state[1]:
+			state[1] = took
+
+		# Room is left for the load's own garbage.
+		if took < _COLLECT_LONGEST and gc.mem_free() > 60000:
+			held.append([(number,) for number in range(200)])
+
+	player.start()
+
+	described = run_load(load, capture, count // 16 + 10, meanwhile)
+	status = player.status()
+	pulses, worst = capture.judge(gap_lengths(tempo, 8, 1))
+
+	player.close()
+	capture.close()
+	held = None
+
+	passed = pulses >= count - _SKIP and worst <= 2 and state[1] >= _COLLECT_LONGEST and sound(status)
+
+	report("collect", passed, "pulses=%d worst_cycles=%d changes=%d longest_collect_ms=%d %s load=%s" % (pulses, worst, state[0], state[1], describe(status), described))
+
+
 # Where the position test keeps its settings.
 _POSITION_PATH = "/_rig_position.json"
 
@@ -2821,6 +2895,7 @@ TESTS = {
 	"air": test_air,
 	"burst": test_burst,
 	"cluster": test_cluster,
+	"collect": test_collect,
 	"freerun": test_freerun,
 	"inputs": test_inputs,
 	"led": test_led,
