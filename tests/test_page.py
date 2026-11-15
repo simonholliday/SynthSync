@@ -513,14 +513,15 @@ def test_pulse_and_role_are_folded_away_until_wanted (phone: "playwright.sync_ap
 	assert extra.is_hidden()
 
 
-def test_an_output_switched_off_is_dimmed_and_shut_and_comes_back_as_it_was (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+def test_an_output_switched_off_is_dimmed_and_can_still_be_changed_then_comes_back_with_the_changes (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""The switch in a row turns that output off. Its settings stay, shown dimmed and not struck through, and can't be worked until it is on again."""
+	"""The switch in a row turns that output off. Its settings stay, shown dimmed and not struck through, and every one of them can still be changed, so a change can be set up quietly and brought in with the switch."""
 
 	stand.change({"do": "output", "index": 2, "name": "ratio", "value": "2/3"})
 
 	third = row(phone, 3)
 	text = third.locator(".ratio-text")
+	extra = third.locator(".extra")
 
 	assert tests.pages.eventually(lambda: text.input_value() == "÷1.5")
 
@@ -537,43 +538,58 @@ def test_an_output_switched_off_is_dimmed_and_shut_and_comes_back_as_it_was (pho
 	assert third.locator(".name").evaluate("element => getComputedStyle(element).textDecorationLine") == "none"
 
 	for part in (".knob", ".ratio-text", ".snap-switch", ".more", ".extra"):
-		assert float(third.locator(part).evaluate("element => getComputedStyle(element.closest('.row > *, .extra')).opacity")) < 0.5, part
+		assert float(third.locator(part).evaluate("element => getComputedStyle(element.closest('.row > *, .extra')).opacity")) < 0.75, part
 
 	assert float(third.locator(".power").evaluate("element => getComputedStyle(element).opacity")) == 1
 
-	# A finger on the knob, the snap switch, the button at the end or the role does nothing.
-	x, y = tests.pages.centre(phone, ".output:nth-child(3) .knob")
-
-	tests.pages.drag_by_touch(phone, x, y, 0, -80)
-
-	for part in (".snap-switch", ".more", ".role"):
-		x, y = tests.pages.centre(phone, ".output:nth-child(3) " + part)
-		phone.touchscreen.tap(x, y)
-
-	time.sleep(0.4)
-
-	assert stand.now("output", 2)["ratio"] == "2/3"
-	assert stand.now("output", 2)["snap"] is True
-	assert stand.now("output", 2)["role"] == "clock"
-	assert third.locator(".extra").is_visible()
-	assert phone.evaluate("document.activeElement === document.body")
-
-	# The other rows are untouched.
-	assert row(phone, 2).locator(".on").is_checked()
-	assert "off" not in (row(phone, 2).get_attribute("class") or "").split()
-
-	third.locator(".power").tap()
-
-	assert tests.pages.eventually(lambda: stand.now("output", 2)["muted"] is False)
-	assert tests.pages.eventually(lambda: "off" not in (third.get_attribute("class") or "").split())
-	assert text.input_value() == "÷1.5"
-
-	# On again, it can be worked as before.
+	# A finger on the knob turns it, off as it is.
 	x, y = tests.pages.centre(phone, ".output:nth-child(3) .knob")
 
 	tests.pages.drag_by_touch(phone, x, y, 0, -80)
 
 	assert tests.pages.eventually(lambda: stand.now("output", 2)["ratio"] != "2/3")
+
+	# So does typing a ratio, the snap switch, the pulse and the role, and it stays off throughout.
+	type_into(text, "3/2")
+
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["ratio"] == "3/2")
+
+	third.locator(".snap-switch").tap()
+	extra.locator(".pulse-kind").select_option("half")
+
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["snap"] is False)
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["pulse"] == "half")
+
+	extra.locator(".role").select_option("run")
+
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["role"] == "run")
+
+	extra.locator(".role").select_option("clock")
+
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["role"] == "clock")
+	assert stand.now("output", 2)["muted"] is True
+	assert "off" in (third.get_attribute("class") or "").split()
+
+	# A refusal is said at full strength, to be read.
+	type_into(text, "nonsense")
+
+	assert tests.pages.eventually(lambda: third.locator(".problem").inner_text().strip() != "")
+	assert float(third.locator(".problem").evaluate("element => getComputedStyle(element).opacity")) == 1
+	assert stand.now("output", 2)["ratio"] == "3/2"
+
+	# The other rows are untouched.
+	assert row(phone, 2).locator(".on").is_checked()
+	assert "off" not in (row(phone, 2).get_attribute("class") or "").split()
+
+	# On again, it comes back with everything it was given while off.
+	third.locator(".power").tap()
+
+	assert tests.pages.eventually(lambda: stand.now("output", 2)["muted"] is False)
+	assert tests.pages.eventually(lambda: "off" not in (third.get_attribute("class") or "").split())
+	assert tests.pages.eventually(lambda: text.input_value() == "×1.5")
+	assert stand.now("output", 2)["ratio"] == "3/2"
+	assert stand.now("output", 2)["snap"] is False
+	assert stand.now("output", 2)["pulse"] == "half"
 
 
 def test_the_main_clock_can_be_switched_off_and_given_a_pulse_but_nothing_else (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:

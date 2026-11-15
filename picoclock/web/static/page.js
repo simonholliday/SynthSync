@@ -486,7 +486,6 @@ function build (count) {
 			pulse: element.querySelector(".pulse"),
 			pulseField: element.querySelector(".pulse-field"),
 			knob: null,
-			shut: [],
 		};
 
 		element.setAttribute("aria-label", "Output " + number);
@@ -541,9 +540,6 @@ function build (count) {
 			row.snap.addEventListener("change", () => choose(index, "snap", row.snap.checked));
 			row.role.addEventListener("change", () => choose(index, "role", row.role.value));
 		}
-
-		// Everything in the row but its switch, which is what can't be worked while the output is off.
-		row.shut = [...element.querySelectorAll(".row > :not(.power), .extra")];
 
 		row.more.addEventListener("click", () => {
 
@@ -625,13 +621,10 @@ function showOutput (index) {
 	const half = output.pulse === "half";
 	const on = !output.muted;
 
-	// Off, an output keeps its settings and shows them dimmed, and only its switch can be worked.
+	// Off, an output is silent and its row dimmed, but every setting can still be changed, so a
+	// change can be set up quietly and brought in with the switch.
 	row.element.classList.toggle("off", !on);
 	row.on.checked = on;
-
-	for (const part of row.shut) {
-		part.inert = !on;
-	}
 
 	row.pulseKind.value = half ? "half" : "length";
 	row.pulseField.hidden = half;

@@ -67,6 +67,38 @@ def check_a_muted_clock_stays_low_and_comes_back_in_step () -> None:
 		assert tests.checks.check_timeline.on_grid(player.rise_positions[1][number], 12000, 4, 1) == next_line + number - heard
 
 
+def check_a_ratio_changed_while_muted_comes_in_on_its_new_grid () -> None:
+
+	"""An output changed while it is off stays silent, and when it comes on its pulses fall on its new ratio's grid, in step with the clock."""
+
+	timeline = tests.checks.check_timeline.make([(1, 1), (4, 1)], 12000)
+	player = tests.checks.check_timeline.Player(timeline)
+
+	timeline.start()
+	player.play(40)
+	timeline.set_mute(1, True)
+
+	heard = len(player.rises[1])
+
+	# From four a beat to three every two beats, while off.
+	timeline.set_ratio(1, 3, 2)
+	player.play(300)
+
+	assert len(player.rises[1]) == heard
+	assert pin(player, 1) == 0
+
+	timeline.set_mute(1, False)
+
+	next_line = -((-player.position * 3) // (2 * UNITS))
+
+	player.play(400)
+
+	assert len(player.rises[1]) > heard
+
+	for number in range(heard, len(player.rises[1])):
+		assert tests.checks.check_timeline.on_grid(player.rise_positions[1][number], 12000, 3, 2) == next_line + number - heard
+
+
 def check_muting_part_way_through_a_pulse_drops_the_pin_at_once () -> None:
 
 	"""A mute doesn't wait for the pulse to end."""

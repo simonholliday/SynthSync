@@ -338,12 +338,13 @@ and its light, and all three are one thing to press.
 }
 
 /*
-An output that is off keeps every setting it had. All but its switch is dimmed,
-and can't be worked until it is on again.
+An output that is off is silent and keeps every setting it had. All but its
+switch is dimmed, and can still be changed, so a change can be set up quietly
+and brought in with the switch. A refusal stays at full strength, to be read.
 */
 
-.output.off .row > :not(.power), .output.off .problem, .output.off .extra {
-	opacity: 0.35;
+.output.off .row > :not(.power), .output.off .extra {
+	opacity: 0.5;
 }
 
 .output.off .name {

@@ -221,6 +221,31 @@ def check_a_change_is_checked_saved_told_and_then_given_to_the_engine () -> None
 	assert engine.calls == [("set_tempo", 13000)]
 
 
+def check_an_output_that_is_off_can_still_be_changed () -> None:
+
+	"""Switched off, an output's ratio, snap, pulse and role can all still be changed, and each reaches the engine while it stays off."""
+
+	clock, engine, storage = make()
+
+	clock.set_output(1, "muted", True)
+	clock.flush()
+
+	engine.calls = []
+
+	clock.set_output(1, "ratio", "3/2")
+	clock.set_output(1, "snap", False)
+	clock.set_output(1, "pulse", 20)
+	clock.set_output(1, "role", "run")
+	clock.flush()
+
+	assert clock.settings.outputs[1].muted
+	assert not clock.settings.outputs[1].snap
+	assert ("set_ratio", 1, 3, 2) in engine.calls
+	assert ("set_width", 1, 20000) in engine.calls
+	assert ("set_role", 1, picoclock.core.settings.ROLES.index("run")) in engine.calls
+	assert engine.named("set_mute") == []
+
+
 def check_only_the_latest_of_a_burst_reaches_the_engine () -> None:
 
 	"""However many times a setting changes between flushes, the engine is given the last value once."""
