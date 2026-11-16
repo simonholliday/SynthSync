@@ -587,6 +587,43 @@ are open, the usual sign for a panel that opens where it is.
 	justify-self: start;
 }
 
+/* The clock's pulses a beat: one choice of several, each with the note it gives, two to a line. */
+
+.rates {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 0.4rem;
+}
+
+.rate {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	min-height: 2.75rem;
+	padding: 0 0.6rem;
+	border: 1px solid var(--edge);
+	border-radius: 0.6rem;
+	background: var(--raised);
+	color: var(--quiet);
+	font-size: 0.9rem;
+	cursor: pointer;
+}
+
+.rate b {
+	margin-right: 0.1rem;
+	color: var(--text);
+	font-size: 1.05rem;
+}
+
+.rate input {
+	margin: 0;
+	accent-color: var(--lit);
+}
+
+.rate:has(input:checked) {
+	border-color: var(--lit);
+}
+
 .note {
 	color: var(--quiet);
 	font-size: 0.9rem;

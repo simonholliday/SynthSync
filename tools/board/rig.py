@@ -27,6 +27,7 @@ import sys
 import time
 
 import picoclock.core.clock
+import picoclock.core.ratio
 import picoclock.core.settings
 import picoclock.core.transport
 import picoclock.device.board
@@ -1176,29 +1177,23 @@ class Light:
 		return bool(self._lit)
 
 
-class PanelLed:
+class TempoLed:
 
-	"""The panel LED, counting how often the first core lights it to warn of a reset, and checking its pin does as it is told."""
+	"""The tempo LED, counting how often the first core lights it to warn of a reset, and checking its pin does as it is told."""
 
-	def __init__ (self, tempo: int) -> None:
+	def __init__ (self) -> None:
 
-		"""Start the LED's program as PicoClock does."""
+		"""Take hold of the LED as PicoClock does, leaving it to the player."""
 
-		self._led = picoclock.device.led.Led(tempo)
+		self._led = picoclock.device.led.Led()
 		self._lit = False
 		self.taken = False
 		self.flashes = 0
 		self.wrong = 0
 
-	def follow (self, tempo: int) -> None:
-
-		"""Pass the tempo on."""
-
-		self._led.follow(tempo)
-
 	def show (self, lit) -> None:
 
-		"""Light the LED, put it out or give it back to its program, as the panel asks, and see that the pin did so."""
+		"""Light the LED, put it out or give it back to the player, as the panel asks, and see that the pin did so."""
 
 		self._led.show(lit)
 
@@ -1219,7 +1214,7 @@ class PanelLed:
 
 	def close (self) -> None:
 
-		"""Stop the LED's program."""
+		"""Give the LED back to the player."""
 
 		self._led.close()
 
@@ -1265,7 +1260,7 @@ def test_inputs (load: str = "idle") -> None:
 	storage = picoclock.device.storage.Storage(settings, player, _INPUTS_PATH)
 	clock = picoclock.core.clock.Clock(settings, player, storage)
 	light = Light()
-	shown = PanelLed(settings.tempo)
+	shown = TempoLed()
 	never = Never()
 
 	clock.load()
@@ -1275,7 +1270,7 @@ def test_inputs (load: str = "idle") -> None:
 	# times the light came on in two seconds of running and in a reset's hold,
 	# the longest and shortest hold that a reset took, the longest a stop took
 	# while the first core was held up, in milliseconds, and how many times
-	# the panel LED came on in a reset's hold.
+	# the tempo LED came on in a reset's hold.
 	panel = [None]
 	wrong = []
 	counts = [0, 0, 0, 0, 99999, -1, 0]
@@ -1441,7 +1436,7 @@ def test_inputs (load: str = "idle") -> None:
 			expect("reset went off twice in one hold, " + way, settings.tempo == 8800)
 			expect("the lights weren't lit once the settings were back, " + way, light.is_on() and shown.is_on())
 
-			# Let go, the panel LED is given back to output 1, and flashes with it once the clock runs.
+			# Let go, the tempo LED is given back to the player, and flashes on the beat once the clock runs.
 			while time.ticks_diff(time.ticks_ms(), began) < 9000:
 				yield 50
 
@@ -1454,7 +1449,7 @@ def test_inputs (load: str = "idle") -> None:
 				flashed = flashed or shown.is_on()
 				yield 5
 
-			expect("the panel LED didn't flash with output 1 after a reset, " + way, flashed)
+			expect("the tempo LED didn't flash on the beat after a reset, " + way, flashed)
 
 			# Stop pressed with the first core held up, and nothing given a turn until the hold is over.
 			before = player.status()["presses"]
@@ -1522,34 +1517,49 @@ def test_inputs (load: str = "idle") -> None:
 	report("inputs", passed, "presses=%d wrong=%d beat_flashes=%d hold_flashes=%d,%d led_wrong=%d reset_after_ms=%d..%d stop_while_held_ms=%d first_wrong=%s %s load=%s" % (counts[0], len(wrong), counts[1], counts[2], counts[6], shown.wrong, counts[4], counts[3], counts[5], wrong[0].replace(" ", "_") if wrong else "none", describe(status), described))
 
 
-# How far each flash of the panel LED may be from what it should be, in
-# cycles: from output 1's rise to the LED's, and in how long it is lit. The
-# program takes a few cycles to see a pin change and act on it.
+# How late each flash of the tempo LED may begin after output 1's pulse on the
+# same beat, and how far its length may be from what it should be, in cycles.
+# The player sets both pins with one instruction, so they rise together: what
+# is left is the few cycles the timer takes to see a pin and act on it.
 _LED_LATE = 10
 _LED_SLACK = 20
+
+# The state machine that counts the LED's flashes: the first of block 1, free
+# now that the LED has no program of its own.
+_FLASH_COUNTER = 4
+
+# What the timer gives for a pulse of output 1 that no flash began with.
+_NO_FLASH = 0xFFFFFFFF
 
 
 def _flash_program (watched: int):
 
-	"""Build a program that times each flash of the panel LED from a rise of output 1.
+	"""Build a program that looks, at each rise of output 1, for a flash of the tempo LED beginning with it, and times the flash.
 
-	For each flash it gives how long the LED took to come on after output 1
-	rose, and then how long it stayed on, two cycles to a count. The LED's
-	pin is the jump pin.
+	For a rise with a flash it gives how many of its 32 looks were left when
+	the LED was seen lit, two cycles to a look, and then how long the LED
+	stayed lit, two cycles to a count. For a rise with none it gives
+	`_NO_FLASH`. The LED's pin is the jump pin.
 	"""
 
 	def flashes ():
 
 		wrap_target()
+		label("top")
 		wait(0, gpio, watched)
 		wait(1, gpio, watched)
 
-		mov(x, invert(null))
+		set(x, 31)
 		label("dark")
 		jmp(pin, "lit")
 		jmp(x_dec, "dark")
+
+		mov(isr, invert(null))
+		push(noblock)
+		jmp("top")
+
 		label("lit")
-		mov(isr, invert(x))
+		mov(isr, x)
 		push(noblock)
 
 		mov(x, invert(null))
@@ -1564,15 +1574,30 @@ def _flash_program (watched: int):
 	return rp2.asm_pio(fifo_join=rp2.PIO.JOIN_RX)(flashes)
 
 
+def _count_program (watched: int):
+
+	"""Build a program that gives one word for each time a pin rises: here, each flash of the tempo LED."""
+
+	def rises ():
+
+		wrap_target()
+		wait(0, gpio, watched)
+		wait(1, gpio, watched)
+		push(noblock)
+		wrap()
+
+	return rp2.asm_pio(fifo_join=rp2.PIO.JOIN_RX)(rises)
+
+
 def test_led (load: str = "idle") -> None:
 
-	"""Time every flash of the panel LED against output 1, through a tempo change, a long pulse and output 1 switched off.
+	"""Time the tempo LED against the beat, at one and at four pulses a beat, through a tempo change and a long pulse, and with output 1 switched off.
 
-	Each flash must start within a few cycles of output 1's pulse. It must
-	last a quarter of a beat, at most 100 ms, or for as long as the pulse
-	when that is longer. With output 1 off the LED must stay dark. The tempo
-	and the pulse are changed through the clock, as the page changes them,
-	and the panel tells the LED, as it does at power-up.
+	At one pulse a beat every pulse of output 1 is a beat, and each must have
+	a flash beginning on the same cycle. At four, only every fourth one may.
+	Each flash lasts a quarter of a beat and at most 100 ms, whatever output
+	1's pulse is. With output 1 off there is nothing to time against, so the
+	flashes are counted instead: they go on, once a beat.
 	"""
 
 	board = picoclock.device.board
@@ -1584,66 +1609,88 @@ def test_led (load: str = "idle") -> None:
 
 	clock.load()
 
-	# The LED's pin is only named here, not set up, so the LED's program keeps it.
+	# The LED's pin is only named here, not set up, so the player keeps it.
 	timer = rp2.StateMachine(_CAPTURE_MACHINE, _flash_program(board.FIRST_OUTPUT_PIN), freq=SYSTEM_HZ, jmp_pin=machine.Pin(board.LED_PIN))
-	led = picoclock.device.led.Led(settings.tempo)
-	panel = picoclock.device.panel.Panel(clock, player, {}, Light(), led)
+	counter = rp2.StateMachine(_FLASH_COUNTER, _count_program(board.LED_PIN), freq=SYSTEM_HZ)
+	panel = picoclock.device.panel.Panel(clock, player, {}, Light(), picoclock.device.led.Led())
 
 	timer.active(1)
+	counter.active(1)
 	clock.press(picoclock.core.transport.START)
 
-	# Each stage: the tempo, output 1's pulse in milliseconds, whether output 1
-	# is on, how long to watch for in milliseconds, and how long each flash
-	# should be lit for in cycles, or 0 for no flash at all.
+	# Each stage: the clock's pulses a beat, the tempo, output 1's pulse in
+	# milliseconds, whether output 1 is on, how long to watch for in
+	# milliseconds, and how long each flash should be lit for in cycles.
 	stages = (
-		(30000, 10, True, 2400, 50000 * cycles),
-		(30000, 80, True, 2400, 80000 * cycles),
-		(6000, 10, True, 7500, 100000 * cycles),
-		(6000, 10, False, 3500, 0),
+		(1, 30000, 10, True, 2400, 50000 * cycles),
+		(1, 30000, 80, True, 2400, 50000 * cycles),
+		(1, 6000, 10, True, 7500, 100000 * cycles),
+		(4, 12000, 10, True, 4000, 100000 * cycles),
+		(4, 12000, 10, False, 4000, 100000 * cycles),
 	)
 
-	# Per stage: the flashes counted, and the latest start and the furthest length
-	# of those. The LED takes a new time after a flash, and only once the first
-	# core has given it, so a stage's flashes count from the first after the LED
-	# has taken its time and the player its pulse, less one that may already have
-	# begun.
-	seen = [[0, 0, 0] for _ in stages]
+	# Per stage: the pulses of output 1 with a flash, those without, the latest
+	# start and the furthest length of those flashes, and the flashes counted.
+	# A stage counts from its second pulse, as one may already have begun.
+	seen = [[0, 0, 0, 0, 0] for _ in stages]
 	stage = [0]
 	waiting = [-1]
 	ready = [False]
+	skipped = [False]
+
+	# When each stage began to be judged and when it ended, in milliseconds: under load a stage runs long.
+	began = [0] * len(stages)
+	ended = [0] * len(stages)
 
 	def take () -> None:
 
-		"""Take every count the timer has given, in pairs: how late the LED came on, then how long it was on."""
+		"""Take every count the timer and the counter have given."""
+
+		flashed = 0
+
+		while counter.rx_fifo():
+			counter.get()
+			flashed += 1
+
+		if ready[0]:
+			seen[stage[0]][4] += flashed
 
 		while timer.rx_fifo():
 
 			count = timer.get()
 
-			# A start is a few counts at most and a length is millions, so a pair split by a full queue is never mistaken.
-			if count < 1000:
+			# A start is 31 looks at most and a length is millions, so a pair split by a full queue is never mistaken.
+			if count == _NO_FLASH:
+
+				if ready[0] and skipped[0]:
+					seen[stage[0]][1] += 1
+
+				skipped[0] = True
+				waiting[0] = -1
+				continue
+
+			if count < 32:
 				waiting[0] = count
 				continue
 
 			if waiting[0] < 0:
 				continue
 
-			late = 2 * waiting[0]
+			late = 2 * (31 - waiting[0])
 			lit = 2 * count
 			waiting[0] = -1
 
 			if not ready[0]:
 				continue
 
-			counts = seen[stage[0]]
-			counts[0] += 1
-
-			if counts[0] <= 1:
+			if not skipped[0]:
+				skipped[0] = True
 				continue
 
-			counts[1] = max(counts[1], late)
-			expected = stages[stage[0]][4]
-			counts[2] = max(counts[2], abs(lit - expected) if expected else lit)
+			counts = seen[stage[0]]
+			counts[0] += 1
+			counts[2] = max(counts[2], late)
+			counts[3] = max(counts[3], abs(lit - stages[stage[0]][5]))
 
 	def script ():
 
@@ -1651,19 +1698,29 @@ def test_led (load: str = "idle") -> None:
 
 		for index in range(len(stages)):
 
-			tempo, pulse, on, watch, lit = stages[index]
+			ppqn, tempo, pulse, on, watch, lit = stages[index]
 
 			take()
+
+			if index:
+				ended[index - 1] = time.ticks_ms()
+
 			stage[0] = index
 			ready[0] = False
+			skipped[0] = False
+			clock.set_ppqn(ppqn)
 			clock.set_tempo(tempo)
 			clock.set_output(0, "pulse", pulse)
 			clock.set_output(0, "muted", not on)
 			clock.flush()
 			player.settle()
-			panel.look()
+			take()
+			ready[0] = True
+			began[index] = time.ticks_ms()
 			yield watch
 
+		take()
+		ended[-1] = time.ticks_ms()
 		never.over = True
 		yield 0
 
@@ -1676,12 +1733,6 @@ def test_led (load: str = "idle") -> None:
 
 		panel.look()
 		clock.flush()
-
-		# What came before the LED took this stage's time is set aside, unjudged.
-		if not ready[0] and led.holds(stages[stage[0]][0]):
-			take()
-			ready[0] = True
-
 		take()
 
 		if never.over or time.ticks_diff(time.ticks_ms(), due[0]) < 0:
@@ -1694,21 +1745,28 @@ def test_led (load: str = "idle") -> None:
 
 	take()
 	timer.active(0)
+	counter.active(0)
 	panel.close()
-	led.close()
 	player.close()
 
-	flashes = [counts[0] for counts in seen]
-	late = max(counts[1] for counts in seen[:3])
-	worst = max(counts[2] for counts in seen[:3])
-	dark = seen[3][0]
+	timed = [counts[0] for counts in seen]
+	missed = [counts[1] for counts in seen]
+	late = max(counts[2] for counts in seen[:4])
+	worst = max(counts[3] for counts in seen[:4])
+	counted = [counts[4] for counts in seen]
 
-	# Over two seconds at 300 BPM is twelve flashes, and seven and a half at 60 is
-	# seven. Under load the LED may take its time a second or so late.
-	enough = flashes[0] >= 5 and flashes[1] >= 5 and flashes[2] >= 3
-	passed = never.over and enough and late <= _LED_LATE and worst <= _LED_SLACK and dark == 0 and sound(status)
+	# At one pulse a beat no pulse goes without a flash: two seconds at 300 BPM is
+	# ten beats, and seven and a half at 60 is seven. At four, three in four do,
+	# and in four seconds at 120 BPM there are eight beats. Off, output 1 gives the
+	# timer nothing, and the LED flashes once a beat for as long as the stage
+	# really lasted, which a load can stretch.
+	beats_off = time.ticks_diff(ended[4], began[4]) * stages[4][1] // 6000000
+	every_beat = timed[0] >= 5 and timed[1] >= 5 and timed[2] >= 3 and missed[0] + missed[1] + missed[2] == 0
+	one_in_four = timed[3] >= 5 and 3 * timed[3] - 3 <= missed[3] <= 3 * timed[3] + 3
+	when_off = timed[4] == 0 and beats_off >= 6 and abs(counted[4] - beats_off) <= 1
+	passed = never.over and every_beat and one_in_four and when_off and late <= _LED_LATE and worst <= _LED_SLACK and sound(status)
 
-	report("led", passed, "flashes=%d,%d,%d late_cycles=%d worst_cycles=%d flashes_when_off=%d %s load=%s" % (flashes[0], flashes[1], flashes[2], late, worst, dark, describe(status), described))
+	report("led", passed, "flashes=%d,%d,%d,%d pulses_without=%d,%d,%d,%d late_cycles=%d worst_cycles=%d flashes_when_off=%d/%d %s load=%s" % (timed[0], timed[1], timed[2], timed[3], missed[0], missed[1], missed[2], missed[3], late, worst, counted[4], beats_off, describe(status), described))
 
 
 def test_powerup (load: str = "idle") -> None:
@@ -1748,16 +1806,17 @@ def test_powerup (load: str = "idle") -> None:
 
 	good = picoclock.core.settings.Settings(picoclock.device.board.OUTPUTS)
 	good.set_tempo(24000)
+	good.set_ppqn(2)
 
-	# What is saved, the tempo the clock should come up at, and whether something should be said about the file.
+	# What is saved, the tempo and the pulses a beat the clock should come up at, and whether something should be said about the file.
 	cases = (
-		("no file", None, 12000, False),
-		("a file cut short", good.to_text()[:40], 12000, True),
-		("a file of rubbish", "\x00\xff not settings at all {{{", 12000, True),
-		("a good file", good.to_text(), 24000, False),
+		("no file", None, 12000, 4, False),
+		("a file cut short", good.to_text()[:40], 12000, 4, True),
+		("a file of rubbish", "\x00\xff not settings at all {{{", 12000, 4, True),
+		("a good file", good.to_text(), 24000, 2, False),
 	)
 
-	for name, text, tempo, told in cases:
+	for name, text, tempo, ppqn, told in cases:
 
 		try:
 			os.remove(path)
@@ -1773,7 +1832,7 @@ def test_powerup (load: str = "idle") -> None:
 		took = time.ticks_diff(time.ticks_ms(), began)
 		slowest = max(slowest, took)
 
-		# Count output 1's pulses for a second: two at 120 BPM and four at 240.
+		# Count output 1's pulses for a second: eight at 120 BPM and four pulses a beat, and eight at 240 and two.
 		pulses = 0
 		was = first.value()
 		deadline = time.ticks_add(time.ticks_ms(), 1000)
@@ -1788,13 +1847,16 @@ def test_powerup (load: str = "idle") -> None:
 			was = now
 
 		status = parts.player.status()
-		expected = tempo // 6000
+		expected = tempo * ppqn // 6000
 
 		if not (status["running"] and not status["paused"] and sound(status)):
 			wrong.append(name + ": the clock isn't running cleanly")
 
 		if parts.clock.settings.tempo != tempo or parts.player.timeline.tempo != tempo:
 			wrong.append(name + ": the tempo is wrong")
+
+		if parts.clock.settings.ppqn != ppqn:
+			wrong.append(name + ": the pulses a beat are wrong")
 
 		if not expected - 1 <= pulses <= expected + 1:
 			wrong.append(name + ": %d pulses in a second" % pulses)
@@ -2422,6 +2484,8 @@ def test_page (load: str = "idle") -> None:
 	storage = picoclock.device.storage.Storage(settings, player, _PAGE_PATH)
 	clock = picoclock.core.clock.Clock(settings, player, storage)
 
+	# At one pulse a beat, so output 2 at ×24 sends the 24 a beat this has always timed.
+	clock.set_ppqn(1)
 	clock.set_tempo(tempo)
 	clock.set_output(1, "ratio", "24")
 	clock.load()
@@ -2476,7 +2540,7 @@ def test_page (load: str = "idle") -> None:
 
 		response = await client.get("/api/state", headers={"Host": "192.168.4.1"})
 
-		expect("a new page wasn't given everything", response.status_code == 200 and len(response.json["now"]) == 8 and response.json["fixed"]["roles"] == list(picoclock.core.settings.ROLES))
+		expect("a new page wasn't given everything", response.status_code == 200 and len(response.json["now"]) == 9 and response.json["fixed"]["roles"] == list(picoclock.core.settings.ROLES))
 
 	async def change () -> None:
 
@@ -2488,7 +2552,7 @@ def test_page (load: str = "idle") -> None:
 		ratio = ratios[counts[1] % len(ratios)]
 		response = await client.post("/api/change", headers=dict(_OWN_SITE), body={"do": "output", "index": 2, "name": "ratio", "value": ratio})
 
-		expect("a change wasn't carried out", response.status_code == 200 and response.json == {"ok": True} and settings.outputs[2].ratio == picoclock.core.ratio.parse(ratio))
+		expect("a change wasn't carried out", response.status_code == 200 and response.json == {"ok": True} and settings.outputs[2].ratio == picoclock.core.ratio.parse(ratio, settings.ppqn))
 
 	async def refuse () -> None:
 
@@ -2671,7 +2735,8 @@ def test_air (load: str = "idle") -> None:
 
 	try:
 
-		# Output 2 is the one timed: 120 pulses a second.
+		# Output 2 is the one timed: 120 pulses a second, at one pulse a beat and ×24.
+		parts.clock.set_ppqn(1)
 		parts.clock.set_tempo(tempo)
 		parts.clock.set_output(1, "ratio", "24")
 
@@ -2826,7 +2891,7 @@ async def soak_window (parts, capture: Capture, settled: Settled, counts: dict) 
 
 	settings = parts.clock.settings
 	tempo = settings.tempo
-	pulses, beats = settings.outputs[1].ratio
+	pulses, beats = picoclock.core.ratio.effective(settings.outputs[1].ratio, settings.ppqn)
 	gap_ms = 6000000 * beats // (tempo * pulses) + 1
 
 	if not soak_playing(parts) or settled.since() < max(_SOAK_QUIET, _SOAK_QUIET_GAPS * gap_ms):
@@ -2980,7 +3045,9 @@ def soak (minutes: int) -> None:
 
 	try:
 
-		# Output 2 begins at 48 pulses a second: 120 BPM, 24 pulses a beat.
+		# Output 2 begins at 48 pulses a second: 120 BPM, one pulse a beat and ×24.
+		# The laptop half's ratios are of a clock of one pulse a beat too.
+		parts.clock.set_ppqn(1)
 		parts.clock.set_tempo(12000)
 		parts.clock.set_output(1, "ratio", "24")
 

@@ -42,34 +42,40 @@ def test_every_two_place_decimal_in_range_reads_exactly () -> None:
 
 def test_random_fractions_read_exactly_or_are_refused () -> None:
 
-	"""A typed fraction is kept exactly when it can be played, and refused when it can't."""
+	"""A typed fraction is kept exactly when the clock can play it at its PPQN, and refused when it can't."""
 
 	rng = random.Random(11)
 	slowest = as_fraction(picoclock.core.ratio.SLOWEST)
-	fastest = as_fraction(picoclock.core.ratio.FASTEST)
-	accepted = 0
 
-	for _ in range(20000):
+	for ppqn in picoclock.core.ratio.PPQNS:
 
-		top = rng.randrange(1, 20000)
-		bottom = rng.randrange(1, 20000)
-		exact = fractions.Fraction(top, bottom)
-		playable = (
-			slowest <= exact <= fastest
-			and exact.numerator <= picoclock.core.ratio.LARGEST_PART
-			and exact.denominator <= picoclock.core.ratio.LARGEST_PART
-		)
+		fastest = as_fraction(picoclock.core.ratio.fastest(ppqn))
+		accepted = 0
 
-		if playable:
-			ratio = picoclock.core.ratio.parse("%d/%d" % (top, bottom))
-			assert ratio == (exact.numerator, exact.denominator)
-			accepted += 1
+		for _ in range(4000):
 
-		else:
-			with pytest.raises(ValueError):
-				picoclock.core.ratio.parse("%d/%d" % (top, bottom))
+			top = rng.randrange(1, 20000)
+			bottom = rng.randrange(1, 20000)
+			exact = fractions.Fraction(top, bottom)
+			a_beat = exact * ppqn
+			playable = (
+				slowest <= exact <= fastest
+				and exact.numerator <= picoclock.core.ratio.LARGEST_PART
+				and exact.denominator <= picoclock.core.ratio.LARGEST_PART
+				and a_beat.numerator <= picoclock.core.ratio.LARGEST_PART
+			)
 
-	assert accepted > 1000
+			if playable:
+				ratio = picoclock.core.ratio.parse("%d/%d" % (top, bottom), ppqn)
+				assert ratio == (exact.numerator, exact.denominator)
+				assert picoclock.core.ratio.effective(ratio, ppqn) == (a_beat.numerator, a_beat.denominator)
+				accepted += 1
+
+			else:
+				with pytest.raises(ValueError):
+					picoclock.core.ratio.parse("%d/%d" % (top, bottom), ppqn)
+
+		assert accepted > 100, ppqn
 
 
 def test_labels_and_text_read_back_for_random_ratios () -> None:

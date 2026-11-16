@@ -183,9 +183,9 @@ class Socket:
 
 def make (outputs: int = 4) -> "tuple[picoclock.web.app.App, tests.checks.check_clock.Engine, Network]":
 
-	"""Make an app on a stand-in engine, stand-in storage and a stand-in network."""
+	"""Make an app on a stand-in engine, stand-in storage and a stand-in network, with the clock at its default pulses a beat."""
 
-	clock, engine, storage = tests.checks.check_clock.make(outputs)
+	clock, engine, storage = tests.checks.check_clock.make(outputs, picoclock.core.ratio.DEFAULT_PPQN)
 	network = Network()
 
 	return picoclock.web.app.App(clock, network), engine, network
@@ -319,16 +319,21 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 		assert fixed["slowest_tempo"] == 2000
 		assert fixed["fastest_tempo"] == 30000
 		assert fixed["slowest_ratio"] == "1/128"
-		assert fixed["fastest_ratio"] == "96"
-		assert len(fixed["snaps"]) == len(picoclock.core.ratio.SNAPS)
-		assert {"ratio": "3/2", "label": "×1.5"} in fixed["snaps"]
+		assert fixed["ppqns"] == [1, 2, 4, 8, 12, 16, 24, 48]
 		assert fixed["roles"] == ["clock", "start", "stop", "run"]
 
 		for message in now:
 			assert fits(message), message
 
-		assert len(now) == 8
+		assert len(now) == 9
 		assert len(by_type(now, "output")) == 4
+
+		# The clock's pulses a beat come with the fastest ratio they allow.
+		ppqn = by_type(now, "ppqn")[0]
+
+		assert ppqn["ppqn"] == 4
+		assert ppqn["fastest_ratio"] == "24"
+		assert fixed["snaps"] == [picoclock.core.ratio.to_text(snap) for snap in picoclock.core.ratio.SNAPS]
 		assert sorted(message["index"] for message in by_type(now, "output")) == [0, 1, 2, 3]
 
 		tempo = by_type(now, "tempo")[0]
@@ -409,7 +414,10 @@ def check_a_bad_value_is_refused_in_the_settings_own_words () -> None:
 			({"do": "tempo", "text": "120.555"}, "A tempo takes at most two decimal places"),
 			({"do": "tempo", "text": 120}, "A typed tempo is sent as text"),
 			({"do": "tempo"}, "A tempo is a whole number of hundredths of a BPM"),
-			({"do": "output", "index": 0, "name": "ratio", "value": "2"}, "Output 1 is the main clock, and always pulses once a beat"),
+			({"do": "output", "index": 0, "name": "ratio", "value": "2"}, "Output 1 is the main clock, and always sends the clock itself: its pulses a beat are set in Settings"),
+			({"do": "output", "index": 1, "name": "ratio", "value": "25"}, "At 4 PPQN the fastest ratio is ×24"),
+			({"do": "ppqn", "value": 5}, "The clock sends 1, 2, 4, 8, 12, 16, 24 or 48 pulses a beat"),
+			({"do": "ppqn"}, "The clock sends 1, 2, 4, 8, 12, 16, 24 or 48 pulses a beat"),
 			({"do": "output", "index": 9, "name": "ratio", "value": "2"}, "There is no such output"),
 			({"do": "output", "index": 1, "name": "pulse", "value": 0}, "A pulse lasts between 1 and 100 milliseconds, or half the gap between pulses"),
 			({"do": "output", "index": 1}, "An output has a ratio, a snap switch, a mute, a pulse and a role"),
@@ -526,7 +534,7 @@ def check_a_page_is_greeted_with_its_number_and_everything () -> None:
 		assert hello["you"] == 1
 		assert second.sent[0]["you"] == 2
 		assert hello["fixed"] == app.state()["fixed"]
-		assert len(hello["now"]) == 8
+		assert len(hello["now"]) == 9
 
 		for message in hello["now"]:
 			assert fits(message), message
@@ -797,7 +805,7 @@ def check_a_reset_sends_every_page_everything_afresh () -> None:
 
 		for socket in (first, second):
 
-			assert len(socket.sent) == 8
+			assert len(socket.sent) == 9
 
 			for message in socket.sent:
 				assert fits(message), message
@@ -1099,8 +1107,8 @@ def check_messages_come_in_numbered_batches_and_a_page_answers_each () -> None:
 		for socket in (first, second):
 
 			assert [batch["batch"] for batch in socket.batches] == [1, 2, 3]
-			assert [message["type"] for message in socket.batches[2]["messages"]] == ["tempo", "transport", "clock", "network", "output", "output", "output", "output"]
-			assert [message["index"] for message in socket.batches[2]["messages"][4:]] == [0, 1, 2, 3]
+			assert [message["type"] for message in socket.batches[2]["messages"]] == ["tempo", "ppqn", "transport", "clock", "network", "output", "output", "output", "output"]
+			assert [message["index"] for message in socket.batches[2]["messages"][5:]] == [0, 1, 2, 3]
 
 		# An answer for one page alone comes before the news it goes with.
 		first.say({"do": "tempo", "text": "999", "id": 7})
@@ -1123,7 +1131,7 @@ def check_messages_come_in_numbered_batches_and_a_page_answers_each () -> None:
 
 		assert [batch["batch"] for batch in page.batches] == [1, 2, 3, 4]
 		assert len(json.dumps(page.batches[2])) <= picoclock.web.app.MOST_BATCH
-		assert len(page.batches[2]["messages"]) + len(page.batches[3]["messages"]) == 12
+		assert len(page.batches[2]["messages"]) + len(page.batches[3]["messages"]) == 13
 		assert [message["index"] for message in page.of("output")] == [0, 1, 2, 3, 4, 5, 6, 7]
 
 		await close_pages(big, page)
@@ -1690,6 +1698,7 @@ def check_the_app_takes_every_message_its_table_lists_and_no_other () -> None:
 
 	examples: "dict[str, dict[str, typing.Any]]" = {
 		"tempo": {"value": 12100},
+		"ppqn": {"value": 24},
 		"output": {"index": 1, "name": "snap", "value": False},
 		"join": {"name": "Studio", "password": "a password"},
 		"own_password": {"value": "a password"},
@@ -1928,5 +1937,42 @@ def check_a_request_for_another_site_is_sent_to_the_page_only_while_the_own_netw
 			response = await elsewhere.get("/api/health")
 
 			assert response.status_code == 200, mode
+
+	tests.checks.check_clock.run(work())
+
+
+def check_a_ppqn_from_a_page_reaches_every_page_with_any_output_it_moved () -> None:
+
+	"""Every page hears the new pulses a beat, the fastest ratio they allow, and an output the change moved, each said to be by the page that asked."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		first = await open_page(app)
+		second = await open_page(app)
+
+		first.say({"do": "output", "index": 1, "name": "ratio", "value": "24", "id": 3})
+		await settle(app)
+
+		first.say({"do": "ppqn", "value": 24, "id": 4})
+		await settle(app)
+
+		assert app.clock.settings.ppqn == 24
+
+		for socket in (first, second):
+
+			ppqn = socket.of("ppqn")[-1]
+
+			assert ppqn["ppqn"] == 24
+			assert ppqn["fastest_ratio"] == "4"
+			assert (ppqn["by"], ppqn["id"]) == (1, 4)
+
+			moved = [message for message in socket.of("output") if message["index"] == 1][-1]
+
+			assert moved["ratio"] == "4"
+			assert moved["label"] == "×4"
+			assert (moved["by"], moved["id"]) == (1, 4)
+
+		await close_pages(app, first, second)
 
 	tests.checks.check_clock.run(work())

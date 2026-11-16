@@ -15,7 +15,7 @@ UNITS = 6000 * 1000000
 
 class Player:
 
-	"""Plays a timeline's words and notes when each output's pin rises and falls."""
+	"""Plays a timeline's words and notes when each output's pin rises and falls, and the tempo LED's."""
 
 	def __init__ (self, timeline: picoclock.core.timeline.Timeline) -> None:
 
@@ -32,6 +32,8 @@ class Player:
 		self.rises: list[list[int]] = [[] for _ in range(timeline.outputs)]
 		self.falls: list[list[int]] = [[] for _ in range(timeline.outputs)]
 		self.rise_positions: list[list[int]] = [[] for _ in range(timeline.outputs)]
+		self.led_rises: list[int] = []
+		self.led_falls: list[int] = []
 
 	def play (self, words: int) -> None:
 
@@ -62,6 +64,15 @@ class Player:
 
 				if before and not now:
 					self.falls[output].append(self.tick)
+
+			lit = pins & picoclock.core.timeline.LED_BIT
+			was = self.pins & picoclock.core.timeline.LED_BIT
+
+			if lit and not was:
+				self.led_rises.append(self.tick)
+
+			if was and not lit:
+				self.led_falls.append(self.tick)
 
 			self.pins = pins
 			self.tick += ticks
@@ -385,9 +396,10 @@ def check_stopping_sets_every_output_low_and_starting_begins_again () -> None:
 	assert timeline.quiet()
 	assert timeline.unpack(timeline.next_word())[0] == 0
 
+	# Both outputs, and the tempo LED on the first beat.
 	timeline.start()
 	assert not timeline.quiet()
-	assert timeline.unpack(timeline.next_word())[0] == 3
+	assert timeline.unpack(timeline.next_word())[0] == 3 | picoclock.core.timeline.LED_BIT
 
 	timeline.stop()
 	assert timeline.quiet()
@@ -525,3 +537,105 @@ def check_working_out_a_word_asks_for_no_memory () -> None:
 
 	assert after_words == before, after_words - before
 	assert after_changes == before, after_changes - before
+
+
+def check_the_tempo_led_lights_on_every_beat_for_a_quarter_of_it () -> None:
+
+	"""It rises on each beat, on the very tick the beat's pulses do, and stays lit a quarter of the beat, never more than 100 ms."""
+
+	for tempo, beat, lit in ((12000, 500000, 100000), (30000, 200000, 50000), (6000, 1000000, 100000), (20000, 300000, 75000)):
+
+		timeline = make([(4, 1), (1, 2)], tempo)
+		player = Player(timeline)
+
+		timeline.start()
+		player.play_until(beat * 6)
+
+		assert player.led_rises[:6] == [beat * each for each in range(6)], tempo
+		assert player.led_falls[:6] == [beat * each + lit for each in range(6)], tempo
+
+		# The LED rises with the output that pulses on every beat, on the same tick.
+		assert player.led_rises[:6] == player.rises[0][0:24:4], tempo
+
+
+def check_the_tempo_led_flashes_with_every_output_switched_off () -> None:
+
+	"""It follows the beat, not any output, so it goes on flashing when every output is off."""
+
+	timeline = make([(4, 1), (1, 1)], 12000)
+	timeline.set_mute(0, True)
+	timeline.set_mute(1, True)
+	player = Player(timeline)
+
+	timeline.start()
+	player.play_until(2000000)
+
+	assert player.rises == [[], []]
+	assert player.led_rises == [0, 500000, 1000000, 1500000]
+
+
+def check_the_tempo_led_goes_out_at_a_stop_and_waits_out_a_lead () -> None:
+
+	"""A stop puts it out at once. After a start pulse, the first beat, and the LED, come one lead later."""
+
+	timeline = make([(1, 1), (1, 1)], 12000)
+	player = Player(timeline)
+
+	timeline.start()
+	player.play_until(50000)
+
+	assert player.pins & picoclock.core.timeline.LED_BIT
+
+	timeline.stop()
+
+	assert timeline.unpack(timeline.next_word())[0] == 0
+	assert timeline.quiet()
+
+	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
+	player = Player(timeline)
+	timeline.start()
+	player.play_until(600000)
+
+	assert player.led_rises == [picoclock.core.timeline.LEAD_TICKS, picoclock.core.timeline.LEAD_TICKS + 500000]
+	assert player.rises[0] == player.led_rises
+
+
+def check_a_tempo_change_sets_the_next_flash_to_a_quarter_of_the_new_beat () -> None:
+
+	"""A flash already lit keeps its length, and the ones after it suit the new tempo."""
+
+	timeline = make([(1, 1)], 6000)
+	player = Player(timeline)
+
+	timeline.start()
+	player.play_until(1500000)
+	timeline.set_tempo(30000)
+	player.play_until(2000000)
+
+	lengths = [fall - rise for rise, fall in zip(player.led_rises, player.led_falls)]
+
+	assert lengths[0] == 100000
+	assert lengths[-1] == 50000
+
+
+def check_the_tempo_leds_flash_is_a_quarter_of_a_beat_at_every_tempo_but_never_more_than_a_tenth_of_a_second () -> None:
+
+	"""A quarter of a whole tick's beat, at most 100 ms, and never longer at a faster tempo, so a speeding clock never sees its flashes run together."""
+
+	timeline = make([(1, 1)], 12000)
+	before = picoclock.core.timeline.LED_LONGEST
+
+	for tempo in range(2000, 30001, 7):
+
+		timeline.set_tempo(tempo)
+
+		quarter = 6000000000 // tempo // 4
+		width = timeline.led_width
+
+		assert width <= picoclock.core.timeline.LED_LONGEST, tempo
+		assert width == picoclock.core.timeline.LED_LONGEST or 0 <= quarter - width <= 1, tempo
+		assert width <= before, tempo
+
+		before = width
+
+	assert picoclock.core.timeline.LED_LONGEST == 100000

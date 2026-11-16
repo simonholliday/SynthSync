@@ -16,6 +16,7 @@ under "do". `FROM_PAGE` lists them all.
 
     {"do": "tempo", "value": 12050}            in hundredths of a BPM
     {"do": "tempo", "text": "120.5"}           as typed
+    {"do": "ppqn", "value": 4}                 the clock's pulses a beat
     {"do": "output", "index": 1, "name": "ratio", "value": "4/3"}
     {"do": "start"}   {"do": "pause"}   {"do": "stop"}
     {"do": "reset"}                            back to how a new one is
@@ -42,6 +43,7 @@ and one of each other message to begin from. After that it is sent a message
 whenever something changes, whoever changed it:
 
     {"type": "tempo", "tempo": 12050, "text": "120.5", "by": 2, "id": 31}
+    {"type": "ppqn", "ppqn": 4, "fastest_ratio": "24", "by": 2, "id": 32}
     {"type": "output", "index": 1, "ratio": "4/3", "label": "×4/3", ...}
     {"type": "transport", "state": "running", "by": 0, "id": 0}
     {"type": "clock", "position": 12250, "faults": 0}
@@ -52,6 +54,11 @@ whenever something changes, whoever changed it:
 page, and "id" is the "id" that page sent. A page dragging a knob uses the two
 to tell its own changes coming back from someone else's. The clock's position
 is in thousandths of a beat since it started, or -1 when that can't be said.
+An output's ratio is of the clock, which sends "ppqn" pulses a beat. The
+fastest ratio there is depends on that, so it comes with it. The musical
+values a knob stops on are the same notes at every PPQN, so "fixed" lists
+them once, as pulses a beat, and the page divides them by the PPQN. A change
+of PPQN that moves an output's ratio is followed by that output's message.
 Passwords are never sent.
 
 Only the page that asked gets an answer to "scan", as "networks", and only the
@@ -169,6 +176,7 @@ if TYPE_CHECKING:
 # What a page may send: each message's "do", and what else it carries.
 FROM_PAGE = {
 	"tempo": ("value", "text"),
+	"ppqn": ("value",),
 	"output": ("index", "name", "value"),
 	"start": (),
 	"pause": (),
@@ -190,6 +198,7 @@ BATCH = ("batch", "messages")
 TO_PAGE = {
 	"hello": ("you", "fixed", "now"),
 	"tempo": ("tempo", "text", "by", "id"),
+	"ppqn": ("ppqn", "fastest_ratio", "by", "id"),
 	"output": ("index", "ratio", "label", "snap", "muted", "pulse", "role", "by", "id"),
 	"transport": ("state", "by", "id"),
 	"clock": ("position", "faults"),
@@ -204,7 +213,7 @@ FIXED = (
 	"slowest_tempo",
 	"fastest_tempo",
 	"slowest_ratio",
-	"fastest_ratio",
+	"ppqns",
 	"snaps",
 	"shortest_pulse",
 	"longest_pulse",
@@ -282,6 +291,7 @@ PATIENCE = 5.0
 
 # What a page can be behind on, besides each output, which goes by its number.
 TEMPO = picoclock.core.clock.TEMPO
+PPQN = picoclock.core.clock.PPQN
 TRANSPORT = picoclock.core.clock.TRANSPORT
 NETWORK = picoclock.core.clock.NETWORK
 CLOCK = "clock"
@@ -544,18 +554,13 @@ class App:
 
 		"""Gather what a page needs that never changes while it's open."""
 
-		snaps = []
-
-		for ratio in picoclock.core.ratio.SNAPS:
-			snaps.append({"ratio": picoclock.core.ratio.to_text(ratio), "label": picoclock.core.ratio.label(ratio)})
-
 		return {
 			"version": picoclock.__version__,
 			"slowest_tempo": picoclock.core.timeline.SLOWEST_TEMPO,
 			"fastest_tempo": picoclock.core.timeline.FASTEST_TEMPO,
 			"slowest_ratio": picoclock.core.ratio.to_text(picoclock.core.ratio.SLOWEST),
-			"fastest_ratio": picoclock.core.ratio.to_text(picoclock.core.ratio.FASTEST),
-			"snaps": snaps,
+			"ppqns": list(picoclock.core.ratio.PPQNS),
+			"snaps": [picoclock.core.ratio.to_text(snap) for snap in picoclock.core.ratio.SNAPS],
 			"shortest_pulse": picoclock.core.settings.SHORTEST_PULSE,
 			"longest_pulse": picoclock.core.settings.LONGEST_PULSE,
 			"roles": list(picoclock.core.settings.ROLES),
@@ -565,7 +570,7 @@ class App:
 
 		"""Name everything a page can be behind on."""
 
-		keys: "list[Key]" = [TEMPO, TRANSPORT, CLOCK, NETWORK]
+		keys: "list[Key]" = [TEMPO, PPQN, TRANSPORT, CLOCK, NETWORK]
 
 		for index in range(self.clock.settings.count):
 			keys.append(index)
@@ -595,6 +600,16 @@ class App:
 				"type": "tempo",
 				"tempo": settings.tempo,
 				"text": picoclock.core.settings.tempo_text(settings.tempo),
+				"by": by[0],
+				"id": by[1],
+			}
+
+		if key == PPQN:
+
+			return {
+				"type": "ppqn",
+				"ppqn": settings.ppqn,
+				"fastest_ratio": picoclock.core.ratio.to_text(picoclock.core.ratio.fastest(settings.ppqn)),
 				"by": by[0],
 				"id": by[1],
 			}
@@ -792,6 +807,9 @@ class App:
 			else:
 				clock.set_tempo(message.get("value"), by)
 
+		elif do == "ppqn":
+			clock.set_ppqn(message.get("value"), by)
+
 		elif do == "output":
 			clock.set_output(message.get("index"), message.get("name"), message.get("value"), by)
 
@@ -866,6 +884,9 @@ class App:
 			# The page is showing what it asked for, so send it how things really stand.
 			if do == "tempo":
 				page.stale.add(TEMPO)
+
+			elif do == "ppqn":
+				page.stale.add(PPQN)
 
 			elif do == "output":
 

@@ -11,8 +11,7 @@ stopped the clock the moment it was pressed, so anyone who only meant to stop
 lets go long before. From two seconds both lights flash fast to warn, and
 once the settings are back they stay lit until the button is let go.
 Otherwise the Pico's own light comes on once a beat while the clock runs, and
-the panel LED flashes with output 1 by itself, and is only told here when the
-tempo changes, so its flash stays a quarter of a beat long.
+the player flashes the tempo LED on every beat by itself.
 
 The hold and the lights are the first core's work, and none of it is urgent.
 The stop pin is looked at every few milliseconds from the main loop. It also
@@ -56,18 +55,18 @@ class Panel:
 
 	def __init__ (self, clock, player, inputs: "dict | None" = None, light=None, led=None) -> None:
 
-		"""Set the pins up as inputs, the light as off, and the panel LED flashing.
+		"""Set the pins up as inputs and the light as off.
 
 		`inputs` gives a (pin, pressed is low) for each of "play/pause" and
 		"stop" that has a button, and is the wiring in `board` unless given.
 		`light` is anything with a `value` to set, and is the Pico's own light
-		unless given. `led` is anything with a `follow` to give the tempo to
-		and a `show` to warn of a reset with, and is the panel LED unless given.
+		unless given. `led` is anything with a `show` to warn of a reset with,
+		and is the tempo LED unless given.
 		"""
 
 		self.clock = clock
 		self.player = player
-		self._led = led if led is not None else picoclock.device.led.Led(clock.settings.tempo)
+		self._led = led if led is not None else picoclock.device.led.Led()
 
 		if inputs is None:
 			inputs = wiring()
@@ -115,7 +114,7 @@ class Panel:
 		self._light = light
 		self._lit = False
 
-		# Whether a held stop has taken the panel LED over, and how, as `buttons.warning` says.
+		# Whether a held stop has taken the tempo LED over, and how, as `buttons.warning` says.
 		self._warned = None
 
 		if light is None:
@@ -183,8 +182,6 @@ class Panel:
 			if self._buttons[index].look(pressed, max(unseen, 0), elapsed):
 				self.clock.reset()
 
-		self._led.follow(self.clock.settings.tempo)
-
 		warned = picoclock.core.buttons.warning(self._hold)
 
 		if warned != self._warned:
@@ -210,8 +207,8 @@ class Panel:
 
 		"""Stop listening to the buttons and put the light out.
 
-		The panel LED goes on flashing with output 1, even if it was warning
-		of a reset: the clock plays on.
+		The tempo LED is given back to the player and goes on flashing on the
+		beat, even if it was warning of a reset: the clock plays on.
 		"""
 
 		for name in self._handed:

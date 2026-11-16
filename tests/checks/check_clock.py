@@ -4,6 +4,7 @@ import asyncio
 import sys
 
 import picoclock.core.clock
+import picoclock.core.ratio
 import picoclock.core.settings
 import picoclock.core.transport
 
@@ -147,13 +148,20 @@ class Watcher:
 		self.told.append((what, by))
 
 
-def make (outputs: int = 4) -> "tuple[picoclock.core.clock.Clock, Engine, Storage]":
+def make (outputs: int = 4, ppqn: int = 1) -> "tuple[picoclock.core.clock.Clock, Engine, Storage]":
 
-	"""Make a clock on a stand-in engine, with stand-in storage."""
+	"""Make a clock on a stand-in engine, with stand-in storage.
+
+	It sends one pulse a beat unless asked for more, so a ratio of the clock
+	reaches the engine as it is: the checks of how a change travels can say
+	what arrives plainly. Those of the PPQN itself ask for the default.
+	"""
 
 	engine = Engine()
 	storage = Storage()
-	clock = picoclock.core.clock.Clock(picoclock.core.settings.Settings(outputs), engine, storage)
+	settings = picoclock.core.settings.Settings(outputs)
+	settings.set_ppqn(ppqn)
+	clock = picoclock.core.clock.Clock(settings, engine, storage)
 
 	return clock, engine, storage
 
@@ -395,12 +403,16 @@ def check_a_bad_value_changes_nothing_and_tells_nobody () -> None:
 
 	assert len(said) == 9
 	assert said[0] == "The tempo has to be between 20 and 300 BPM"
-	assert said[2] == "Output 1 is the main clock, and always pulses once a beat"
+	assert said[2] == "Output 1 is the main clock, and always sends the clock itself: its pulses a beat are set in Settings"
 	assert said[3] == "There is no such output"
 
 	clock.flush()
 
-	assert clock.settings.to_dict() == picoclock.core.settings.Settings(4).to_dict()
+	# As `make` left them: the defaults, at one pulse a beat.
+	untouched = picoclock.core.settings.Settings(4)
+	untouched.set_ppqn(1)
+
+	assert clock.settings.to_dict() == untouched.to_dict()
 	assert storage.changes == 0
 	assert watcher.told == []
 	assert engine.calls == []
@@ -478,8 +490,9 @@ def check_a_reset_brings_back_the_defaults_and_forgets_what_was_saved () -> None
 
 	given = engine.calls[before:]
 
+	# Back to the default clock, of four pulses a beat, which output 1 sends and output 2 at ×1 too.
 	assert ("set_tempo", 12000) in given
-	assert ("set_ratio", 1, 1, 1) in given
+	assert ("set_ratio", 1, 4, 1) in given
 	assert len(given) == 9
 	assert engine.named("stop") == []
 
@@ -666,3 +679,63 @@ def check_running_the_clock_catches_up_with_the_buttons_by_itself () -> None:
 		await asyncio.sleep(0)
 
 	run(work())
+
+
+def check_the_engine_is_given_what_each_output_sends_a_beat () -> None:
+
+	"""At the default of four pulses a beat, output 1 sends four a beat, and a ratio of ÷2 sends two."""
+
+	clock, engine, storage = make(2, picoclock.core.ratio.DEFAULT_PPQN)
+
+	clock.set_output(1, "ratio", "1/2")
+	clock.load()
+
+	assert engine.named("set_ratio") == [("set_ratio", 0, 4, 1), ("set_ratio", 1, 2, 1)]
+
+
+def check_a_change_of_ppqn_reaches_every_output_and_moves_one_that_would_be_too_fast () -> None:
+
+	"""Every output keeps its ratio of the clock, so each is given afresh, and one that would pass 96 pulses a beat is moved to the fastest there is."""
+
+	clock, engine, storage = make(3, 4)
+	watcher = Watcher(clock)
+
+	clock.set_output(1, "ratio", "24")
+	clock.set_output(2, "ratio", "1/4")
+	clock.flush()
+
+	before = len(engine.calls)
+	changes = storage.changes
+
+	clock.set_ppqn(24, "someone")
+
+	assert clock.settings.ppqn == 24
+	assert clock.settings.outputs[1].ratio == (4, 1)
+	assert clock.settings.outputs[2].ratio == (1, 4)
+	assert watcher.told[-2:] == [(picoclock.core.clock.PPQN, "someone"), (1, "someone")]
+	assert storage.changes == changes + 1
+
+	clock.flush()
+
+	assert engine.calls[before:] == [("set_ratio", 0, 24, 1), ("set_ratio", 1, 96, 1), ("set_ratio", 2, 6, 1)]
+
+
+def check_a_ppqn_the_clock_cannot_send_is_refused_and_changes_nothing () -> None:
+
+	"""Only the rates other gear uses can be chosen, and a refused one is said in words fit to show."""
+
+	clock, engine, storage = make(2, 4)
+	watcher = Watcher(clock)
+
+	for wrong in (3, 0, 96, "4", True, None):
+
+		try:
+			clock.set_ppqn(wrong)
+		except ValueError as error:
+			assert str(error) == "The clock sends 1, 2, 4, 8, 12, 16, 24 or 48 pulses a beat"
+		else:
+			assert False, wrong
+
+	assert clock.settings.ppqn == 4
+	assert watcher.told == []
+	assert storage.changes == 0

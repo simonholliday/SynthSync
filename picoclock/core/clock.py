@@ -20,6 +20,7 @@ times a second, so a burst can never crowd the part that keeps time.
 
 import asyncio
 
+import picoclock.core.ratio
 import picoclock.core.settings
 import picoclock.core.transport
 
@@ -93,8 +94,10 @@ if TYPE_CHECKING:
 # How often the engine is given what has changed, in milliseconds.
 FLUSH_EVERY = 20
 
-# What a watcher is told has changed: one of these, or an output's number.
+# What a watcher is told has changed: one of these, or an output's number. A
+# change of PPQN is told as PPQN, then as each output whose ratio it moved.
 TEMPO = "tempo"
+PPQN = "ppqn"
 TRANSPORT = "transport"
 NETWORK = "network"
 EVERYTHING = "everything"
@@ -155,8 +158,8 @@ class Clock:
 		"""Ask to be told of every change.
 
 		The watcher is called with what changed and the `by` the change came
-		with. What changed is TEMPO, TRANSPORT, NETWORK, EVERYTHING, or the
-		number of an output, counted from 0.
+		with. What changed is TEMPO, PPQN, TRANSPORT, NETWORK, EVERYTHING, or
+		the number of an output, counted from 0.
 		"""
 
 		self._watchers.append(watcher)
@@ -200,6 +203,26 @@ class Clock:
 		self._stale_tempo = True
 		self._keep()
 		self._tell(TEMPO, by)
+
+	def set_ppqn (self, ppqn: object, by: object = None) -> None:
+
+		"""Change how many pulses the clock sends a beat.
+
+		Every output keeps its ratio of the clock, so every one changes speed
+		with it, and the engine is given each one's ratio afresh. An output
+		moved to the fastest ratio there is at the new PPQN is told of too.
+		"""
+
+		moved = self.settings.set_ppqn(ppqn)
+
+		for index in range(self.settings.count):
+			self._stale[index] |= _RATIO
+
+		self._keep()
+		self._tell(PPQN, by)
+
+		for index in moved:
+			self._tell(index, by)
 
 	def set_output (self, index: object, name: object, value: object, by: object = None) -> None:
 
@@ -345,8 +368,10 @@ class Clock:
 
 			output = settings.outputs[index]
 
+			# The engine counts in beats, so it is given what the output sends a beat.
 			if stale & _RATIO:
-				engine.set_ratio(index, output.ratio[0], output.ratio[1])
+				pulses, beats = picoclock.core.ratio.effective(output.ratio, settings.ppqn)
+				engine.set_ratio(index, pulses, beats)
 				self._stale[index] &= ~_RATIO
 
 			if stale & _WIDTH:

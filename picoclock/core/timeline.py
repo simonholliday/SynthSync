@@ -11,6 +11,11 @@ says how the pins should be set and how long to hold them before the next word.
 On the Pico a small hardware player turns words into edges, so nothing the rest
 of the program does can move a pulse.
 
+The beat has a slot of its own, after the outputs', which keeps the beat count
+and lights the tempo LED. Its pin comes after the eighth output's in every word,
+so the LED lights on the very cycle a beat's pulses begin, whatever the outputs
+are set to and whether or not any of them is switched on.
+
 Time is counted in ticks of one microsecond. For each output the scheduler keeps
 the time to its next pulse as a whole number of ticks plus an exact part, a
 fraction that is never rounded away, so the timing can't drift however long it
@@ -31,6 +36,17 @@ FASTEST_TEMPO = 30000
 # given eight words ahead, so this bounds how long a change takes to be heard:
 # 20 ms at most, and less when the outputs are busy.
 HOLD_LIMIT = 2500
+
+# The most outputs a timeline drives. A word's low bits carry their pins first,
+# then the tempo LED's, then one kept for MIDI out, which isn't sent yet.
+MOST_OUTPUTS = 8
+LED_BIT = 1 << MOST_OUTPUTS
+PIN_BITS = MOST_OUTPUTS + 2
+
+# The tempo LED is lit for a quarter of each beat, so it looks the same at every
+# tempo, but never longer than this many ticks: a tenth of a second, which is a
+# quarter beat at 150 BPM. At 300 BPM it is 50 ms.
+LED_LONGEST = 100000
 
 # A pulse lasts this many ticks unless an output asks for something else.
 PULSE_TICKS = 10000
@@ -82,17 +98,21 @@ class Timeline:
 	at any time, running or not.
 	"""
 
-	def __init__ (self, outputs: int, cycles_per_tick: int = 150, overhead_cycles: int = 4, pin_bits: int = 9) -> None:
+	def __init__ (self, outputs: int, cycles_per_tick: int = 150, overhead_cycles: int = 4, pin_bits: int = PIN_BITS) -> None:
 
 		"""Make a stopped timeline for this many outputs, at 120 BPM with every ratio at one pulse a beat.
 
 		The other three numbers describe the player's words: how many of its
 		clock cycles make one tick, how many cycles it spends fetching a word,
-		and how many of a word's low bits carry the pins.
+		and how many of a word's low bits carry the pins. Those have room for
+		the eight outputs and the tempo LED at least.
 		"""
 
-		if outputs < 1 or outputs > pin_bits:
-			raise ValueError("A timeline drives between 1 and %d outputs" % pin_bits)
+		if outputs < 1 or outputs > MOST_OUTPUTS:
+			raise ValueError("A timeline drives between 1 and %d outputs" % MOST_OUTPUTS)
+
+		if pin_bits <= MOST_OUTPUTS:
+			raise ValueError("A word needs a pin bit for each of %d outputs and the tempo LED" % MOST_OUTPUTS)
 
 		# One slot for each output, and a last one that follows the beat itself.
 		slots = outputs + 1
@@ -135,8 +155,12 @@ class Timeline:
 		self.role = array.array("i", [CLOCK] * slots)
 		self.muted = array.array("i", blank)
 
-		# The bit each slot drives in a word. The beat slot drives none.
+		# The bit each slot drives in a word. The beat slot drives none of its own
+		# here: its `fall` times the lead, so the tempo LED it lights is timed in
+		# `led_fall` instead, the time until the LED goes out, or -1 when it is out.
 		self.bit = array.array("i", [1 << index for index in range(outputs)] + [0])
+		self.led_fall = -1
+		self.led_width = LED_LONGEST
 
 		# Where _muldiv leaves its answer: the whole part, then the remainder.
 		self._answer = array.array("i", [0, 0])
@@ -161,6 +185,16 @@ class Timeline:
 
 		for slot in range(slots):
 			self._load(slot)
+
+		self._size_led()
+
+	def _size_led (self) -> None:
+
+		"""Work out how long the tempo LED stays lit at the present tempo: a quarter of a beat, but no longer than LED_LONGEST."""
+
+		width = self.period[self.master] >> 2
+
+		self.led_width = width if width < LED_LONGEST else LED_LONGEST
 
 	def _muldiv (self, count: int, each: int, extra: int, divisor: int) -> None:
 
@@ -347,6 +381,9 @@ class Timeline:
 			self._load(slot)
 			self._trim(slot)
 
+		# A flash already lit keeps its length, which is never more than a quarter of any beat.
+		self._size_led()
+
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 	def set_ratio (self, output: int, pulses: int, beats: int) -> None:
@@ -495,6 +532,7 @@ class Timeline:
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 		self.mask = 0
+		self.led_fall = -1
 		self.beat = 0
 		self.running = True
 		self.paused = False
@@ -648,11 +686,12 @@ class Timeline:
 
 	def stop (self) -> None:
 
-		"""Set every output low and forget the position. Stop pulses then fire."""
+		"""Set every output and the tempo LED low and forget the position. Stop pulses then fire."""
 
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 		self.mask = 0
+		self.led_fall = -1
 		self.beat = 0
 		self.running = False
 		self.paused = False
@@ -679,6 +718,10 @@ class Timeline:
 		"""
 
 		if self.running and not self.paused:
+			return False
+
+		# A flash of the tempo LED begun before a pause finishes, as a pulse does.
+		if self.led_fall >= 0:
 			return False
 
 		for slot in range(self.slots):
@@ -747,6 +790,12 @@ class Timeline:
 		last = slots - 1
 		mask = self.mask
 		hold = HOLD_LIMIT
+		led_fall = self.led_fall
+
+		# The tempo LED goes out before anything rises, as each slot's pin does.
+		if led_fall == 0:
+			mask &= ~LED_BIT
+			led_fall = -1
 
 		for slot in range(slots):
 
@@ -776,6 +825,10 @@ class Timeline:
 				if slot == last:
 					self.beat += 1
 
+					# Every beat lights the tempo LED, whatever the outputs are doing.
+					mask |= LED_BIT
+					led_fall = self.led_width
+
 				elif not muted[slot]:
 					if mask & bit[slot]:
 						self.merged += 1
@@ -798,6 +851,9 @@ class Timeline:
 			if drop > 0 and drop < hold:
 				hold = drop
 
+		if led_fall > 0 and led_fall < hold:
+			hold = led_fall
+
 		for slot in range(slots):
 
 			if until[slot] > 0:
@@ -806,6 +862,10 @@ class Timeline:
 			if fall[slot] > 0:
 				fall[slot] -= hold
 
+		if led_fall > 0:
+			led_fall -= hold
+
+		self.led_fall = led_fall
 		self.mask = mask
 
 		return mask | ((hold * self.cycles_per_tick - self.overhead_cycles) << self.pin_bits)

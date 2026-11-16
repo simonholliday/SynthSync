@@ -3,6 +3,7 @@
 import pathlib
 import xml.dom.minidom
 
+import picoclock.core.timeline
 import picoclock.device.board
 import tools.diagrams
 
@@ -20,6 +21,12 @@ def test_the_diagrams_show_the_pins_the_board_uses () -> None:
 	assert tools.diagrams.PLAY_PAUSE == board.PLAY_PAUSE_PIN
 	assert tools.diagrams.STOP == board.STOP_PIN
 	assert tools.diagrams.TEMPO_LED == board.LED_PIN
+
+	# The player lights the tempo LED from the bit after the eighth output's, and MIDI out is to have the one after that.
+	assert board.LED_PIN == board.FIRST_OUTPUT_PIN + picoclock.core.timeline.MOST_OUTPUTS
+	assert board.MIDI_PIN == board.LED_PIN + 1
+	assert board.MOST_OUTPUTS == picoclock.core.timeline.MOST_OUTPUTS
+	assert board.MIDI_PIN - board.FIRST_OUTPUT_PIN < picoclock.core.timeline.PIN_BITS
 
 	for pin in range(board.FIRST_OUTPUT_PIN, board.FIRST_OUTPUT_PIN + board.MOST_OUTPUTS):
 		assert pin in tools.diagrams.HEADER_PIN, pin

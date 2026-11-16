@@ -67,7 +67,7 @@ def check_a_pulse_already_begun_finishes_and_no_new_one_begins () -> None:
 	held.play_until(502500)
 
 	assert held.tick == 502500
-	assert held.pins == 0b1011
+	assert held.pins == 0b1011 | picoclock.core.timeline.LED_BIT
 
 	paused_at = held.tick
 	begun = [len(held.rises[output]) for output in range(len(RATIOS))]
@@ -76,7 +76,15 @@ def check_a_pulse_already_begun_finishes_and_no_new_one_begins () -> None:
 
 	assert not held.timeline.quiet()
 
+	# The pulses end within 10 ms, and the tempo LED's flash, lit for a quarter of a beat up to 100 ms, after them.
 	held.play_for(40000)
+
+	assert held.pins == picoclock.core.timeline.LED_BIT
+
+	# Nothing is left to play only once the flash is over, or the player would stop with the LED lit.
+	assert not held.timeline.quiet()
+
+	held.play_for(60000)
 
 	assert held.timeline.quiet()
 	assert held.pins == 0

@@ -23,13 +23,13 @@ import sys
 IMAGES = pathlib.Path(__file__).parent.parent / "docs" / "images"
 
 # The Pico's header pin for each GPIO that PicoClock uses, as the official pinout numbers them.
-HEADER_PIN = {2: 4, 3: 5, 4: 6, 5: 7, 6: 9, 7: 10, 8: 11, 9: 12, 18: 24, 21: 27, 22: 29}
+HEADER_PIN = {2: 4, 3: 5, 4: 6, 5: 7, 6: 9, 7: 10, 8: 11, 9: 12, 10: 14, 21: 27, 22: 29}
 
 # Where each thing is wired, which must match `picoclock/device/board.py`.
 FIRST_OUTPUT = 2
 PLAY_PAUSE = 21
 STOP = 22
-TEMPO_LED = 18
+TEMPO_LED = 10
 
 # The part values, as the wiring guide gives them.
 INTO_BASE = "10 kΩ"
@@ -392,9 +392,9 @@ def buttons () -> Sheet:
 
 def tempo_led () -> Sheet:
 
-	"""Draw the tempo LED, which flashes on every beat, with the main clock."""
+	"""Draw the tempo LED, which flashes on every beat."""
 
-	sheet = Sheet(620, 250, "The tempo LED", "GP18 goes through a 1 kilohm resistor and an LED to ground.")
+	sheet = Sheet(620, 250, "The tempo LED", "GP10 goes through a 1 kilohm resistor and an LED to ground.")
 
 	at = sheet.pin((150, 96), TEMPO_LED)
 	turn = (at[0] + 120, at[1])
@@ -402,7 +402,7 @@ def tempo_led () -> Sheet:
 	sheet.wire(sheet.resistor(at, FOR_LED), turn)
 	sheet.ground(sheet.led(turn))
 	sheet.words(turn[0] + 44, at[1] + 38, "LED")
-	sheet.words(24, 228, "It flashes on every beat, with output 1. Pin 23, next to this pin, is a GND pin.", kind="note")
+	sheet.words(24, 228, "It flashes on every beat. Pin 13, next to this pin, is a GND pin.", kind="note")
 
 	return sheet
 

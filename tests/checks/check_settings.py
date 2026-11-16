@@ -409,3 +409,98 @@ def check_a_reset_goes_back_to_the_defaults () -> None:
 	assert settings.own_password == "picoclock"
 	assert settings.network_name == ""
 	assert len(settings.outputs) == 2
+
+
+def check_the_clock_sends_four_pulses_a_beat_until_told_otherwise () -> None:
+
+	"""A new PicoClock, a reset and a file saved before there was a PPQN all give the default of four."""
+
+	settings = picoclock.core.settings.Settings(2)
+
+	assert settings.ppqn == 4
+
+	settings.set_ppqn(24)
+	settings.reset()
+
+	assert settings.ppqn == 4
+
+	settings.set_ppqn(24)
+
+	assert settings.load_text("{\"tempo\": 9000, \"outputs\": [{\"ratio\": \"1\"}, {\"ratio\": \"1/4\"}]}") == []
+	assert settings.ppqn == 4
+	assert settings.outputs[1].ratio == (1, 4)
+
+
+def check_the_ppqn_is_saved_and_loaded_before_the_ratios_it_allows () -> None:
+
+	"""A ratio only allowed at the saved PPQN still loads, because the PPQN is loaded first."""
+
+	settings = picoclock.core.settings.Settings(2)
+	settings.set_ppqn(1)
+	settings.set_output(1, "ratio", "96")
+
+	saved = settings.to_text()
+
+	assert json.loads(saved)["ppqn"] == 1
+	assert json.loads(saved)["version"] == 2
+
+	again = picoclock.core.settings.Settings(2)
+
+	assert again.load_text(saved) == []
+	assert again.ppqn == 1
+	assert again.outputs[1].ratio == (96, 1)
+
+
+def check_a_ratio_is_checked_against_the_ppqn () -> None:
+
+	"""At four pulses a beat the fastest ratio is ×24, and a refusal says why."""
+
+	settings = picoclock.core.settings.Settings(2)
+
+	assert refusal(settings, "output", 1, "ratio", "24") == ""
+	assert refusal(settings, "output", 1, "ratio", "25") == "At 4 PPQN the fastest ratio is ×24"
+	assert settings.outputs[1].ratio == (24, 1)
+
+	# At one pulse a beat, a ratio past ×24 is allowed, and snap takes it to the nearest value past ×24 too.
+	settings.set_output(1, "snap", False)
+	settings.set_ppqn(1)
+	settings.set_output(1, "ratio", "30")
+
+	assert settings.set_output(1, "snap", True) == ("snap", "ratio")
+	assert settings.outputs[1].ratio == (32, 1)
+
+
+def check_a_change_of_ppqn_moves_only_the_outputs_that_would_be_too_fast () -> None:
+
+	"""Each output keeps its ratio of the clock, unless that would pass 96 pulses a beat."""
+
+	settings = picoclock.core.settings.Settings(4)
+	settings.set_ppqn(1)
+	settings.set_output(1, "ratio", "96")
+	settings.set_output(2, "ratio", "4")
+	settings.set_output(3, "ratio", "3/2")
+
+	assert settings.set_ppqn(24) == [1]
+	assert settings.outputs[1].ratio == (4, 1)
+	assert settings.outputs[2].ratio == (4, 1)
+	assert settings.outputs[3].ratio == (3, 2)
+	assert settings.set_ppqn(48) == [1, 2]
+	assert settings.outputs[0].ratio == (1, 1)
+	assert settings.set_ppqn(1) == []
+
+	for wrong in (3, 0, 96, "4", True, None, 4.0):
+		assert refusal_of_ppqn(settings, wrong) == "The clock sends 1, 2, 4, 8, 12, 16, 24 or 48 pulses a beat", wrong
+
+	assert settings.ppqn == 1
+
+
+def refusal_of_ppqn (settings: picoclock.core.settings.Settings, ppqn: object) -> str:
+
+	"""Try to set the PPQN and give the message it was refused with, or nothing if it was taken."""
+
+	try:
+		settings.set_ppqn(ppqn)
+	except ValueError as error:
+		return str(error)
+
+	return ""

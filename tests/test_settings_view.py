@@ -770,3 +770,41 @@ def test_the_settings_fit_a_phone_with_everything_open (phone: "playwright.sync_
 			box = phone.locator(selector).nth(index).bounding_box()
 
 			assert box is not None and box["height"] >= 44, selector
+
+
+def test_the_clocks_pulses_a_beat_are_chosen_here_and_show_on_the_main_view (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""Each rate other gear uses is offered with the note it gives, four is chosen to begin with, and a choice reaches the clock, output 1's line and any output it had to slow."""
+
+	rates = phone.locator("#rates .rate")
+
+	assert rates.count() == 8
+	assert [text.strip() for text in rates.all_inner_texts()] == ["1 · quarters", "2 · 8ths", "4 · 16ths", "8 · 32nds", "12", "16", "24 · DIN sync", "48"]
+	assert phone.locator("#rates input:checked").get_attribute("value") == "4"
+
+	stand.change({"do": "output", "index": 1, "name": "ratio", "value": "24"})
+
+	rates.filter(has_text="24 · DIN sync").tap()
+
+	assert tests.pages.eventually(lambda: stand.now("ppqn")["ppqn"] == 24)
+	assert stand.now("output", 1)["ratio"] == "4"
+	assert phone.locator("#rates input:checked").get_attribute("value") == "24"
+	assert text(phone, "#ppqn-problem") == ""
+
+	phone.tap("#to-main")
+
+	assert tests.pages.eventually(lambda: text(phone, ".output:nth-child(1) .clock-words") == "main clock · 24 PPQN")
+	assert phone.locator(".output:nth-child(2) .ratio-text").input_value() == "×4"
+
+
+def test_a_choice_of_pulses_a_beat_made_elsewhere_shows_here (chromium: "playwright.sync_api.Browser", phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""Another page, or a reset, moves the choice shown here."""
+
+	stand.change({"do": "ppqn", "value": 2})
+
+	assert tests.pages.eventually(lambda: phone.locator("#rates input:checked").get_attribute("value") == "2")
+
+	stand.change({"do": "reset"})
+
+	assert tests.pages.eventually(lambda: phone.locator("#rates input:checked").get_attribute("value") == "4")

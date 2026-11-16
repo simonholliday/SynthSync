@@ -17,7 +17,7 @@ large heap straight after each change, `pause` pauses and carries on a dozen tim
 starts and stops over and over, `position` asks where the clock has got to
 and checks the answers against the Pico's own clock, `inputs` presses each
 button through the jumper and watches both lights, `led` times every flash of
-the panel LED against output 1, `powerup` starts the clock
+the tempo LED against the beat, `powerup` starts the clock
 as switching on does, from good, damaged and missing settings, `network`
 brings the Pico's own WiFi network up, changes its password and looks for
 other networks, `page` asks for the page and its API over and over, and `save`

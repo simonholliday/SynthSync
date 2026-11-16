@@ -92,6 +92,43 @@ export function along (text, slowest, fastest) {
 
 
 /*
+Give the musical values as ratios of the clock, slowest first, when it sends `ppqn` pulses a beat.
+
+The Pico lists them once, as pulses a beat, since they are the same notes at
+every PPQN. Divided by the PPQN, they are what a knob stops on: at 4, a
+quarter note is "1/4". Those slower than `slowest` or faster than `fastest`
+are left out, as the Pico would refuse them.
+*/
+export function ofClock (beatSnaps, ppqn, slowest, fastest) {
+
+	const low = toNumber(slowest) - 1e-9;
+	const high = toNumber(fastest) + 1e-9;
+	const found = [];
+
+	for (const snap of beatSnaps) {
+
+		const [pulses, beats] = parts(snap);
+		let first = pulses;
+		let second = beats * ppqn;
+
+		while (second) {
+			[first, second] = [second, first % second];
+		}
+
+		const top = pulses / first;
+		const bottom = beats * ppqn / first;
+		const text = bottom === 1 ? String(top) : top + "/" + bottom;
+
+		if (toNumber(text) >= low && toNumber(text) <= high) {
+			found.push(text);
+		}
+	}
+
+	return found;
+}
+
+
+/*
 Step through the musical values: give the one `steps` on from a ratio.
 
 `snaps` lists them from slowest to fastest. The ratio needn't be one of them:

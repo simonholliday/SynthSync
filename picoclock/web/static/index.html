@@ -44,6 +44,13 @@
 
 	<main id="settings-view" hidden inert>
 
+		<section id="clock" class="panel" aria-labelledby="clock-title">
+			<h2 id="clock-title">Clock</h2>
+			<p class="note" id="clock-note">How many pulses output 1 sends on each beat (PPQN). Every other output is a ratio of it. 4 suits most step sequencers: one step for each 16th note.</p>
+			<div id="rates" class="rates" role="radiogroup" aria-labelledby="clock-title" aria-describedby="clock-note"></div>
+			<p id="ppqn-problem" class="problem" role="alert"></p>
+		</section>
+
 		<section id="wifi" class="panel" aria-labelledby="wifi-title">
 			<h2 id="wifi-title">WiFi</h2>
 			<p id="wifi-status"></p>
@@ -138,7 +145,7 @@
 					<input class="ratio-text" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
 					<span class="ratio-kind" aria-hidden="true"></span>
 				</div>
-				<p class="fixed-ratio">×1 <span>main clock</span></p>
+				<p class="fixed-ratio">×1 <span class="clock-words">main clock</span></p>
 				<label class="switch snap-switch"><input class="snap" type="checkbox"><span>Snap</span></label>
 				<button class="more" type="button" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
 			</div>

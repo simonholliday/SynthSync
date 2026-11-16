@@ -143,24 +143,32 @@ def _levels () -> int:
 	return int(ptr32(0xD0000004)[0]) & 0x3FFFFFFF
 
 
-def _program (outputs: int):
+def _program ():
 
-	"""Build the player's PIO program for this many output pins."""
+	"""Build the player's PIO program, which sets every pin a word carries: the eight outputs', the tempo LED's and MIDI's.
+
+	The program sees only names from here, not the module's, so the widths are
+	taken out first.
+	"""
+
+	pins_wide = picoclock.core.timeline.PIN_BITS
+	hold_wide = 32 - pins_wide
 
 	def player ():
 
-		# A word is the pins in its low 9 bits and the hold above them. One turn
-		# takes the hold plus 4 cycles, which the scheduler allows for.
+		# A word is the pins in its low bits and the hold above them. One turn
+		# takes the hold plus 4 cycles, which the scheduler allows for. The hold
+		# needs 19 bits at most: a word lasts 2,500 ticks or less.
 		wrap_target()
 		pull(block)
-		out(pins, 9)
-		out(x, 23)
+		out(pins, pins_wide)
+		out(x, hold_wide)
 		label("hold")
 		jmp(x_dec, "hold")
 		wrap()
 
 	return rp2.asm_pio(
-		out_init = (rp2.PIO.OUT_LOW,) * outputs,
+		out_init = (rp2.PIO.OUT_LOW,) * pins_wide,
 		out_shiftdir = rp2.PIO.SHIFT_RIGHT,
 		fifo_join = rp2.PIO.JOIN_TX,
 	)(player)
@@ -186,7 +194,14 @@ class Player:
 			raise ValueError("The player needs a system clock that is a whole number of megahertz")
 
 		self.timeline = picoclock.core.timeline.Timeline(outputs, cycles_per_tick=cycles)
-		self.machine = rp2.StateMachine(0, _program(outputs), freq=machine.freq(), out_base=machine.Pin(first_pin))
+		self.machine = rp2.StateMachine(0, _program(), freq=machine.freq(), out_base=machine.Pin(first_pin))
+
+		# The program takes every pin a word carries. Those of outputs not fitted,
+		# and MIDI's, which isn't sent yet, are given back as plain inputs, so the
+		# player leaves them alone. The tempo LED's, after the eighth output's, it keeps.
+		for bit in range(outputs, picoclock.core.timeline.PIN_BITS):
+			if bit != picoclock.core.timeline.MOST_OUTPUTS:
+				machine.Pin(first_pin + bit, machine.Pin.IN)
 
 		# Commands waiting for the second core: four numbers each.
 		self._queue = array.array("i", [0] * (_WAITING * 4))

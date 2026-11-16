@@ -1,4 +1,4 @@
-"""Everything PicoClock remembers: the tempo, each output's settings, and the network.
+"""Everything PicoClock remembers: the tempo, the clock's PPQN, each output's settings, and the network.
 
 One model serves the page, the saved file and the laptop stand-in. A change is
 checked as it's made and refused with a message the page can show. The saved
@@ -22,8 +22,8 @@ TYPE_CHECKING = False
 if TYPE_CHECKING:
 	import typing
 
-# Raised each time the saved form changes shape.
-VERSION = 1
+# Raised each time the saved form changes shape. 2 added the clock's PPQN.
+VERSION = 2
 
 # Tempo is held in hundredths of a BPM: 12000 is 120 BPM.
 DEFAULT_TEMPO = 12000
@@ -42,7 +42,7 @@ DEFAULT_HOST_NAME = "picoclock"
 
 _DIGITS = "0123456789"
 _NAME_CHARACTERS = "abcdefghijklmnopqrstuvwxyz0123456789-"
-_MAIN_CLOCK = "Output 1 is the main clock, and always pulses once a beat"
+_MAIN_CLOCK = "Output 1 is the main clock, and always sends the clock itself: its pulses a beat are set in Settings"
 
 
 def parse_tempo (text: str) -> int:
@@ -126,7 +126,7 @@ class Output:
 
 class Settings:
 
-	"""The tempo, every output's settings and the network settings, with their checks."""
+	"""The tempo, the clock's PPQN, every output's settings and the network settings, with their checks."""
 
 	def __init__ (self, outputs: int) -> None:
 
@@ -134,6 +134,7 @@ class Settings:
 
 		self.count = outputs
 		self.tempo = DEFAULT_TEMPO
+		self.ppqn = picoclock.core.ratio.DEFAULT_PPQN
 		self.outputs = [Output() for _ in range(outputs)]
 		self.own_password = DEFAULT_PASSWORD
 		self.host_name = DEFAULT_HOST_NAME
@@ -145,6 +146,7 @@ class Settings:
 		"""Go back to the defaults, as a factory reset does."""
 
 		self.tempo = DEFAULT_TEMPO
+		self.ppqn = picoclock.core.ratio.DEFAULT_PPQN
 		self.outputs = [Output() for _ in range(self.count)]
 		self.own_password = DEFAULT_PASSWORD
 		self.host_name = DEFAULT_HOST_NAME
@@ -162,6 +164,35 @@ class Settings:
 			raise ValueError("The tempo has to be between 20 and 300 BPM")
 
 		self.tempo = tempo
+
+	def set_ppqn (self, ppqn: object) -> "list[int]":
+
+		"""Set how many pulses the clock sends a beat, and give the outputs whose ratio had to move with it.
+
+		Every output's ratio is a ratio of the clock, so each one keeps its
+		ratio and changes speed with the clock. One that would then pass the
+		most pulses a beat any output may send is moved to the fastest ratio
+		there is at the new PPQN, which is a snap value.
+		"""
+
+		if isinstance(ppqn, bool) or not isinstance(ppqn, int) or ppqn not in picoclock.core.ratio.PPQNS:
+			choices = ["%d" % each for each in picoclock.core.ratio.PPQNS]
+			raise ValueError("The clock sends %s or %s pulses a beat" % (", ".join(choices[:-1]), choices[-1]))
+
+		top = picoclock.core.ratio.fastest(ppqn)
+		moved = []
+
+		for index in range(self.count):
+
+			output = self.outputs[index]
+
+			if picoclock.core.ratio.compare(output.ratio, top) > 0:
+				output.ratio = top
+				moved.append(index)
+
+		self.ppqn = ppqn
+
+		return moved
 
 	def set_output (self, index: object, name: object, value: object) -> "tuple[str, ...]":
 
@@ -184,7 +215,7 @@ class Settings:
 			if not isinstance(value, str):
 				raise ValueError("A ratio is typed as a number such as 1.5, or as a fraction such as 4/3")
 
-			ratio = picoclock.core.ratio.parse(value)
+			ratio = picoclock.core.ratio.parse(value, self.ppqn)
 
 			if index == 0 and ratio != picoclock.core.ratio.ONE:
 				raise ValueError(_MAIN_CLOCK)
@@ -201,7 +232,7 @@ class Settings:
 				# Turned on, snap takes a ratio set freely to the nearest value the knob would have stopped on.
 				if value and not output.snap:
 
-					nearest = picoclock.core.ratio.nearest_snap(output.ratio)
+					nearest = picoclock.core.ratio.nearest_snap(output.ratio, self.ppqn)
 
 					if nearest != output.ratio:
 						output.ratio = nearest
@@ -309,6 +340,7 @@ class Settings:
 		return {
 			"version": VERSION,
 			"tempo": self.tempo,
+			"ppqn": self.ppqn,
 			"outputs": outputs,
 			"own_password": self.own_password,
 			"host_name": self.host_name,
@@ -334,6 +366,12 @@ class Settings:
 
 		if "tempo" in data:
 			_attempt(problems, "tempo", lambda: self.set_tempo(data["tempo"]))
+
+		# Before the outputs, whose ratios are checked against it. A file saved
+		# before there was a PPQN has none, and its ratios are read as ratios of
+		# the default clock.
+		if "ppqn" in data:
+			_attempt(problems, "ppqn", lambda: self.set_ppqn(data["ppqn"]))
 
 		saved = data.get("outputs", [])
 

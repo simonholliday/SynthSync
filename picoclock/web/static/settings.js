@@ -1,7 +1,7 @@
 /*
-The page's second view, for the things that are set once: which WiFi PicoClock
-is on, the password of its own network, starting again as new, and how it is
-doing.
+The page's second view, for the things that are set once: how many pulses the
+clock sends a beat, which WiFi PicoClock is on, the password of its own
+network, starting again as new, and how it is doing.
 
 As everywhere on the page, nothing here decides anything. It asks the Pico and
 shows the answer. A form stays open until the Pico has taken what it holds, so
@@ -13,6 +13,9 @@ const STRENGTHS = [[-55, "strong"], [-67, "good"], [-75, "fair"]];
 
 // Where the page is on PicoClock's own network, which MicroPython chooses.
 const OWN_ADDRESS = "192.168.4.1";
+
+// The note each of the clock's pulses a beat gives, where it is one a musician would name, or what uses it.
+const RATE_WORDS = {1: "quarters", 2: "8ths", 4: "16ths", 8: "32nds", 24: "DIN sync"};
 
 
 /* Find one of the page's elements by its id. */
@@ -117,6 +120,8 @@ export class Settings {
 	hello (fixed) {
 
 		find("version").textContent = "PicoClock " + fixed.version;
+		find("rates").replaceChildren(...fixed.ppqns.map((rate) => this.rate(rate)));
+		find("ppqn-problem").textContent = "";
 		find("networks").replaceChildren();
 		find("scan-status").textContent = "";
 
@@ -126,10 +131,48 @@ export class Settings {
 		this.confirmReset(false);
 	}
 
+	/* Make the choice of one of the clock's pulses a beat, which asks for it as soon as it is chosen. */
+	rate (rate) {
+
+		const choice = document.createElement("label");
+		const box = document.createElement("input");
+		const words = document.createElement("span");
+		const number = document.createElement("b");
+
+		box.type = "radio";
+		box.name = "ppqn";
+		box.value = String(rate);
+		box.setAttribute("aria-label", rate + " PPQN" + (RATE_WORDS[rate] ? ", " + RATE_WORDS[rate] : ""));
+
+		box.addEventListener("change", () => {
+
+			find("ppqn-problem").textContent = "";
+			this.link.send({do: "ppqn", value: rate}, "ppqn", null);
+		});
+
+		number.textContent = String(rate);
+		words.append(number);
+
+		if (RATE_WORDS[rate]) {
+			words.append(" · " + RATE_WORDS[rate]);
+		}
+
+		choice.className = "rate";
+		choice.append(box, words);
+
+		return choice;
+	}
+
 	/* Take one message from the Pico that is about this view. */
 	hear (message) {
 
-		if (message.type === "network") {
+		if (message.type === "ppqn") {
+
+			for (const box of find("rates").querySelectorAll("input")) {
+				box.checked = Number(box.value) === message.ppqn;
+			}
+
+		} else if (message.type === "network") {
 
 			const mine = message.by === this.link.me;
 			const yes = mine && this.asked === "join";
@@ -176,6 +219,7 @@ export class Settings {
 	problem (shown, words) {
 
 		const place = {
+			ppqn: "ppqn-problem",
 			join: "join-problem",
 			host_name: "host-problem",
 			own_password: "own-problem",

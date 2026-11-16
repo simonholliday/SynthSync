@@ -230,11 +230,17 @@ const now = {
 	fixed: null,
 	tempo: 12000,
 	tempoText: "120",
+
+	// The clock's pulses a beat, and the fastest ratio an output can have at that.
+	ppqn: 4,
+	fastestRatio: "24",
+
 	transport: "stopped",
 	outputs: [],
 };
 
-// The musical values, as the Pico lists them: their texts in order, and each one's label.
+// The musical values, as pulses a beat as the Pico lists them, and as ratios of the clock at its pulses a beat, which a knob stops on.
+let beatSnaps = [];
 let snaps = [];
 
 // Each output's row: its element and the controls in it.
@@ -307,7 +313,7 @@ function hear (message) {
 		const transport = message.now.find((each) => each.type === "transport");
 
 		now.fixed = message.fixed;
-		snaps = message.fixed.snaps.map((snap) => snap.ratio);
+		beatSnaps = message.fixed.snaps;
 
 		// This is how things already stand, not a start or a stop that has just happened.
 		now.transport = transport ? transport.state : "stopped";
@@ -329,6 +335,19 @@ function hear (message) {
 		now.tempo = message.tempo;
 		now.tempoText = message.text;
 		showTempo();
+
+	} else if (message.type === "ppqn") {
+
+		if (link.stale(message, "ppqn")) {
+			return;
+		}
+
+		// Every output is a ratio of the clock, so its light and the reach of its knob change with it.
+		now.ppqn = message.ppqn;
+		now.fastestRatio = message.fastest_ratio;
+		snaps = ratio.ofClock(beatSnaps, now.ppqn, now.fixed.slowest_ratio, now.fastestRatio);
+		rows.forEach((row, index) => showOutput(index));
+		settings.hear(message);
 
 	} else if (message.type === "output") {
 
@@ -495,6 +514,7 @@ function build (count) {
 			pulse: element.querySelector(".pulse"),
 			pulseField: element.querySelector(".pulse-field"),
 			kind: element.querySelector(".ratio-kind"),
+			clockWords: element.querySelector(".clock-words"),
 			knob: null,
 		};
 
@@ -509,7 +529,7 @@ function build (count) {
 
 		if (index === 0) {
 
-			// Output 1 is the main clock: always a clock, always once a beat.
+			// Output 1 is the main clock: always a clock, sending the clock itself at its pulses a beat.
 			element.querySelector(".ratio-knob").remove();
 			element.querySelector(".snap-switch").remove();
 			element.querySelector(".role-field").remove();
@@ -525,7 +545,7 @@ function build (count) {
 
 			row.knob = new Knob(element.querySelector(".ratio-knob"), {
 				label: "Output " + number + " multivider",
-				origin: ratio.along("1", now.fixed.slowest_ratio, now.fixed.fastest_ratio),
+				origin: ratio.along("1", now.fixed.slowest_ratio, now.fastestRatio),
 				onStep: (steps) => turnRatio(index, steps),
 			});
 
@@ -644,6 +664,7 @@ function showOutput (index) {
 	}
 
 	if (index === 0) {
+		row.clockWords.textContent = "main clock · " + now.ppqn + " PPQN";
 		return;
 	}
 
@@ -659,13 +680,15 @@ function showOutput (index) {
 	row.knob.disable(!clock);
 	row.knob.pixelsPerStep = output.snap ? SNAP_PIXELS : FREE_PIXELS;
 	row.knob.bigStep = output.snap ? 3 : 12;
-	row.knob.point(ratio.along(output.ratio, now.fixed.slowest_ratio, now.fixed.fastest_ratio));
+	// The knob reaches as far as the clock's pulses a beat allow, so ×1 sits further along it at more of them.
+	row.knob.origin = ratio.along("1", now.fixed.slowest_ratio, now.fastestRatio);
+	row.knob.point(ratio.along(output.ratio, now.fixed.slowest_ratio, now.fastestRatio));
 
 	row.knob.say(
 		inWords(output.label),
 		Number(ratio.toNumber(output.ratio).toFixed(4)),
 		Number(ratio.toNumber(now.fixed.slowest_ratio).toFixed(4)),
-		ratio.toNumber(now.fixed.fastest_ratio),
+		ratio.toNumber(now.fastestRatio),
 	);
 
 	if (document.activeElement !== row.text) {
@@ -685,7 +708,7 @@ function turnRatio (index, steps) {
 
 	const next = output.snap
 		? ratio.stepSnap(output.ratio, snaps, steps)
-		: ratio.stepFree(output.ratio, steps, now.fixed.fastest_ratio);
+		: ratio.stepFree(output.ratio, steps, now.fastestRatio);
 
 	if (next === output.ratio) {
 		return;
@@ -848,8 +871,9 @@ const lights = {
 			return false;
 		}
 
-		// How long one pulse and the gap after it last, and how far into that this moment is.
-		const each = ratio.toNumber(output.ratio);
+		// How long one pulse and the gap after it last, and how far into that this moment is. An output's
+		// ratio is of the clock, which sends its pulses a beat, so it pulses that many times as often.
+		const each = ratio.toNumber(output.ratio) * now.ppqn;
 		const gap = 6000000 / now.tempo / each;
 		const into = ((position / 1000 * each) % 1) * gap;
 

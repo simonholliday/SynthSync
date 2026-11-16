@@ -349,7 +349,7 @@ def test_stepping_freely_moves_evenly_and_always_moves (laptop: "playwright.sync
 		parsed = picoclock.core.ratio.parse(after)
 
 		assert picoclock.core.ratio.compare(parsed, picoclock.core.ratio.parse(text)) > 0, (text, after)
-		assert picoclock.core.ratio.compare(parsed, picoclock.core.ratio.FASTEST) <= 0
+		assert picoclock.core.ratio.compare(parsed, picoclock.core.ratio.fastest(1)) <= 0
 
 		text = after
 		seen += 1
@@ -368,3 +368,18 @@ def test_stepping_freely_moves_evenly_and_always_moves (laptop: "playwright.sync
 
 	assert passed[23] == "0.5"
 	assert "0.25" in passed
+
+
+def test_the_page_turns_the_musical_values_into_ratios_of_the_clock_as_the_pico_does (laptop: "playwright.sync_api.Page") -> None:
+
+	"""Divided by each PPQN and trimmed to what the clock can play, the page's list is the Pico's own, value for value."""
+
+	beat_snaps = [picoclock.core.ratio.to_text(snap) for snap in picoclock.core.ratio.SNAPS]
+	slowest = picoclock.core.ratio.to_text(picoclock.core.ratio.SLOWEST)
+
+	for ppqn in picoclock.core.ratio.PPQNS:
+
+		fastest = picoclock.core.ratio.to_text(picoclock.core.ratio.fastest(ppqn))
+		page = laptop.evaluate("([snaps, ppqn, slowest, fastest]) => window.ratio.ofClock(snaps, ppqn, slowest, fastest)", [beat_snaps, ppqn, slowest, fastest])
+
+		assert page == [picoclock.core.ratio.to_text(snap) for snap in picoclock.core.ratio.snaps(ppqn)], ppqn

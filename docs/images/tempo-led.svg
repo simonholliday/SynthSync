@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 250" width="620" height="250" role="img" aria-labelledby="title about">
-<title id="title">The tempo LED</title><desc id="about">GP18 goes through a 1 kilohm resistor and an LED to ground.</desc>
+<title id="title">The tempo LED</title><desc id="about">GP10 goes through a 1 kilohm resistor and an LED to ground.</desc>
 <style>
 	.wire { fill: none; stroke: #1f2328; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 	.shape { fill: #ffffff; stroke: #1f2328; stroke-width: 2; stroke-linejoin: round; }
@@ -15,7 +15,7 @@
 <rect x="1" y="1" width="618" height="248" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
 <text class="title" x="24" y="36" text-anchor="start">The tempo LED</text>
 <rect class="pin" x="26" y="82" width="124" height="28" rx="6"/>
-<text class="name" x="88" y="101" text-anchor="middle">GP18 · pin 24</text>
+<text class="name" x="88" y="101" text-anchor="middle">GP10 · pin 14</text>
 <path class="wire" d="M150 96 L166 96 L170 89 L178 103 L186 89 L194 103 L202 89 L210 103 L214 96 L230 96"/>
 <text class="label" x="190" y="82" text-anchor="middle">1 kΩ</text>
 <path class="wire" d="M230 96 L270 96"/>
@@ -31,5 +31,5 @@
 <path class="wire" d="M261 162 L279 162"/>
 <path class="wire" d="M266 168 L274 168"/>
 <text class="label" x="314" y="134" text-anchor="start">LED</text>
-<text class="note" x="24" y="228" text-anchor="start">It flashes on every beat, with output 1. Pin 23, next to this pin, is a GND pin.</text>
+<text class="note" x="24" y="228" text-anchor="start">It flashes on every beat. Pin 13, next to this pin, is a GND pin.</text>
 </svg>

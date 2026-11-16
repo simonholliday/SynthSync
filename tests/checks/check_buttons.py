@@ -267,7 +267,7 @@ def check_holding_stop_takes_the_lights_over_from_two_seconds_and_keeps_them_lit
 	# The first two seconds leave the lights as the clock has them, which is out once stop has stopped it.
 	assert all(warned is None and not lit for now, lit, warned in seen if now < 1990)
 
-	# From two seconds the panel LED is worked as the Pico's own light is.
+	# From two seconds the tempo LED is worked as the Pico's own light is.
 	assert all(warned is not None and warned == lit for now, lit, warned in seen if now > 2010)
 
 	# On for 60 ms and off for 60 ms, from two seconds to five, is about fifty changes.
@@ -309,25 +309,3 @@ def check_letting_go_of_stop_before_five_seconds_gives_the_lights_back () -> Non
 	assert picoclock.core.buttons.warning(hold) is None
 	assert not picoclock.core.buttons.light(False, -1, hold)
 
-
-def check_the_panel_led_is_lit_for_a_quarter_of_a_beat_but_never_more_than_a_tenth_of_a_second () -> None:
-
-	led_time = picoclock.core.buttons.led_time
-
-	# A quarter of a beat at 300 BPM is 50 ms, and at 200 BPM 75 ms.
-	assert led_time(30000) == 50000
-	assert led_time(20000) == 75000
-
-	# At 150 BPM a quarter is 100 ms, and slower than that it stays at 100 ms.
-	assert led_time(15000) == 100000
-	assert led_time(12000) == 100000
-	assert led_time(2000) == 100000
-
-	# An odd tempo is within a quarter of a millisecond of a quarter of its beat.
-	for tempo in (15001, 17777, 23456, 29999):
-		quarter = 6000000000 // tempo // 4
-		assert 0 <= quarter - led_time(tempo) < 250, tempo
-
-	# Faster is never longer, so a speeding clock never sees its flashes run together.
-	for tempo in range(2000, 30001, 7):
-		assert led_time(tempo + 7) <= led_time(tempo), tempo

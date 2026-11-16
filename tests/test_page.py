@@ -428,7 +428,11 @@ def test_play_pause_tapped_twice_before_the_pico_answers_pauses_once_and_stays_p
 
 def test_a_ratio_knob_steps_through_the_musical_values (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""With snap on, each step of an output's knob is the next musical value, shown as the Pico labels it."""
+	"""With snap on, each step of an output's knob is the next musical value, shown as the Pico labels it.
+
+	At the default of four pulses a beat, ×0.75 of the clock, three pulses a
+	beat, is an 8th-note triplet.
+	"""
 
 	knob = row(phone, 2).locator(".knob")
 	text = row(phone, 2).locator(".ratio-text")
@@ -442,23 +446,63 @@ def test_a_ratio_knob_steps_through_the_musical_values (phone: "playwright.sync_
 	assert tests.pages.eventually(lambda: stand.now("output", 1)["ratio"] == "2")
 	assert knob.get_attribute("aria-valuetext") == "times 2"
 
-	for expected in ("×1.5", "×4/3", "×1", "÷1.5", "÷2"):
+	for expected in ("×1.5", "×4/3", "×1", "×0.75", "÷1.5", "÷2"):
 		phone.keyboard.press("ArrowDown")
 		assert tests.pages.eventually(lambda: text.input_value() == expected), expected
 
 	assert tests.pages.eventually(lambda: stand.now("output", 1)["ratio"] == "1/2")
 	assert knob.get_attribute("aria-valuetext") == "divided by 2"
 
-	# By finger, twelve pixels a step.
+	# By finger, twelve pixels a step: ÷1.5, ×0.75, ×1 and ×4/3.
 	x, y = tests.pages.centre(phone, ".output:nth-child(2) .knob")
 
-	tests.pages.drag_by_touch(phone, x, y, 0, -36)
+	tests.pages.drag_by_touch(phone, x, y, 0, -48)
 
 	assert tests.pages.eventually(lambda: stand.now("output", 1)["ratio"] == "4/3")
 	assert tests.pages.eventually(lambda: text.input_value() == "×4/3")
 
 	# The other outputs haven't moved.
 	assert stand.now("output", 2)["ratio"] == "1"
+
+
+def test_a_ratio_knob_stops_at_the_fastest_the_clocks_pulses_a_beat_allow (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""At four pulses a beat a knob, snapping or not, goes no further than ×24, and at one pulse a beat it goes on to ×96."""
+
+	knob = row(phone, 2).locator(".knob")
+	text = row(phone, 2).locator(".ratio-text")
+
+	stand.change({"do": "output", "index": 1, "name": "ratio", "value": "16"})
+
+	assert tests.pages.eventually(lambda: text.input_value() == "×16")
+
+	knob.focus()
+	phone.keyboard.press("ArrowUp")
+	phone.keyboard.press("ArrowUp")
+
+	assert tests.pages.eventually(lambda: stand.now("output", 1)["ratio"] == "24")
+	assert tests.pages.eventually(lambda: knob.get_attribute("aria-valuetext") == "times 24")
+	assert knob.get_attribute("aria-valuemax") == "24"
+
+	row(phone, 2).locator(".snap-switch").tap()
+
+	assert tests.pages.eventually(lambda: stand.now("output", 1)["snap"] is False)
+
+	knob.focus()
+	phone.keyboard.press("ArrowUp")
+
+	assert stand.now("output", 1)["ratio"] == "24"
+
+	# At one pulse a beat there is room above ×24, and output 1 says so.
+	stand.change({"do": "ppqn", "value": 1})
+
+	assert tests.pages.eventually(lambda: knob.get_attribute("aria-valuemax") == "96")
+	assert row(phone, 1).locator(".clock-words").inner_text() == "main clock · 1 PPQN"
+
+	knob.focus()
+	phone.keyboard.press("ArrowUp")
+
+	assert tests.pages.eventually(lambda: stand.now("output", 1)["ratio"] != "24")
 
 
 def test_with_snap_off_a_ratio_knob_moves_freely (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
@@ -525,7 +569,7 @@ def test_typing_a_ratio_sets_it_and_a_bad_one_is_explained (phone: "playwright.s
 		assert tests.pages.eventually(lambda: text.input_value() == label), typed
 
 	try:
-		picoclock.core.ratio.parse("1000")
+		picoclock.core.ratio.parse("1000", picoclock.core.ratio.DEFAULT_PPQN)
 		words = ""
 	except ValueError as error:
 		words = str(error)
@@ -763,17 +807,19 @@ def test_the_lights_blink_in_time_and_go_out_with_the_clock (phone: "playwright.
 
 	"""An output's light comes on once for each of its pulses, briefly, and never while the clock is stopped or paused."""
 
-	# At 120 BPM output 1 pulses twice a second.
+	# At 120 BPM and the clock's default of four pulses a beat, output 1 pulses eight times a second,
+	# each light lit for the shortest flash that can be seen.
 	seen = phone.evaluate(WATCH_LIGHT, [0, 3000])
 
-	assert 5 <= seen["rises"] <= 7, seen
-	assert 0.04 < seen["lit"] / seen["frames"] < 0.3, seen
+	assert 22 <= seen["rises"] <= 26, seen
+	assert 0.25 < seen["lit"] / seen["frames"] < 0.55, seen
 
-	stand.change({"do": "output", "index": 1, "name": "ratio", "value": "4"})
+	# Half of the clock is four times a second.
+	stand.change({"do": "output", "index": 1, "name": "ratio", "value": "1/2"})
 
 	seen = phone.evaluate(WATCH_LIGHT, [1, 3000])
 
-	assert 22 <= seen["rises"] <= 26, seen
+	assert 11 <= seen["rises"] <= 13, seen
 
 	stand.change({"do": "output", "index": 1, "name": "muted", "value": True})
 	time.sleep(0.3)
@@ -795,15 +841,15 @@ def test_the_lights_blink_in_time_and_go_out_with_the_clock (phone: "playwright.
 
 	seen = phone.evaluate(WATCH_LIGHT, [0, 2000])
 
-	assert 3 <= seen["rises"] <= 5, seen
+	assert 14 <= seen["rises"] <= 17, seen
 
 
 def test_an_output_too_fast_to_blink_glows_and_a_run_output_stays_lit (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""At ×96 the light is a steady glow, and a run output's light is on for as long as the clock runs."""
+	"""At the fastest ratio, ×24 of a clock of four pulses a beat, the light is a steady glow, and a run output's light is on for as long as the clock runs."""
 
 	stand.change({"do": "tempo", "value": 30000})
-	stand.change({"do": "output", "index": 1, "name": "ratio", "value": "96"})
+	stand.change({"do": "output", "index": 1, "name": "ratio", "value": "24"})
 	stand.change({"do": "output", "index": 2, "name": "role", "value": "run"})
 	time.sleep(0.3)
 

@@ -179,3 +179,132 @@ def check_compare_orders_ratios () -> None:
 	assert compare((1, 2), (2, 3)) == -1
 	assert compare((3, 2), (3, 2)) == 0
 	assert compare((4, 3), (5, 4)) == 1
+
+
+def check_the_fastest_ratio_keeps_every_output_within_96_pulses_a_beat () -> None:
+
+	"""At each PPQN the fastest ratio times the PPQN is 96, and it is a snap value, so a knob can always reach it."""
+
+	for ppqn in picoclock.core.ratio.PPQNS:
+
+		top = picoclock.core.ratio.fastest(ppqn)
+
+		assert top[1] == 1
+		assert top[0] * ppqn == picoclock.core.ratio.MOST_A_BEAT, ppqn
+		assert picoclock.core.ratio.is_snap(top, ppqn), ppqn
+
+	assert picoclock.core.ratio.fastest(4) == (24, 1)
+	assert picoclock.core.ratio.fastest(48) == (2, 1)
+	assert picoclock.core.ratio.DEFAULT_PPQN in picoclock.core.ratio.PPQNS
+	assert list(picoclock.core.ratio.PPQNS) == sorted(picoclock.core.ratio.PPQNS)
+
+
+def check_a_ratio_of_the_clock_is_given_to_the_scheduler_as_pulses_a_beat () -> None:
+
+	"""What an output sends a beat is its ratio times the clock's pulses a beat, in lowest terms."""
+
+	effective = picoclock.core.ratio.effective
+
+	assert effective((1, 1), 4) == (4, 1)
+	assert effective((1, 2), 4) == (2, 1)
+	assert effective((1, 4), 4) == (1, 1)
+	assert effective((1, 16), 4) == (1, 4)
+	assert effective((3, 2), 4) == (6, 1)
+	assert effective((2, 3), 48) == (32, 1)
+	assert effective((1, 128), 1) == (1, 128)
+	assert effective((4, 3), 1) == (4, 3)
+
+
+def check_a_ratio_faster_than_the_ppqn_allows_is_refused () -> None:
+
+	"""The fastest ratio depends on the clock's pulses a beat, and the refusal says so."""
+
+	parse = picoclock.core.ratio.parse
+
+	assert parse("24", 4) == (24, 1)
+	assert parse("÷128", 48) == (1, 128)
+	assert parse("2", 48) == (2, 1)
+	assert parse("96") == (96, 1)
+
+	for text, ppqn, said in (
+		("25", 4, "At 4 PPQN the fastest ratio is ×24"),
+		("24.01", 4, "At 4 PPQN the fastest ratio is ×24"),
+		("3", 48, "At 48 PPQN the fastest ratio is ×2"),
+		("97", 1, "The fastest ratio is ×96"),
+	):
+
+		try:
+			parse(text, ppqn)
+		except ValueError as error:
+			assert str(error) == said, (text, ppqn)
+		else:
+			assert False, (text, ppqn)
+
+	# A fraction fine enough is too fine once it is turned into pulses a beat.
+	try:
+		picoclock.core.ratio.make(2401, 101, 4)
+	except ValueError as error:
+		assert "too fine" in str(error)
+	else:
+		assert False
+
+
+def check_snap_values_stop_at_the_fastest_the_ppqn_allows () -> None:
+
+	"""Stepping and the nearest value never give a ratio the clock can't play."""
+
+	next_snap = picoclock.core.ratio.next_snap
+	nearest = picoclock.core.ratio.nearest_snap
+
+	assert next_snap((16, 1), 4) == (24, 1)
+	assert next_snap((24, 1), 4) == (24, 1)
+	assert next_snap((1, 1), 48) == (4, 3)
+	assert next_snap((2, 1), 48) == (2, 1)
+	assert next_snap((64, 1)) == (96, 1)
+
+	assert nearest((30, 1), 4) == (24, 1)
+	assert nearest((23, 1), 4) == (24, 1)
+	assert nearest((3, 1), 4) == (3, 1)
+	assert nearest((5, 2), 48) == (2, 1)
+	assert nearest((90, 1)) == (96, 1)
+
+
+def check_the_snap_values_are_the_same_notes_at_every_ppqn () -> None:
+
+	"""At one pulse a beat they are the list as it stands. At four, a quarter note is ÷4 and an 8th-note triplet ×3/4. At every PPQN each one, times the PPQN, is one of the list, and none is slower than ÷128 or faster than the fastest."""
+
+	snaps = picoclock.core.ratio.snaps
+
+	assert snaps(1) == list(picoclock.core.ratio.SNAPS)
+
+	at_four = snaps(4)
+
+	for note in ((1, 4), (3, 4), (1, 1), (1, 2), (3, 8), (1, 16), (6, 1), (24, 1)):
+		assert note in at_four, note
+
+	assert at_four[0] == (1, 128)
+	assert at_four[-1] == (24, 1)
+
+	at_24 = snaps(24)
+
+	assert (1, 24) in at_24
+	assert (1, 96) in at_24
+	assert at_24[-1] == (4, 1)
+
+	for ppqn in picoclock.core.ratio.PPQNS:
+
+		found = snaps(ppqn)
+
+		assert found == sorted(found, key=lambda snap: snap[0] / snap[1]), ppqn
+		assert found[-1] == picoclock.core.ratio.fastest(ppqn), ppqn
+
+		for snap in found:
+			assert picoclock.core.ratio.effective(snap, ppqn) in picoclock.core.ratio.SNAPS, (ppqn, snap)
+			assert picoclock.core.ratio.compare(snap, picoclock.core.ratio.SLOWEST) >= 0, (ppqn, snap)
+
+	# Stepping and the nearest value go by the notes too.
+	assert picoclock.core.ratio.next_snap((1, 1), 4) == (4, 3)
+	assert picoclock.core.ratio.previous_snap((1, 1), 4) == (3, 4)
+	assert picoclock.core.ratio.nearest_snap((74, 100), 4) == (3, 4)
+	assert picoclock.core.ratio.is_snap((3, 4), 4)
+	assert not picoclock.core.ratio.is_snap((3, 4), 1)

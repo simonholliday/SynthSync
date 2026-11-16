@@ -35,6 +35,7 @@ You build it yourself from a handful of common parts. **You don't need to write 
 	- [Choosing LEDs](#choosing-leds)
 	- [A complete example](#a-complete-example)
 - [Using PicoClock](#using-picoclock)
+- [Matching your other gear](#matching-your-other-gear)
 - [WiFi](#wifi)
 - [More or fewer outputs](#more-or-fewer-outputs)
 - [How accurate is it?](#how-accurate-is-it)
@@ -47,10 +48,10 @@ You build it yourself from a handful of common parts. **You don't need to write 
 
 - **Sets the tempo for your system,** from 20 to 300 BPM, in steps as fine as 0.01 BPM.
 - **Has up to eight clock outputs,** four of them out of the box. Each is a 3.5 mm jack that pulses at about 5 V.
-- **Output 1 is the main clock:** one pulse a beat.
-- **Every other output is a multivider:** a clock multiplier and divider in one, named the way an attenuverter is. Each has its own ratio, from ÷128 (one pulse every 128 beats) to ×96 (96 pulses a beat).
+- **Output 1 is the main clock.** Out of the box it sends four pulses a beat, one for each 16th note, which is what most step sequencers want. You can change that to suit your gear: [Matching your other gear](#matching-your-other-gear) says how.
+- **Every other output is a multivider:** a clock multiplier and divider in one, named the way an attenuverter is. Each has its own ratio of the main clock: ×2 is twice as fast, and ÷4 a quarter as fast. The slowest is ÷128. The fastest is ×24 at four pulses a beat, because no output goes faster than 96 pulses a beat.
 - **Keeps every output locked to the others.** They all count from the same start, so outputs that should land together do. Change a ratio while the clock runs and that output moves straight onto its new grid, without a restart.
-- **Snaps ratios to musical values** when you want it to: halves and doubles, triplets, dotted values, and the sync rates other gear expects (×2, ×24 and ×48).
+- **Snaps ratios to musical values** when you want it to: halves and doubles, triplets, dotted values, and the sync rates other gear expects. They are the same notes whatever the main clock sends.
 - **Gives each output a few more choices:**
 	- an on/off switch, which brings the output back in step when you turn it on again;
 	- a pulse length, from 1 to 100 ms, or half the gap between pulses;
@@ -145,7 +146,7 @@ Every diagram below gives both, as in "GP2 · pin 4". Raspberry Pi's own pinout 
 | Output 3 | GP4 | 6 |
 | Output 4 | GP5 | 7 |
 | Outputs 5 to 8, if you add them | GP6 to GP9 | 9 to 12 |
-| Tempo LED | GP18 | 24 |
+| Tempo LED | GP10 | 14 |
 | Play/pause button | GP21 | 27 |
 | Stop button | GP22 | 29 |
 | 5 V for the outputs | VSYS | 39 |
@@ -214,16 +215,16 @@ A press takes effect as the button goes down, not when you let go.
 
 **Optional, and the most useful LED to fit.** One LED that flashes on every beat, so you can see the tempo at a glance.
 
-![The tempo LED: GP18 through a resistor and an LED to ground.](docs/images/tempo-led.svg)
+![The tempo LED: GP10 through a resistor and an LED to ground.](docs/images/tempo-led.svg)
 
-It flashes at the same moments as output 1's [output LED](#a-clock-output-with-an-led), because it follows output 1. The difference is how long it stays lit:
+It shows the BPM: one flash a beat, whatever the outputs are set to. That makes it different from an [output LED](#a-clock-output-with-an-led):
 
-- **An output LED shows exactly what leaves its jack.** With the usual 10 ms pulse, that is a blink short enough to miss.
-- **The tempo LED stays lit for a quarter of each beat,** up to a tenth of a second, whatever the pulse length. So it reads as a steady beat.
+- **An output LED shows exactly what leaves its jack.** Output 1 sends four pulses a beat out of the box, so its LED blinks four times for each flash of the tempo LED. With the usual 10 ms pulse, each blink is short enough to miss.
+- **The tempo LED stays lit for a quarter of each beat,** up to a tenth of a second. So it reads as a steady beat. Each flash begins at the very moment the beat's pulses leave the jacks.
 
 It has one more job. While the stop button is held for a reset, it flashes fast as the warning. An output LED can't do that, because it only ever shows what its jack is sending.
 
-Like output 1, it goes dark while the clock is paused or stopped, and while output 1 is switched off.
+It goes dark while the clock is paused or stopped. It keeps flashing when output 1 is switched off, because it follows the beat, not an output.
 
 Unlike the output LEDs, it needs no transistors: just a resistor from the pin. The resistor can be anything from 330 Ω to 1 kΩ, and a smaller one makes the LED brighter. For a blue, white or bright green LED, use 330 Ω: [Choosing LEDs](#choosing-leds) says why. The light on the Pico itself flashes on the beat too, but it is hidden once the board is in a case.
 
@@ -323,23 +324,45 @@ PicoClock runs four outputs unless you tell it otherwise, so the page will show 
 
 - **a light** that blinks where its pulses fall;
 - **a switch** to turn it on and off. An output that is off stays silent and keeps its place, so it comes back in step. You can change its settings while it is off, and bring the change in with the switch;
-- **a knob and a number for its ratio.** ×2 is two pulses a beat. ÷4 is one pulse every four beats. You can type a ratio too, as a number such as `1.5` or a fraction such as `4/3`;
+- **a knob and a number for its ratio** of the main clock. ×2 is twice as fast as output 1, and ÷4 a quarter as fast, which at the usual four pulses a beat is one pulse a beat. You can type a ratio too, as a number such as `1.5` or a fraction such as `4/3`;
 - **Snap.** While it is lit, the knob steps through musical values only. Turn it off and the knob moves freely. Turn it on again and the ratio moves to the nearest musical value;
 - **an arrow** that opens two more settings:
 	- **Role:** a multivider; a start pulse, which is one pulse when the clock starts from the top; a stop pulse, which is one pulse when it stops; or run, which stays high while the clock is running. Start and stop pulses suit a sequencer's reset input.
 	- **Pulse:** how long each pulse lasts, from 1 to 100 ms, or half the gap between pulses. It starts at 10 ms. Some modules, and DIN sync, want the half.
 
-Output 1 is always the main clock, at one pulse a beat, so its row has no ratio to set.
+Output 1 is always the main clock, so its row has no ratio to set. It says how many pulses a beat it sends, such as "4 PPQN".
 
 **Two phones can be open at once,** and each follows what the other does.
 
-**Settings,** at the top of the page, has the WiFi, a button that puts every setting back as new, and a count of timing faults, which should always read zero.
+**Settings,** at the top of the page, has how many pulses a beat the main clock sends, the WiFi, a button that puts every setting back as new, and a count of timing faults, which should always read zero.
 
 **The lights on the hardware:**
 
 - The tempo LED, if you fit one, and the Pico's own light are on for the first quarter of every beat while the clock runs.
 - Each output LED, if you fit them, shows its output's pulses as they leave the jack.
 - The tempo LED and the Pico's own light flash fast while the stop button is held down for a reset.
+
+## Matching your other gear
+
+**Clocks don't agree on how many pulses make a beat.** The usual measure is PPQN, pulses per quarter note. A step sequencer such as a Moog DFAM takes one step for each pulse it gets. Fed one pulse a beat, it plays quarter notes. Fed four, it plays 16th notes, which is what most people expect. So if a module plays at a quarter of the speed you expect, or four times it, this is almost always why.
+
+**PicoClock's main clock sends four pulses a beat** unless you change it, so a sequencer on output 1 plays 16th notes at the tempo on the page. The BPM always counts quarter-note beats, as on any other gear.
+
+**To change it,** open **Settings** and choose under **Clock**: 1, 2, 4, 8, 12, 16, 24 or 48. Every other output is a ratio of the main clock, so they all change speed with it, just as the dividers after a master clock do when its rate changes. It is a setting to choose once, to suit most of your system.
+
+**Gear that wants a different rate** gets it from its own output. At the usual four pulses a beat:
+
+| For | Set the output to |
+| --- | --- |
+| A step sequencer that moves on each pulse, in 16th notes, such as a DFAM | ×1, or use output 1 |
+| Quarter notes, one pulse a beat: clock dividers, and effects that sync to a clock | ÷4 |
+| 8th notes, as Korg's Volca sync expects | ÷2 |
+| 8th-note triplets | ×0.75 |
+| 24 pulses a beat, as DIN sync and some modules' clock inputs expect | ×6 |
+| 48 pulses a beat | ×12 |
+| One pulse a bar of 4/4 | ÷16 |
+
+With Snap lit, an output's knob stops on each of these. If most of your system wants 24 pulses a beat, say, set the main clock to 24 instead, and give the odd module out its own ratio.
 
 ## WiFi
 
