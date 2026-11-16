@@ -104,6 +104,40 @@ def type_into (field: "playwright.sync_api.Locator", text: str) -> None:
 	field.press("Enter")
 
 
+# How play/pause and stop look for each thing the clock can be doing: what a
+# tap on play/pause will do next, as its icon shows and a screen reader says,
+# whether play/pause is lit, and whether stop is lit.
+RUNNING_SHOWN = ("Pause", True, False)
+PAUSED_SHOWN = ("Play", True, False)
+STOPPED_SHOWN = ("Play", False, True)
+
+
+def transport_shown (page: "playwright.sync_api.Page") -> tuple[str, bool, bool | str]:
+
+	"""Say how play/pause and stop look, as the constants above put it.
+
+	Everything is read at once, inside the page, so a change arriving
+	meanwhile can't mix two states. An icon that doesn't match what a screen
+	reader hears, or a stop lit for the eye but not for a screen reader, shows
+	as a description of the mismatch, which matches nothing expected.
+	"""
+
+	said, play, pause, playing_lit, stop_lit, stop_pressed = page.evaluate("""() => {
+		const button = document.getElementById("play-pause");
+		const stop = document.getElementById("stop");
+		const showing = (selector) => getComputedStyle(button.querySelector(selector)).display !== "none";
+		return [button.getAttribute("aria-label"), showing(".play"), showing(".pause"), button.classList.contains("lit"), stop.classList.contains("lit"), stop.getAttribute("aria-pressed") === "true"];
+	}""")
+
+	if (play, pause) != ((True, False) if said == "Play" else (False, True)):
+		return ("%s heard, with play %s and pause %s showing" % (said, play, pause), playing_lit, stop_lit)
+
+	if stop_pressed != stop_lit:
+		return (said, playing_lit, "stop lit %s but pressed %s" % (stop_lit, stop_pressed))
+
+	return (said, playing_lit, stop_lit)
+
+
 def test_the_page_opens_showing_how_things_stand (phone: "playwright.sync_api.Page") -> None:
 
 	"""A page that has just opened shows the tempo, what the clock is doing, and a row for every output."""
@@ -113,9 +147,7 @@ def test_the_page_opens_showing_how_things_stand (phone: "playwright.sync_api.Pa
 	assert phone.inner_text("#link") == ""
 	assert phone.get_attribute("#tempo-knob", "aria-valuetext") == "120 BPM"
 
-	assert phone.get_attribute("#start", "aria-pressed") == "true"
-	assert phone.get_attribute("#pause", "aria-pressed") == "false"
-	assert phone.get_attribute("#stop", "aria-pressed") == "false"
+	assert transport_shown(phone) == RUNNING_SHOWN
 
 	assert phone.locator(".output").count() == 4
 	assert phone.locator(".output .name").all_inner_texts() == ["1", "2", "3", "4"]
@@ -148,7 +180,7 @@ def test_the_page_fits_a_phone_and_is_big_enough_to_touch (phone: "playwright.sy
 
 	row(phone, 2).locator(".more").click()
 
-	for selector in ("#start", "#pause", "#stop", ".output .power", ".output .more", ".output .snap-switch", ".output .ratio-text", ".output .role", ".output .pulse"):
+	for selector in ("#play-pause", "#stop", ".output .power", ".output .more", ".output .snap-switch", ".output .ratio-text", ".output .role", ".output .pulse"):
 
 		for index in range(phone.locator(selector).count()):
 
@@ -310,16 +342,29 @@ def test_a_dragged_knob_never_jumps_back_under_the_finger (phone: "playwright.sy
 
 def test_presses_made_in_one_instant_all_arrive_in_order (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""Stop, start and pause pressed together leave the clock paused, and three settings changed together all take."""
+	"""Play/pause, stop and play/pause tapped together on a paused clock start it again from the top, and three settings changed together all take."""
 
-	phone.evaluate("""() => {
-		document.getElementById("stop").click();
-		document.getElementById("start").click();
-		document.getElementById("pause").click();
-	}""")
+	# Run for a while before pausing, so that starting again and carrying on are told apart by where the clock is.
+	time.sleep(1.5)
+	phone.tap("#play-pause")
 
 	assert tests.pages.eventually(lambda: stand.now("transport")["state"] == "paused")
-	assert tests.pages.eventually(lambda: phone.get_attribute("#pause", "aria-pressed") == "true")
+	assert tests.pages.eventually(lambda: transport_shown(phone) == PAUSED_SHOWN)
+
+	held = stand.now("clock")["position"]
+
+	assert held >= 2000, held
+
+	# Paused, play/pause means start each time. Were the stop held back and replaced by the second start, the clock would only carry on.
+	phone.evaluate("""() => {
+		document.getElementById("play-pause").click();
+		document.getElementById("stop").click();
+		document.getElementById("play-pause").click();
+	}""")
+
+	assert tests.pages.eventually(lambda: stand.now("transport")["state"] == "running")
+	assert stand.now("clock")["position"] < held
+	assert tests.pages.eventually(lambda: transport_shown(phone) == RUNNING_SHOWN)
 
 	phone.evaluate("""() => {
 		const row = document.querySelectorAll(".output")[2];
@@ -335,36 +380,50 @@ def test_presses_made_in_one_instant_all_arrive_in_order (phone: "playwright.syn
 	assert tests.pages.eventually(lambda: stand.now("output", 2)["pulse"] == "half")
 
 
-def test_start_pause_and_stop_work_the_clock_and_show_what_it_is_doing (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+def test_play_pause_and_stop_work_the_clock_and_show_what_it_is_doing (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""Each button does its one thing, and the lit button is always what the clock is doing."""
+	"""Play/pause pauses a running clock, carries a paused one on and starts a stopped one, and the buttons always show what the clock is doing."""
 
-	def pressed () -> list[str | None]:
-
-		"""Say which of the three buttons is lit."""
-
-		return [phone.get_attribute(selector, "aria-pressed") for selector in ("#start", "#pause", "#stop")]
-
-	phone.tap("#pause")
+	phone.tap("#play-pause")
 
 	assert tests.pages.eventually(lambda: stand.now("transport")["state"] == "paused")
-	assert tests.pages.eventually(lambda: pressed() == ["false", "true", "false"])
+	assert tests.pages.eventually(lambda: transport_shown(phone) == PAUSED_SHOWN)
 
-	phone.tap("#start")
+	phone.tap("#play-pause")
 
 	assert tests.pages.eventually(lambda: stand.now("transport")["state"] == "running")
-	assert tests.pages.eventually(lambda: pressed() == ["true", "false", "false"])
+	assert tests.pages.eventually(lambda: transport_shown(phone) == RUNNING_SHOWN)
 
 	phone.tap("#stop")
 
 	assert tests.pages.eventually(lambda: stand.now("transport")["state"] == "stopped")
-	assert tests.pages.eventually(lambda: pressed() == ["false", "false", "true"])
+	assert tests.pages.eventually(lambda: transport_shown(phone) == STOPPED_SHOWN)
 
-	# Pause does nothing to a stopped clock.
-	phone.tap("#pause")
-	phone.tap("#start")
+	phone.tap("#play-pause")
 
 	assert tests.pages.eventually(lambda: stand.now("transport")["state"] == "running")
+	assert tests.pages.eventually(lambda: transport_shown(phone) == RUNNING_SHOWN)
+
+
+def test_play_pause_tapped_twice_before_the_pico_answers_pauses_once_and_stays_paused (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""A tap sends what the button meant, so two taps, or two phones, in the same instant can't undo each other.
+
+	Both are taken while the page still shows the clock running, so both
+	mean pause. Sent as "the other one", the second would start it again.
+	"""
+
+	phone.evaluate("""() => {
+		document.getElementById("play-pause").click();
+		document.getElementById("play-pause").click();
+	}""")
+
+	assert tests.pages.eventually(lambda: stand.now("transport")["state"] == "paused")
+
+	time.sleep(0.5)
+
+	assert stand.now("transport")["state"] == "paused"
+	assert transport_shown(phone) == PAUSED_SHOWN
 
 
 def test_a_ratio_knob_steps_through_the_musical_values (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
@@ -677,9 +736,9 @@ def test_two_pages_open_at_once_stay_in_step (chromium: "playwright.sync_api.Bro
 	assert tests.pages.eventually(lambda: row(phone, 2).locator(".ratio-text").input_value() == "×2")
 	assert row(laptop, 2).locator(".ratio-text").input_value() == "×2"
 
-	laptop.click("#pause")
+	laptop.click("#play-pause")
 
-	assert tests.pages.eventually(lambda: phone.get_attribute("#pause", "aria-pressed") == "true")
+	assert tests.pages.eventually(lambda: transport_shown(phone) == PAUSED_SHOWN)
 
 	stand.change({"do": "tempo", "value": 8800})
 

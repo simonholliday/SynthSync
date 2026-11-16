@@ -256,14 +256,8 @@ const tempoKnob = new Knob(document.getElementById("tempo-knob"), {
 const tempoText = document.getElementById("tempo-text");
 const tempoProblem = document.getElementById("tempo-problem");
 
-const transportButtons = {
-	start: document.getElementById("start"),
-	pause: document.getElementById("pause"),
-	stop: document.getElementById("stop"),
-};
-
-// Which button is lit for each thing the clock can be doing.
-const BUTTON_FOR = {running: "start", paused: "pause", stopped: "stop"};
+const playPause = document.getElementById("play-pause");
+const stopButton = document.getElementById("stop");
 
 
 /* The line to the Pico has come up or gone down. */
@@ -440,22 +434,33 @@ tempoText.addEventListener("blur", () => {
 
 
 // ---------------------------------------------------------------------------
-// Start, pause and stop.
+// Play/pause and stop, as on the Pico's own buttons.
 
-/* Light the button that says what the clock is doing. */
+/* Say what the clock is doing, as a media player does.
+
+Exactly one of the two is lit: play/pause while the clock is playing or
+paused, and stop while it is stopped. Play/pause shows what a tap on it will
+do next: pause while the clock runs, and play otherwise. */
 function showTransport () {
 
-	for (const [name, button] of Object.entries(transportButtons)) {
-		button.setAttribute("aria-pressed", BUTTON_FOR[now.transport] === name ? "true" : "false");
-	}
+	const running = now.transport === "running";
+	const stopped = now.transport === "stopped";
+
+	playPause.classList.toggle("running", running);
+	playPause.classList.toggle("lit", !stopped);
+	playPause.setAttribute("aria-label", running ? "Pause" : "Play");
+
+	stopButton.classList.toggle("lit", stopped);
+	stopButton.setAttribute("aria-pressed", stopped ? "true" : "false");
 }
 
 
-for (const [name, button] of Object.entries(transportButtons)) {
-
-	// These are never held back or dropped: a stop then a start is not the same as a start.
-	button.addEventListener("click", () => link.send({do: name}, "transport", null));
-}
+// A tap sends what the button meant as it was tapped, start or pause, never
+// "the other one", so two phones tapping at once, or one message sent twice,
+// can't undo each other. These are never held back or dropped: a stop then a
+// start is not the same as a start.
+playPause.addEventListener("click", () => link.send({do: now.transport === "running" ? "pause" : "start"}, "transport", null));
+stopButton.addEventListener("click", () => link.send({do: "stop"}, "transport", null));
 
 
 // ---------------------------------------------------------------------------

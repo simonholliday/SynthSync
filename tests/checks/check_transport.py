@@ -1,4 +1,4 @@
-"""Start, pause and stop mean the same on the Pico's Python as on a laptop's."""
+"""Start, pause, stop and play/pause mean the same on the Pico's Python as on a laptop's."""
 
 import picoclock.core.timeline
 import picoclock.core.transport
@@ -25,7 +25,7 @@ def check_a_new_transport_is_stopped () -> None:
 
 def check_every_command_from_every_state () -> None:
 
-	"""All nine cases: what each command carries out, and what the clock is doing afterwards."""
+	"""All twelve cases: what each press carries out, and what the clock is doing afterwards."""
 
 	transport = picoclock.core.transport
 
@@ -39,6 +39,9 @@ def check_every_command_from_every_state () -> None:
 		((transport.START, transport.PAUSE), transport.START, transport.CARRY_ON, transport.RUNNING),
 		((transport.START, transport.PAUSE), transport.PAUSE, transport.NOTHING, transport.PAUSED),
 		((transport.START, transport.PAUSE), transport.STOP, transport.END, transport.STOPPED),
+		((), transport.PLAY_PAUSE, transport.BEGIN, transport.RUNNING),
+		((transport.START,), transport.PLAY_PAUSE, transport.FREEZE, transport.PAUSED),
+		((transport.START, transport.PAUSE), transport.PLAY_PAUSE, transport.CARRY_ON, transport.RUNNING),
 	)
 
 	for before, command, action, state in cases:
@@ -66,7 +69,7 @@ def check_a_whole_session_reads_as_expected () -> None:
 
 def check_an_unknown_command_is_refused () -> None:
 
-	"""Anything but start, pause and stop is refused, and changes nothing."""
+	"""Anything but start, pause, stop and play/pause is refused, and changes nothing."""
 
 	machine = after((picoclock.core.transport.START,))
 
@@ -84,12 +87,14 @@ def check_an_unknown_command_is_refused () -> None:
 
 def check_the_names_are_listed () -> None:
 
-	"""The states and commands are each listed once, for the page to offer."""
+	"""The states and commands are each listed once, and the page can't send play/pause, so two phones can't undo each other."""
 
 	transport = picoclock.core.transport
 
 	assert transport.STATES == ("stopped", "running", "paused")
 	assert transport.COMMANDS == ("start", "pause", "stop")
+	assert transport.PRESSES == ("start", "pause", "stop", "play/pause")
+	assert transport.BUTTONS == ("play/pause", "stop")
 
 
 def check_the_scheduler_carries_out_every_press_as_the_table_says () -> None:
@@ -99,7 +104,7 @@ def check_the_scheduler_carries_out_every_press_as_the_table_says () -> None:
 	transport = picoclock.core.transport
 	timeline = picoclock.core.timeline
 
-	assert transport.NUMBERS == {transport.START: timeline.PRESS_START, transport.PAUSE: timeline.PRESS_PAUSE, transport.STOP: timeline.PRESS_STOP}
+	assert transport.NUMBERS == {transport.START: timeline.PRESS_START, transport.PAUSE: timeline.PRESS_PAUSE, transport.STOP: timeline.PRESS_STOP, transport.PLAY_PAUSE: timeline.PRESS_PLAY_PAUSE}
 
 	def scheduler_in (state: str) -> picoclock.core.timeline.Timeline:
 
@@ -118,7 +123,7 @@ def check_the_scheduler_carries_out_every_press_as_the_table_says () -> None:
 		return made
 
 	for state in transport.STATES:
-		for command in transport.COMMANDS:
+		for command in transport.PRESSES:
 
 			expected = transport.Transport()
 			expected.state = state
@@ -155,4 +160,23 @@ def check_the_scheduler_carries_out_every_press_as_the_table_says () -> None:
 
 	assert not scheduler.press(0)
 	assert not scheduler.press(9)
+	assert scheduler.running and not scheduler.paused
+
+	# Play/pause, pressed again and again, goes running, paused, running, and never back to zero.
+	scheduler = scheduler_in(transport.STOPPED)
+	states = []
+	places = []
+
+	for _ in range(5):
+
+		scheduler.press(timeline.PRESS_PLAY_PAUSE)
+		states.append(transport.state_of(scheduler.running, scheduler.paused))
+
+		for _ in range(50):
+			scheduler.next_word()
+
+		places.append((scheduler.beat, scheduler.position()))
+
+	assert states == [transport.RUNNING, transport.PAUSED, transport.RUNNING, transport.PAUSED, transport.RUNNING], states
+	assert places[0] > (0, 0) and places[1] == places[0] and places[2] > places[1] and places[3] == places[2] and places[4] > places[3], places
 	assert scheduler.running and not scheduler.paused

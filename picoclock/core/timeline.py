@@ -51,12 +51,13 @@ RUN = 3
 # seen that signal before its first clock arrives.
 LEAD_TICKS = 10000
 
-# Start, pause and stop, as `press` takes them. They are numbers because the
-# second core reads the buttons and can't look words up without asking for
-# memory. `picoclock.core.transport.NUMBERS` gives each command's number.
+# Start, pause, stop and play/pause, as `press` takes them. They are numbers
+# because the second core reads the buttons and can't look words up without
+# asking for memory. `picoclock.core.transport.NUMBERS` gives each one's number.
 PRESS_START = 1
 PRESS_PAUSE = 2
 PRESS_STOP = 3
+PRESS_PLAY_PAUSE = 4
 
 # One beat lasts 6000 x 1,000,000 / tempo ticks, with the tempo in hundredths of
 # a BPM. The two factors are kept apart so no product reaches 2**30.
@@ -610,11 +611,16 @@ class Timeline:
 
 		It follows `picoclock.core.transport`'s table: start begins a stopped
 		clock at zero and carries a paused one on, pause freezes a running one,
-		and stop sends a running or paused one back to zero. Anything else
-		does nothing. The page's presses and the Pico's own buttons both come
-		here, on the second core, so they always mean the same thing and one
-		can never overtake the other.
+		and stop sends a running or paused one back to zero. Play/pause is
+		pause while the clock runs and start otherwise. Anything else does
+		nothing. The page's presses and the Pico's own buttons both come here,
+		on the second core, so they always mean the same thing and one can
+		never overtake the other.
 		"""
+
+		# Decided here, as it is carried out, so it goes by what the clock is doing at this moment.
+		if command == PRESS_PLAY_PAUSE:
+			command = PRESS_PAUSE if self.running and not self.paused else PRESS_START
 
 		if command == PRESS_START:
 

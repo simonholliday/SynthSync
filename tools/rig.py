@@ -16,7 +16,7 @@ times a second, `collect` changes outputs while the first core collects a
 large heap straight after each change, `pause` pauses and carries on a dozen times, `startstop`
 starts and stops over and over, `position` asks where the clock has got to
 and checks the answers against the Pico's own clock, `inputs` presses each
-button through the jumper and watches the light, `led` times every flash of
+button through the jumper and watches both lights, `led` times every flash of
 the panel LED against output 1, `powerup` starts the clock
 as switching on does, from good, damaged and missing settings, `network`
 brings the Pico's own WiFi network up, changes its password and looks for

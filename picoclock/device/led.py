@@ -9,7 +9,10 @@ can hold it up, and the second core does nothing for it.
 
 Because it follows the pin, it is dark while output 1 is off, paused or
 stopped, and it goes on flashing with the clock when everything else on the
-Pico has been stopped from its prompt.
+Pico has been stopped from its prompt. The one time the first core works it
+is while the stop button is held to put the settings back: `show` stops the
+program and lights the LED or puts it out, and then sets the program going
+again.
 
 Wiring: the LED's pin, then a resistor of 330 Ω to 1 kΩ, then the LED, then ground.
 """
@@ -79,6 +82,11 @@ class Led:
 		self._cycles = machine.freq() // 1000000
 		self.machine = rp2.StateMachine(MACHINE, _program(watched), freq=machine.freq(), set_base=machine.Pin(pin))
 
+		# Lighting the LED and putting it out from here, made once rather than read from words each time.
+		self._on = rp2.asm_pio_encode("set(pins, 1)", 0)
+		self._out = rp2.asm_pio_encode("set(pins, 0)", 0)
+		self._shown = False
+
 		self.machine.put(self._time(tempo))
 		self._tempo = tempo
 		self.machine.active(1)
@@ -110,9 +118,33 @@ class Led:
 
 		return tempo == self._tempo and not self.machine.tx_fifo()
 
+	def show (self, lit: "bool | None") -> None:
+
+		"""Light the LED or put it out from here, with the program stopped meanwhile, or with None set the program going again.
+
+		The program is stopped where it stands and goes on from there, so it
+		picks up output 1's next pulse as before. The LED is put out first, so
+		that a lit one isn't left waiting for a pulse to end.
+		"""
+
+		if lit is None:
+
+			if self._shown:
+				self.machine.exec(self._out)
+				self.machine.active(1)
+				self._shown = False
+
+			return
+
+		if not self._shown:
+			self.machine.active(0)
+			self._shown = True
+
+		self.machine.exec(self._on if lit else self._out)
+
 	def close (self) -> None:
 
 		"""Stop the program and put the LED out."""
 
 		self.machine.active(0)
-		self.machine.exec("set(pins, 0)")
+		self.machine.exec(self._out)

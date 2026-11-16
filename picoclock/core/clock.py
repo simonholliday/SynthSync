@@ -5,7 +5,7 @@ page, a hardware input or power-up, so a change means the same thing wherever
 it comes from. Each change is checked, noted to be saved, passed to the engine,
 and told to whoever is watching, which is how every open page stays in step.
 
-The one exception is the Pico's start, pause and stop buttons. They are read
+The one exception is the Pico's play/pause and stop buttons. They are read
 where the clock is played, so they work even while everything else is held
 up, and the clock catches up with what they did a moment later.
 
@@ -249,7 +249,7 @@ class Clock:
 
 		"""Take what the engine says the clock is doing, when it isn't what this clock thinks, and tell every watcher.
 
-		The Pico's start, pause and stop buttons are read where the clock is
+		The Pico's play/pause and stop buttons are read where the clock is
 		played, so a press works even while everything else is held up. This
 		is how the rest hears of it afterwards. While a press from here is
 		still on its way to the engine, the engine can't say, and nothing is

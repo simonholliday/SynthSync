@@ -500,14 +500,13 @@ def gap_lengths (tempo: int, pulses: int, beats: int) -> set:
 
 def listen_to_buttons (player) -> None:
 
-	"""Have the second core read the start, pause and stop pins, as it always does in use, so what that costs it is in every timing.
+	"""Have the second core read the play/pause and stop pins, as it always does in use, so what that costs it is in every timing.
 
 	Nothing is wired to them on the test board, so they read as let go.
 	"""
 
 	for name, (pin, low) in picoclock.device.panel.wiring().items():
-		if name != picoclock.device.panel.RESET:
-			player.listen(name, pin, low)
+		player.listen(name, pin, low)
 
 
 def make_player (ratios, tempo: int):
@@ -1063,6 +1062,9 @@ _HELD_PRESS = 50
 _FINGER_PIN = 0
 _INPUT_PIN = 1
 
+# Where every pin's level can be read at once, whoever is driving it.
+_GPIO_IN = 0xD0000004
+
 
 class Finger:
 
@@ -1120,6 +1122,60 @@ class Light:
 		self._lit = lit
 		self._pin.value(lit)
 
+	def is_on (self) -> bool:
+
+		"""Say whether the light is on."""
+
+		return bool(self._lit)
+
+
+class PanelLed:
+
+	"""The panel LED, counting how often the first core lights it to warn of a reset, and checking its pin does as it is told."""
+
+	def __init__ (self, tempo: int) -> None:
+
+		"""Start the LED's program as PicoClock does."""
+
+		self._led = picoclock.device.led.Led(tempo)
+		self._lit = False
+		self.taken = False
+		self.flashes = 0
+		self.wrong = 0
+
+	def follow (self, tempo: int) -> None:
+
+		"""Pass the tempo on."""
+
+		self._led.follow(tempo)
+
+	def show (self, lit) -> None:
+
+		"""Light the LED, put it out or give it back to its program, as the panel asks, and see that the pin did so."""
+
+		self._led.show(lit)
+
+		if lit and not self._lit:
+			self.flashes += 1
+
+		self._lit = lit is True
+		self.taken = lit is not None
+
+		if self.taken and self.is_on() != lit:
+			self.wrong += 1
+
+	def is_on (self) -> bool:
+
+		"""Say whether the LED's pin is high, read from the pins themselves."""
+
+		return (machine.mem32[_GPIO_IN] >> picoclock.device.board.LED_PIN) & 1 == 1
+
+	def close (self) -> None:
+
+		"""Stop the LED's program."""
+
+		self._led.close()
+
 
 class Never:
 
@@ -1142,14 +1198,18 @@ def test_inputs (load: str = "idle") -> None:
 
 	"""Press each button through the jumper, pressed low and then pressed high, and see the clock do as it was told.
 
-	A knock too short to be a press must do nothing. A press must work when
-	it is seen as it happens, and when it comes and goes while the main loop
-	is held up. A stop pressed while the first core is held up for ten
-	seconds, as a poor WiFi signal can hold it, must stop the clock within
-	50 ms all the same, and the clock must hear of it once the hold is over.
-	The reset button must do nothing for a second's press, and put every
-	setting back when held for three. The light must come on once a beat
-	while the clock runs, and flash fast while reset is held.
+	Play/pause must start a stopped clock, pause a running one and carry a
+	paused one on from where it was. A knock too short to be a press must do
+	nothing. A press must work when it is seen as it happens, and when it
+	comes and goes while the main loop is held up. A stop pressed while the
+	first core is held up for ten seconds, as a poor WiFi signal can hold it,
+	must stop the clock within 50 ms all the same, and the clock must hear of
+	it once the hold is over. Stop held must stop the clock at once, change
+	nothing for a second's hold, and put every setting back after five
+	seconds, once, leaving the clock stopped. Both lights must stay as they
+	are for the first two seconds of the hold, flash fast from then until
+	five, stay lit until the button is let go, and then be the clock's again.
+	The light must come on once a beat while the clock runs.
 	"""
 
 	transport = picoclock.core.transport
@@ -1158,6 +1218,7 @@ def test_inputs (load: str = "idle") -> None:
 	storage = picoclock.device.storage.Storage(settings, player, _INPUTS_PATH)
 	clock = picoclock.core.clock.Clock(settings, player, storage)
 	light = Light()
+	shown = PanelLed(settings.tempo)
 	never = Never()
 
 	clock.load()
@@ -1165,11 +1226,12 @@ def test_inputs (load: str = "idle") -> None:
 
 	# The panel in use, what went wrong, how many presses were made, how many
 	# times the light came on in two seconds of running and in a reset's hold,
-	# the longest and shortest hold that a reset took, and the longest a stop
-	# took while the first core was held up, in milliseconds.
+	# the longest and shortest hold that a reset took, the longest a stop took
+	# while the first core was held up, in milliseconds, and how many times
+	# the panel LED came on in a reset's hold.
 	panel = [None]
 	wrong = []
-	counts = [0, 0, 0, 0, 99999, -1]
+	counts = [0, 0, 0, 0, 99999, -1, 0]
 
 	def use (name: str, low: bool) -> None:
 
@@ -1178,7 +1240,7 @@ def test_inputs (load: str = "idle") -> None:
 		if panel[0] is not None:
 			panel[0].close()
 
-		panel[0] = picoclock.device.panel.Panel(clock, player, {name: (_INPUT_PIN, low)}, light)
+		panel[0] = picoclock.device.panel.Panel(clock, player, {name: (_INPUT_PIN, low)}, light, shown)
 
 	def expect (what: str, truth: bool) -> None:
 
@@ -1218,7 +1280,7 @@ def test_inputs (load: str = "idle") -> None:
 			way = "pressed low" if low else "pressed high"
 			finger = Finger(low)
 
-			use(transport.START, low)
+			use(transport.PLAY_PAUSE, low)
 			yield 100
 
 			finger.press(8)
@@ -1228,19 +1290,24 @@ def test_inputs (load: str = "idle") -> None:
 			finger.press(80)
 			counts[0] += 1
 			yield 300
-			expect("start didn't start the clock, " + way, clock.transport.state == transport.RUNNING and doing() == transport.RUNNING)
+			expect("play/pause didn't start the clock, " + way, clock.transport.state == transport.RUNNING and doing() == transport.RUNNING)
 
 			# Two seconds of running at 120 BPM is four beats.
 			before = light.flashes
 			yield 2000
 			counts[1] = light.flashes - before
 
-			use(transport.PAUSE, low)
-			yield 100
 			finger.press(80)
 			counts[0] += 1
 			yield 300
-			expect("pause didn't pause the clock, " + way, clock.transport.state == transport.PAUSED and doing() == transport.PAUSED)
+			expect("play/pause didn't pause the clock, " + way, clock.transport.state == transport.PAUSED and doing() == transport.PAUSED)
+			held = player.timeline.beat
+
+			finger.press(80)
+			counts[0] += 1
+			yield 300
+			expect("play/pause didn't carry the clock on, " + way, clock.transport.state == transport.RUNNING and doing() == transport.RUNNING)
+			expect("play/pause began again at zero, " + way, held >= 4 and player.timeline.beat >= held)
 
 			use(transport.STOP, low)
 			yield 100
@@ -1250,7 +1317,7 @@ def test_inputs (load: str = "idle") -> None:
 			expect("stop didn't stop the clock, " + way, clock.transport.state == transport.STOPPED and doing() == transport.STOPPED)
 
 			# A press that comes and goes while the main loop is held up, and then a knock that does.
-			use(transport.START, low)
+			use(transport.PLAY_PAUSE, low)
 			yield 100
 			finger.press(60)
 			counts[0] += 1
@@ -1265,48 +1332,84 @@ def test_inputs (load: str = "idle") -> None:
 			yield 200
 			expect("a knock made while busy stopped the clock, " + way, clock.transport.state == transport.RUNNING)
 
-			# Reset: a second's press does nothing, and three seconds puts every setting back.
+			# Stop held for a second stops the clock at once and puts nothing back.
 			clock.set_tempo(7700)
 			clock.flush()
 			storage.save_now()
-			use(picoclock.device.panel.RESET, low)
 			yield 100
 			expect("nothing was saved to begin with, " + way, saved())
 
 			finger.press(1000)
-			yield 1400
-			expect("a short press of reset changed the settings, " + way, settings.tempo == 7700 and saved())
-
-			# Held for six seconds, it must go off once, three seconds in.
-			before = light.flashes
-			began = time.ticks_ms()
-			finger.press(6000)
 			counts[0] += 1
+			yield 300
+			expect("stop held for a second didn't stop the clock at once, " + way, clock.transport.state == transport.STOPPED and doing() == transport.STOPPED)
 
-			while settings.tempo == 7700 and time.ticks_diff(time.ticks_ms(), began) < 5500:
+			# Counted from once the first core has heard of the stop, so that a
+			# beat's flash in the moment before it heard isn't taken for a warning.
+			before = (light.flashes, shown.flashes)
+			yield 1100
+			expect("a second's hold of stop changed the settings, " + way, settings.tempo == 7700 and saved())
+			expect("a second's hold of stop warned of a reset, " + way, (light.flashes, shown.flashes) == before)
+
+			# Held for eight seconds from running: it stops the clock at once,
+			# warns from two seconds, puts every setting back at five, once,
+			# and leaves the clock stopped.
+			clock.press(transport.START)
+			yield 300
+			# Held to eight seconds, so that each look at the lights comes well
+			# away from letting go, even when a scan for networks keeps the main
+			# loop from looking for over half a second.
+			began = time.ticks_ms()
+			finger.press(8000)
+			counts[0] += 1
+			yield 300
+			expect("stop held didn't stop the clock at once, " + way, clock.transport.state == transport.STOPPED and doing() == transport.STOPPED)
+			before = (light.flashes, shown.flashes)
+
+			while time.ticks_diff(time.ticks_ms(), began) < 1900:
+				yield 5
+
+			expect("the lights warned of a reset before two seconds, " + way, (light.flashes, shown.flashes) == before)
+
+			while settings.tempo == 7700 and time.ticks_diff(time.ticks_ms(), began) < 6500:
 				yield 5
 
 			took = time.ticks_diff(time.ticks_ms(), began)
-			counts[2] = light.flashes - before
+			counts[2] = light.flashes - before[0]
+			counts[6] = shown.flashes - before[1]
 			counts[3] = max(counts[3], took)
 			counts[4] = min(counts[4], took)
 
-			expect("holding reset didn't put the settings back, " + way, settings.tempo == 12000 and not saved())
-			expect("reset went off before three seconds, " + way, took >= 3000)
-			expect("reset stopped the clock, " + way, clock.transport.state == transport.RUNNING and doing() == transport.RUNNING)
+			expect("holding stop didn't put the settings back, " + way, settings.tempo == 12000 and not saved())
+			expect("reset went off before five seconds, " + way, took >= 5000)
+			expect("the clock started again after a reset, " + way, clock.transport.state == transport.STOPPED and doing() == transport.STOPPED)
 
-			# Still held, it doesn't go off again.
+			# Still held, it doesn't go off again, and both lights stay lit.
 			clock.set_tempo(8800)
 			clock.flush()
 
-			while time.ticks_diff(time.ticks_ms(), began) < 6300:
+			while time.ticks_diff(time.ticks_ms(), began) < 6800:
 				yield 50
 
 			expect("reset went off twice in one hold, " + way, settings.tempo == 8800)
+			expect("the lights weren't lit once the settings were back, " + way, light.is_on() and shown.is_on())
+
+			# Let go, the panel LED is given back to output 1, and flashes with it once the clock runs.
+			while time.ticks_diff(time.ticks_ms(), began) < 9000:
+				yield 50
+
+			expect("the lights stayed lit after stop was let go, " + way, not light.is_on() and not shown.is_on() and not shown.taken)
+
+			clock.press(transport.START)
+			flashed = False
+
+			for _ in range(150):
+				flashed = flashed or shown.is_on()
+				yield 5
+
+			expect("the panel LED didn't flash with output 1 after a reset, " + way, flashed)
 
 			# Stop pressed with the first core held up, and nothing given a turn until the hold is over.
-			use(transport.STOP, low)
-			yield 100
 			before = player.status()["presses"]
 			began = time.ticks_ms()
 			finger.press(80)
@@ -1358,6 +1461,7 @@ def test_inputs (load: str = "idle") -> None:
 		panel[0].close()
 
 	storage.forget()
+	shown.close()
 	player.close()
 
 	machine.Pin(_FINGER_PIN, machine.Pin.IN, None)
@@ -1365,10 +1469,10 @@ def test_inputs (load: str = "idle") -> None:
 
 	# With nothing else to do, the buttons and the light are looked at often
 	# enough to count the light's flashes and to time the reset closely.
-	steady = load != "idle" or (3 <= counts[1] <= 5 and 20 <= counts[2] <= 30 and counts[3] <= 3100)
-	passed = never.over and not wrong and counts[0] == 12 and steady and sound(status)
+	steady = load != "idle" or (3 <= counts[1] <= 5 and 20 <= counts[2] <= 30 and 20 <= counts[6] <= 30 and counts[3] <= 5100)
+	passed = never.over and not wrong and counts[0] == 16 and shown.wrong == 0 and steady and sound(status)
 
-	report("inputs", passed, "presses=%d wrong=%d beat_flashes=%d hold_flashes=%d reset_after_ms=%d..%d stop_while_held_ms=%d first_wrong=%s %s load=%s" % (counts[0], len(wrong), counts[1], counts[2], counts[4], counts[3], counts[5], wrong[0].replace(" ", "_") if wrong else "none", describe(status), described))
+	report("inputs", passed, "presses=%d wrong=%d beat_flashes=%d hold_flashes=%d,%d led_wrong=%d reset_after_ms=%d..%d stop_while_held_ms=%d first_wrong=%s %s load=%s" % (counts[0], len(wrong), counts[1], counts[2], counts[6], shown.wrong, counts[4], counts[3], counts[5], wrong[0].replace(" ", "_") if wrong else "none", describe(status), described))
 
 
 # How far each flash of the panel LED may be from what it should be, in

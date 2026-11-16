@@ -8,7 +8,9 @@ takes pins from the top, starting at GP22. A new pin for anything that isn't
 an output is the highest one still free, so the two ends grow towards each
 other and only the room between them limits how many outputs there can be.
 GP23 to GP25 and GP29 belong to the Pico 2 W's radio, and GP26 to GP28 are
-kept free for analogue inputs.
+kept free for analogue inputs. The buttons and the panel LED step out of that
+order for the wiring's sake, each beside a ground pin, so GP19 and GP20 are
+free.
 """
 
 # The outputs are on consecutive pins, starting here, because the player sets
@@ -23,13 +25,12 @@ OUTPUTS = 4
 MOST_OUTPUTS = 8
 MIDI_PIN = 10
 
-# From the top: a button held for three seconds to wipe every setting, one
-# each to start, pause and stop the clock, and the panel LED, which flashes
-# with output 1. GP17 is the next one free.
-RESET_PIN = 22
-START_PIN = 21
-PAUSE_PIN = 20
-STOP_PIN = 19
+# From the top: the stop button, which also wipes every setting when held for
+# five seconds, and play/pause. They are on either side of a ground pin, which
+# both can share. The panel LED, which flashes with output 1, is beside
+# another ground. GP20 is the next one free, then GP19 and GP17.
+STOP_PIN = 22
+PLAY_PAUSE_PIN = 21
 LED_PIN = 18
 
 # Whether an input reads as pressed when its pin is pulled low. A bare push
@@ -41,8 +42,6 @@ LED_PIN = 18
 # pull-down can't bring a pin low again once it has been high, so a bare
 # button to 3V3 reads as pressed for ever after its first press.
 PRESSED_IS_LOW = {
-	RESET_PIN: True,
-	START_PIN: True,
-	PAUSE_PIN: True,
 	STOP_PIN: True,
+	PLAY_PAUSE_PIN: True,
 }

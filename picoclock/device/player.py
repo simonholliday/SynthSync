@@ -27,7 +27,7 @@ the whole scheduler, which is compiled that way when it is installed.
 A timing fault is the player running out of words, which would make everything
 after it late. The hardware flags it and this counts it. It should never happen.
 
-The start, pause and stop buttons are read here too, on the second core. The
+The play/pause and stop buttons are read here too, on the second core. The
 first core can be held up for seconds at a time when the WiFi is poor, and a
 stop pressed then would otherwise wait for it. They are looked at about once a
 millisecond in time the second core has to spare: while the player is full,
@@ -105,8 +105,8 @@ _BACKLOG = 10
 _PRESS = 11
 _COMMANDS = 12
 
-# The buttons the second core reads: start, pause and stop, in that order.
-_BUTTONS = (picoclock.core.transport.START, picoclock.core.transport.PAUSE, picoclock.core.transport.STOP)
+# The buttons the second core reads: play/pause and stop, in that order.
+_BUTTONS = picoclock.core.transport.BUTTONS
 
 # The buttons are looked at in time the second core has to spare. When the
 # outputs keep it so busy that the player is never full, they are looked at
@@ -665,7 +665,7 @@ class Player:
 
 	def listen (self, command: str, pin: int, low: bool = True) -> None:
 
-		"""Have the second core read the button for start, pause or stop on this pin, or no button at all with a pin of -1.
+		"""Have the second core read the button for play/pause or stop on this pin, or no button at all with a pin of -1.
 
 		`low` is whether the pin reads low when pressed. A button to ground
 		works against the Pico's own pull-up. The Pico 2's own pull-down can't

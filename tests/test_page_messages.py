@@ -31,12 +31,9 @@ def sent () -> dict[str, set[str]]:
 		do = parts[0]
 		carried = {part.split(":")[0].strip() for part in parts[1:]}
 
-		if do == "name":
-			# The three transport buttons send their own names.
-			index = (STATIC / "index.html").read_text()
-
-			for name in ("start", "pause", "stop"):
-				assert 'id="%s"' % name in index
+		if "?" in do:
+			# Play/pause sends one of two, chosen as it is tapped: each is a message of its own.
+			for name in re.findall(r'"(\w+)"', do.split("?", 1)[1]):
 				found.setdefault(name, set()).update(carried)
 
 		else:

@@ -13,13 +13,17 @@ works the panel LED.
 # How long a button must read the same way before that is believed, in milliseconds.
 STEADY = 20
 
-# How long the reset button must be held down, in milliseconds.
-HOLD = 3000
+# How long the stop button must be held down to put every setting back, in
+# milliseconds, and how long before the lights begin to warn that it will. A
+# press stops the clock at once, so anyone who only meant to stop has let go
+# long before either.
+HOLD = 5000
+WARN = 2000
 
 # How much of each beat the light is on for, in thousandths of a beat.
 LIT = 250
 
-# How long the light is on, and then off, while the reset button is held, in milliseconds.
+# How long the lights are on, and then off, while they warn of a reset, in milliseconds.
 FLASH = 60
 
 # How much of each beat the panel LED is lit for, in thousandths of a beat, and
@@ -135,23 +139,41 @@ class Hold:
 		return True
 
 
+def warning (hold: "Hold | None") -> "bool | None":
+
+	"""Say whether a held stop button has taken the lights over, and if so whether they are lit.
+
+	The answer is None until it has been held for `WARN`. The lights then
+	flash fast until the settings are put back, and stay lit from then until
+	the button is let go. Both the Pico's own light and the panel LED do this.
+	"""
+
+	if hold is None:
+		return None
+
+	if hold.done:
+		return True
+
+	if hold.holding and hold.held >= WARN:
+		return ((hold.held - WARN) // FLASH) % 2 == 0
+
+	return None
+
+
 def light (running: bool, position: int, hold: "Hold | None" = None) -> bool:
 
 	"""Say whether the Pico's light is on.
 
 	While the clock runs it is on for the first quarter of every beat.
 	`position` is how far the clock has played, in thousandths of a beat, or
-	-1 when that can't be said, and then the light is off.
-
-	While the reset button is held it flashes fast instead, and once the
-	settings have been put back it stays on until the button is let go.
+	-1 when that can't be said, and then the light is off. A stop button held
+	for long enough takes it over, as `warning` says.
 	"""
 
-	if hold is not None and hold.done:
-		return True
+	warned = warning(hold)
 
-	if hold is not None and hold.holding:
-		return (hold.held // FLASH) % 2 == 0
+	if warned is not None:
+		return warned
 
 	return running and position >= 0 and position % 1000 < LIT
 

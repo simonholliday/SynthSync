@@ -33,10 +33,9 @@
 			<p id="tempo-problem" class="problem" role="alert"></p>
 		</section>
 
-		<section class="transport" aria-label="Start, pause and stop">
-			<button id="start" type="button" aria-pressed="false">Start</button>
-			<button id="pause" type="button" aria-pressed="false">Pause</button>
-			<button id="stop" type="button" aria-pressed="false">Stop</button>
+		<section class="transport" aria-label="Play, pause and stop">
+			<button id="play-pause" type="button" aria-label="Play"><svg class="icon play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"/></svg><svg class="icon pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h4.5v15H6zm7.5 0H18v15h-4.5z"/></svg></button>
+			<button id="stop" type="button" aria-label="Stop" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5.5h13v13h-13z"/></svg></button>
 		</section>
 
 		<section id="outputs" aria-label="Outputs"></section>

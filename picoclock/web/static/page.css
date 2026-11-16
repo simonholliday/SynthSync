@@ -237,11 +237,13 @@ button.go {
 	cursor: default;
 }
 
-/* Start, pause and stop. The one that says what the clock is doing is lit. */
+/* Play/pause and stop, drawn as a media player's. One of the two is always lit:
+   play/pause while the clock plays or is paused, and stop while it is stopped.
+   Play/pause shows the pause icon while the clock runs, and play otherwise. */
 
 .transport {
 	display: grid;
-	grid-template-columns: repeat(3, 1fr);
+	grid-template-columns: repeat(2, 1fr);
 	gap: 0.5rem;
 	margin-bottom: 1rem;
 }
@@ -252,10 +254,26 @@ button.go {
 	font-weight: 600;
 }
 
-.transport button[aria-pressed="true"] {
+.transport button.lit {
 	border-color: var(--lit);
 	background: var(--lit);
 	color: var(--on-lit);
+}
+
+.transport .icon {
+	width: 1.9rem;
+	height: 1.9rem;
+	fill: currentColor;
+	vertical-align: middle;
+}
+
+#play-pause .pause,
+#play-pause.running .play {
+	display: none;
+}
+
+#play-pause.running .pause {
+	display: inline;
 }
 
 /* One row for each output. */

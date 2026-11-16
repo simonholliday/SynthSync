@@ -1,20 +1,25 @@
 """The buttons and the lights on the Pico itself.
 
-Start, pause and stop each have a pin with a push button on it, and do just
-what the page's buttons do. They are read by the player on the second core,
-which works even while the first core is held up, so this only tells the
-player which pins they are on. A fourth button, held for three seconds, puts
-every setting back as new. The Pico's own light comes on once a beat while the
-clock runs. The panel LED flashes with output 1 by itself, and is only told
-here when the tempo changes, so its flash stays a quarter of a beat long.
+Play/pause and stop each have a pin with a push button on it. Play/pause
+starts a stopped clock, pauses a running one and carries a paused one on, and
+stop does what the page's stop does. They are read by the player on the second
+core, which works even while the first core is held up, so this only tells the
+player which pins they are on.
 
-The reset button and the lights are the first core's work, and none of it is
-urgent. The reset pin is looked at every few milliseconds from the main loop.
-It also notes, through an interrupt, when it was pressed and when it was let
-go, so a press made while the Pico was busy saving or scanning for networks
-isn't lost, and a spike on the wire is never taken for one. The interrupt only
-notes the time: the button is acted on from the main loop, never from the
-interrupt.
+Stop held for five seconds also puts every setting back as new. It has
+stopped the clock the moment it was pressed, so anyone who only meant to stop
+lets go long before. From two seconds both lights flash fast to warn, and
+once the settings are back they stay lit until the button is let go.
+Otherwise the Pico's own light comes on once a beat while the clock runs, and
+the panel LED flashes with output 1 by itself, and is only told here when the
+tempo changes, so its flash stays a quarter of a beat long.
+
+The hold and the lights are the first core's work, and none of it is urgent.
+The stop pin is looked at every few milliseconds from the main loop. It also
+notes, through an interrupt, when it was pressed and when it was let go, so a
+hold made while the Pico was busy saving or scanning for networks isn't lost,
+and a spike on the wire is never taken for one. The interrupt only notes the
+time: the hold is acted on from the main loop, never from the interrupt.
 """
 
 import asyncio
@@ -31,10 +36,6 @@ import picoclock.device.led
 # How often the buttons are looked at and the light is set, in milliseconds.
 LOOK_EVERY = 5
 
-# The button that puts every setting back, beside the three that work the clock.
-RESET = "reset"
-
-
 def wiring () -> dict:
 
 	"""Give the pin each button is on, and whether it reads low when pressed, as `board` has them."""
@@ -42,10 +43,8 @@ def wiring () -> dict:
 	board = picoclock.device.board
 
 	pins = {
-		picoclock.core.transport.START: board.START_PIN,
-		picoclock.core.transport.PAUSE: board.PAUSE_PIN,
+		picoclock.core.transport.PLAY_PAUSE: board.PLAY_PAUSE_PIN,
 		picoclock.core.transport.STOP: board.STOP_PIN,
-		RESET: board.RESET_PIN,
 	}
 
 	return {name: (pins[name], board.PRESSED_IS_LOW[pins[name]]) for name in pins}
@@ -53,17 +52,17 @@ def wiring () -> dict:
 
 class Panel:
 
-	"""Hands the start, pause and stop buttons to the player, reads the reset button, and works the lights."""
+	"""Hands the play/pause and stop buttons to the player, reads stop held down to put the settings back, and works the lights."""
 
 	def __init__ (self, clock, player, inputs: "dict | None" = None, light=None, led=None) -> None:
 
 		"""Set the pins up as inputs, the light as off, and the panel LED flashing.
 
-		`inputs` gives a (pin, pressed is low) for each of "start", "pause",
-		"stop" and "reset" that has a button, and is the wiring in `board`
-		unless given. `light` is anything with a `value` to set, and is the
-		Pico's own light unless given. `led` is anything with a `follow` to
-		give the tempo to, and is the panel LED unless given.
+		`inputs` gives a (pin, pressed is low) for each of "play/pause" and
+		"stop" that has a button, and is the wiring in `board` unless given.
+		`light` is anything with a `value` to set, and is the Pico's own light
+		unless given. `led` is anything with a `follow` to give the tempo to
+		and a `show` to warn of a reset with, and is the panel LED unless given.
 		"""
 
 		self.clock = clock
@@ -73,8 +72,8 @@ class Panel:
 		if inputs is None:
 			inputs = wiring()
 
-		# Start, pause and stop are read by the player on the second core, where the first core being held up can't keep them waiting.
-		self._handed = sorted(name for name in inputs if name != RESET)
+		# Play/pause and stop are read by the player on the second core, where the first core being held up can't keep them waiting.
+		self._handed = sorted(inputs)
 
 		for name in self._handed:
 			number, low = inputs[name]
@@ -83,7 +82,8 @@ class Panel:
 		# An interrupt can't ask for memory, even to report what went wrong in it.
 		micropython.alloc_emergency_exception_buf(100)
 
-		self._names = [name for name in inputs if name == RESET]
+		# Stop held down puts the settings back, which is the first core's work, so it reads that pin for itself as well.
+		self._names = [name for name in inputs if name == picoclock.core.transport.STOP]
 		self._pins = []
 		self._levels = []
 		self._buttons = []
@@ -114,6 +114,9 @@ class Panel:
 		# The first use of it starts the chip, which an interrupt mustn't cut short, so every use goes through `unbroken`.
 		self._light = light
 		self._lit = False
+
+		# Whether a held stop has taken the panel LED over, and how, as `buttons.warning` says.
+		self._warned = None
 
 		if light is None:
 			picoclock.device.chip.unbroken(self._find_light)
@@ -151,7 +154,7 @@ class Panel:
 
 	def look (self) -> None:
 
-		"""Read the reset button, act on it once it has been held long enough, and set the lights."""
+		"""Read the stop button, put the settings back once it has been held long enough, and set the lights."""
 
 		now = time.ticks_ms()
 		elapsed = time.ticks_diff(now, self._looked)
@@ -182,6 +185,12 @@ class Panel:
 
 		self._led.follow(self.clock.settings.tempo)
 
+		warned = picoclock.core.buttons.warning(self._hold)
+
+		if warned != self._warned:
+			self._warned = warned
+			self._led.show(warned)
+
 		running = self.clock.transport.state == picoclock.core.transport.RUNNING
 		lit = picoclock.core.buttons.light(running, self.player.position() if running else -1, self._hold)
 
@@ -191,7 +200,7 @@ class Panel:
 
 	async def run (self) -> None:
 
-		"""Look at the reset button and set the lights for as long as the Pico is on."""
+		"""Look at the stop button and set the lights for as long as the Pico is on."""
 
 		while True:
 			self.look()
@@ -201,7 +210,8 @@ class Panel:
 
 		"""Stop listening to the buttons and put the light out.
 
-		The panel LED goes on flashing with output 1: the clock plays on.
+		The panel LED goes on flashing with output 1, even if it was warning
+		of a reset: the clock plays on.
 		"""
 
 		for name in self._handed:
@@ -209,5 +219,7 @@ class Panel:
 
 		for pin in self._pins:
 			pin.irq(None)
+
+		self._led.show(None)
 
 		picoclock.device.chip.unbroken(self._light.value, 0)

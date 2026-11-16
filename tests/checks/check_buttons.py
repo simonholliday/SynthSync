@@ -171,42 +171,44 @@ def check_letting_go_and_pressing_again_while_busy_is_a_second_press () -> None:
 	assert len(said_yes(picoclock.core.buttons.Button(), held, away=((130, 400),))) == 1
 
 
-def check_the_reset_button_must_be_held_for_three_seconds () -> None:
+def check_stop_must_be_held_for_five_seconds_to_put_the_settings_back () -> None:
 
-	"""A knock or a short press does nothing. Three seconds held does it, once, however long it is held after."""
+	"""A knock or a press of under five seconds does nothing. Five seconds held does it, once, however long it is held after."""
 
 	hold = picoclock.core.buttons.Hold
 
+	assert picoclock.core.buttons.HOLD == 5000
+
 	assert said_yes(hold(), ((50, False), (300, True), (100, False))) == []
-	assert said_yes(hold(), ((50, False), (2900, True), (100, False))) == []
+	assert said_yes(hold(), ((50, False), (4900, True), (100, False))) == []
 
-	said = said_yes(hold(), ((50, False), (3200, True), (100, False)))
+	said = said_yes(hold(), ((50, False), (5200, True), (100, False)))
 
-	# Three seconds from when it went down, not from when that was believed.
-	assert len(said) == 1 and 3045 <= said[0] <= 3060, said
+	# Five seconds from when it went down, not from when that was believed.
+	assert len(said) == 1 and 5045 <= said[0] <= 5060, said
 
-	assert len(said_yes(hold(), ((50, False), (10000, True), (100, False)))) == 1
+	assert len(said_yes(hold(), ((50, False), (12000, True), (100, False)))) == 1
 
 	# The same when the Pico was busy as it went down, and only looked a second later.
-	said = said_yes(hold(), ((50, False), (3200, True), (100, False)), away=((40, 1000),))
+	said = said_yes(hold(), ((50, False), (5200, True), (100, False)), away=((40, 1000),))
 
-	assert len(said) == 1 and 3045 <= said[0] <= 3060, said
+	assert len(said) == 1 and 5045 <= said[0] <= 5060, said
 
 
 def check_letting_go_for_a_moment_starts_the_count_again () -> None:
 
-	"""Two seconds, a gap, and two more is not three seconds. Holding on from the second press is."""
+	"""Three seconds, a gap, and three more is not five seconds. Holding on from the second press is."""
 
 	hold = picoclock.core.buttons.Hold
 
-	assert said_yes(hold(), ((2000, True), (100, False), (2000, True), (100, False))) == []
+	assert said_yes(hold(), ((3000, True), (100, False), (3000, True), (100, False))) == []
 
-	said = said_yes(hold(), ((2000, True), (100, False), (3100, True), (100, False)))
+	said = said_yes(hold(), ((3000, True), (100, False), (5100, True), (100, False)))
 
-	assert len(said) == 1 and 5095 <= said[0] <= 5110, said
+	assert len(said) == 1 and 8095 <= said[0] <= 8110, said
 
 	# It can be done again after letting go.
-	assert len(said_yes(hold(), ((3100, True), (100, False), (3100, True), (100, False)))) == 2
+	assert len(said_yes(hold(), ((5100, True), (100, False), (5100, True), (100, False)))) == 2
 
 
 def check_a_hold_counts_through_a_busy_spell_unless_it_was_broken () -> None:
@@ -215,13 +217,13 @@ def check_a_hold_counts_through_a_busy_spell_unless_it_was_broken () -> None:
 
 	hold = picoclock.core.buttons.Hold
 
-	said = said_yes(hold(), ((50, False), (3450, True), (100, False)), away=((1000, 3200),))
+	said = said_yes(hold(), ((50, False), (5450, True), (100, False)), away=((1000, 5200),))
 
-	assert said == [3205], said
+	assert said == [5205], said
 
-	broken = ((50, False), (1450, True), (100, False), (1900, True), (100, False))
+	broken = ((50, False), (1450, True), (100, False), (3900, True), (100, False))
 
-	assert said_yes(hold(), broken, away=((1000, 3200),)) == []
+	assert said_yes(hold(), broken, away=((1000, 5200),)) == []
 
 
 def check_the_light_is_on_for_the_first_quarter_of_each_beat_while_the_clock_runs () -> None:
@@ -243,40 +245,69 @@ def check_the_light_is_on_for_the_first_quarter_of_each_beat_while_the_clock_run
 	assert not light(False, 7100)
 
 
-def check_the_light_flashes_fast_while_reset_is_held_and_stays_on_once_it_is_done () -> None:
+def check_holding_stop_takes_the_lights_over_from_two_seconds_and_keeps_them_lit_once_the_settings_are_back () -> None:
 
-	"""Holding the reset button takes the light over: fast flashes, then steady on until the button is let go."""
+	"""Nothing for two seconds, then fast flashes until five, then steady on until the button is let go, and both lights alike."""
 
 	hold = picoclock.core.buttons.Hold()
 	light = picoclock.core.buttons.light
+	warning = picoclock.core.buttons.warning
 	seen = []
 	done_at = 0
 
-	for now in range(5, 3200, 5):
+	assert warning(None) is None
+
+	for now in range(5, 5300, 5):
 
 		if hold.look(True, 0, 5):
 			done_at = now
 
-		seen.append(light(False, -1, hold))
+		seen.append((now, light(False, -1, hold), warning(hold)))
 
-	changes = sum(1 for index in range(1, len(seen)) if seen[index] != seen[index - 1])
+	# The first two seconds leave the lights as the clock has them, which is out once stop has stopped it.
+	assert all(warned is None and not lit for now, lit, warned in seen if now < 1990)
 
-	# On for 60 ms and off for 60 ms, for three seconds, is about fifty changes.
+	# From two seconds the panel LED is worked as the Pico's own light is.
+	assert all(warned is not None and warned == lit for now, lit, warned in seen if now > 2010)
+
+	# On for 60 ms and off for 60 ms, from two seconds to five, is about fifty changes.
+	flashing = [lit for now, lit, warned in seen if 1990 < now < 4990]
+	changes = sum(1 for index in range(1, len(flashing)) if flashing[index] != flashing[index - 1])
+
 	assert 45 <= changes <= 55, changes
-	assert done_at > 0
+	assert 4990 <= done_at <= 5010, done_at
 
-	# Done, it is on whatever the clock is doing, until the button is let go.
+	# Done, they are on whatever the clock is doing, until the button is let go.
 	for now in range(0, 500, 5):
 		hold.look(True, 0, 5)
-		assert light(False, -1, hold)
+		assert light(False, -1, hold) and warning(hold) is True
 		assert light(True, 600, hold)
 
 	for now in range(0, 40, 5):
 		hold.look(False, 0, 5)
 
+	assert warning(hold) is None
 	assert not light(False, -1, hold)
 	assert light(True, 100, hold)
 	assert not light(True, 600, hold)
+
+
+def check_letting_go_of_stop_before_five_seconds_gives_the_lights_back () -> None:
+
+	"""Warned, and let go at four seconds: nothing is put back, and the lights are the clock's again."""
+
+	hold = picoclock.core.buttons.Hold()
+
+	for now in range(5, 4000, 5):
+		assert not hold.look(True, 0, 5)
+
+	assert picoclock.core.buttons.warning(hold) is not None
+
+	for now in range(0, 40, 5):
+		assert not hold.look(False, 0, 5)
+
+	assert picoclock.core.buttons.warning(hold) is None
+	assert not picoclock.core.buttons.light(False, -1, hold)
 
 
 def check_the_panel_led_is_lit_for_a_quarter_of_a_beat_but_never_more_than_a_tenth_of_a_second () -> None:
