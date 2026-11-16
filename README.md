@@ -1,6 +1,6 @@
 # PicoClock
 
-A master clock for modular synths, built on a Raspberry Pi Pico 2 W and set from your phone.
+A WiFi master clock for modular synths, with up to eight trigger outputs, each at its own multiple or division of the clock. It runs on a Raspberry Pi Pico 2 W, and you set it from your phone.
 
 <p align="center">
 	<img src="docs/images/page-main.png" width="280" alt="PicoClock's page on a phone: a tempo knob reading 124 BPM, a play/pause button and a stop button, and four outputs set to ×1, ×2, ×4 and ÷4.">
