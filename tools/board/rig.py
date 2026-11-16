@@ -2997,6 +2997,9 @@ def soak (minutes: int) -> None:
 	tempo and output 2 were set to when it began. A line is printed for each
 	window, and one result line at the end.
 
+	The clock runs at the PPQN PicoClock starts at, 4, as most people's will:
+	output 1 sends four pulses a beat, and every other output a ratio of it.
+
 	The settings it found are kept on the Pico's storage too while it runs,
 	and put back at the end. A soak cut short by restarting the Pico leaves
 	them there, and the next soak puts those back instead.
@@ -3045,11 +3048,12 @@ def soak (minutes: int) -> None:
 
 	try:
 
-		# Output 2 begins at 48 pulses a second: 120 BPM, one pulse a beat and ×24.
-		# The laptop half's ratios are of a clock of one pulse a beat too.
-		parts.clock.set_ppqn(1)
+		# Output 2 begins at 48 pulses a second: 120 BPM and 24 pulses a beat.
+		# The laptop half's ratios are of a clock of this PPQN too.
+		ppqn = picoclock.core.ratio.DEFAULT_PPQN
+		parts.clock.set_ppqn(ppqn)
 		parts.clock.set_tempo(12000)
-		parts.clock.set_output(1, "ratio", "24")
+		parts.clock.set_output(1, "ratio", "24/%d" % ppqn)
 
 		asyncio.run(soaking(parts, capture, settled, counts, minutes))
 

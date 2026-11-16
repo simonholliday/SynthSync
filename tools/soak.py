@@ -6,7 +6,8 @@ It runs the whole of PicoClock from the timing rig, on the WiFi network the
 Pico has saved, as the rig's `air` test does, but for hours. The Pico times
 output 2 in windows of a minute, holding every gap to the cycle against the
 tempo and ratio output 2 had when the window began, and prints a line for
-each. Meanwhile this computer uses the page as people would, and harder:
+each. The clock runs at 4 PPQN, as PicoClock starts and as most people will
+run it. Meanwhile this computer uses the page as people would, and harder:
 
 - a page stays open throughout, as a phone left on the page does;
 - every half a minute the page is used hard for a few seconds, as
@@ -47,6 +48,7 @@ import time
 import types
 import typing
 
+import picoclock.core.ratio
 import tools.hammer
 import tools.install
 import tools.page
@@ -63,13 +65,19 @@ HEALTH_EVERY = 60.0
 # The chance that a window is followed by a change to the tempo, the transport or output 2.
 CHANGE_CHANCE = 0.7
 
+# The clock's PPQN while the soak runs, which the Pico's half sets: the one
+# PicoClock starts at.
+PPQN = picoclock.core.ratio.DEFAULT_PPQN
+
 # What those changes choose from. Any of these tempos with any of these ratios
 # keeps output 2 between 1 and 120 pulses a second, which is what the Pico's
-# windows are made for. The ratios are all snap values, and the free ones are
-# set only with snap off.
+# windows are made for. The ratios are of a clock of 4 pulses a beat, so "1/4"
+# is a pulse a beat and "6" is 24: the same pulses a beat as earlier soaks,
+# which ran at 1 PPQN. The ratios are all snap values, and the free ones, set
+# only with snap off, are not.
 TEMPOS = (6000, 8250, 9000, 10000, 12000, 13333, 14050, 17475, 24000, 30000)
-RATIOS = ("1", "2", "3", "4", "6", "8", "12", "16", "24", "3/2")
-FREE_RATIOS = ("7/3", "5/4", "11/2", "5")
+RATIOS = ("1/4", "1/2", "3/4", "1", "3/2", "2", "3", "4", "6", "3/8")
+FREE_RATIOS = ("7/12", "5/16", "11/8", "5/4")
 PULSES = (5, 10, 20)
 CHANGES = ("tempo", "ratio", "pause", "stop", "mute", "pulse", "snap")
 

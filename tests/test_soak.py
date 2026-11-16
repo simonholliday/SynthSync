@@ -39,19 +39,26 @@ def test_name_value_pairs_are_picked_out_of_a_line () -> None:
 
 def test_every_tempo_with_every_ratio_keeps_output_2_within_what_a_window_holds () -> None:
 
-	"""Between 1 and 120 pulses a second, whichever tempo and ratio the changes have chosen, snapped or free."""
+	"""Between 1 and 120 pulses a second, whichever tempo and ratio the changes have chosen, snapped or free, at the soak's PPQN."""
+
+	ppqn = tools.soak.PPQN
 
 	for tempo in tools.soak.TEMPOS:
 		for text in tools.soak.RATIOS + tools.soak.FREE_RATIOS:
 
-			pulses, beats = picoclock.core.ratio.parse(text)
+			ratio = picoclock.core.ratio.parse(text, ppqn)
+			pulses, beats = picoclock.core.ratio.effective(ratio, ppqn)
 			per_second = tempo * pulses / (6000 * beats)
 
 			assert 1 <= per_second <= 120, (tempo, text)
 
 	# The ratios set with snap on are snap values, so setting them never moves them.
 	for text in tools.soak.RATIOS:
-		assert picoclock.core.ratio.parse(text) in picoclock.core.ratio.SNAPS, text
+		assert picoclock.core.ratio.is_snap(picoclock.core.ratio.parse(text, ppqn), ppqn), text
+
+	# The free ones aren't, so turning snap on again always moves the ratio.
+	for text in tools.soak.FREE_RATIOS:
+		assert not picoclock.core.ratio.is_snap(picoclock.core.ratio.parse(text, ppqn), ppqn), text
 
 
 def test_snap_turned_off_is_turned_on_again_at_the_next_change (log: tools.soak.Log) -> None:
