@@ -137,6 +137,12 @@ class Engine:
 			"fewest_waiting": 8,
 			"slowest_command": 0,
 			"merged": timeline.merged,
+			"empty": 0,
+			"one_left": 0,
+			"empty_where": 0,
+			"empty_after": 0,
+			"longest_write": 0,
+			"writes_past_backlog": 0,
 		}
 
 	def step (self) -> None:

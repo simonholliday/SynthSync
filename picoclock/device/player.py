@@ -108,6 +108,14 @@ _COMMANDS = 12
 # The buttons the second core reads: play/pause and stop, in that order.
 _BUTTONS = picoclock.core.transport.BUTTONS
 
+# Where the queue was last found empty: at the first look after a backlog had
+# played out, at any other look while feeding, or while building a backlog. And
+# the number noted for a press of one of the buttons, after the commands' own.
+_AFTER_BACKLOG = 1
+_FEEDING = 2
+_BUILDING = 3
+_BUTTON = _COMMANDS
+
 # The buttons are looked at in time the second core has to spare. When the
 # outputs keep it so busy that the player is never full, they are looked at
 # after this many words all the same. The time since the last look is counted
@@ -192,6 +200,20 @@ class Player:
 		# was playing, in microseconds.
 		self._counts = array.array("i", [0, 0, _DEPTH, 0, 0])
 
+		# How close the player came to running dry, which a fault only shows once
+		# it has happened. How many times the queue was found empty and with one
+		# word left while the clock played; where the last empty one was found
+		# (`_AFTER_BACKLOG`, `_FEEDING` or `_BUILDING`); the last command carried
+		# out before it, by number, with `_BUTTON` for a press of a button. Then
+		# the last command carried out so far, and whether a backlog has just
+		# played out and nothing has been fed since.
+		self._lows = array.array("i", [0, 0, 0, 0, 0, 0])
+
+		# The longest flash write in milliseconds, and how many writes made while
+		# the clock played were still going when their backlog had run out, which
+		# leaves the player only its eight words to last until the write ends.
+		self._writes = array.array("i", [0, 0])
+
 		# How much playing to put by for each command, by its number.
 		self._cover = array.array("i", [0] * _COMMANDS)
 		self._cover[_TEMPO] = _COVER_TEMPO + _COVER_TEMPO_EACH * outputs
@@ -257,6 +279,7 @@ class Player:
 		quiet = self._quiet
 		marks = self._marks
 		counts = self._counts
+		lows = self._lows
 		registers = machine.mem32
 		ticks_ms = time.ticks_ms
 		ticks_diff = time.ticks_diff
@@ -294,6 +317,16 @@ class Player:
 					continue
 
 				level = waiting()
+
+				if level < 2:
+
+					lows[level] += 1
+
+					if level == 0:
+						lows[2] = _AFTER_BACKLOG if lows[5] else _FEEDING
+						lows[3] = lows[4]
+
+				lows[5] = 0
 
 				if level < _DEPTH:
 
@@ -418,6 +451,8 @@ class Player:
 			# A value the scheduler won't take. Count it rather than end the thread.
 			self._counts[1] += 1
 
+		self._lows[4] = what
+
 		# Said before the command is struck off, so the first core never sees
 		# the queue empty and the clock as it was before.
 		self._note_state()
@@ -465,6 +500,7 @@ class Player:
 			self._build(self._cover[_PRESS])
 
 		self.timeline.press(press)
+		self._lows[4] = _BUTTON
 
 		if playing:
 			self._play_out()
@@ -516,6 +552,7 @@ class Player:
 		waiting = self._waiting
 		next_word = self._next_word
 		counts = self._counts
+		lows = self._lows
 		bits = timeline.pin_bits
 		cycles = timeline.cycles_per_tick
 		overhead = timeline.overhead_cycles
@@ -532,6 +569,14 @@ class Player:
 
 				if level < counts[2]:
 					counts[2] = level
+
+				if level < 2:
+
+					lows[level] += 1
+
+					if level == 0:
+						lows[2] = _BUILDING
+						lows[3] = lows[4]
 
 				if head < tail:
 					word = backlog[head]
@@ -562,6 +607,8 @@ class Player:
 
 		while dma.count > 0:
 			pass
+
+		self._lows[5] = 1
 
 	# -----------------------------------------------------------------------
 	# The first core.
@@ -716,7 +763,22 @@ class Player:
 
 			time.sleep_ms(1)
 
-		return write()
+		playing = self._state[0] == 1
+		began = time.ticks_ms()
+		answer = write()
+		took = time.ticks_diff(time.ticks_ms(), began)
+
+		writes = self._writes
+
+		if took > writes[0]:
+			writes[0] = took
+
+		# DMA has given the player the whole backlog already, so for the end of
+		# the write the player had only the words in its queue.
+		if playing and self._dma.count == 0:
+			writes[1] += 1
+
+		return answer
 
 	def settle (self, milliseconds: int = 200) -> bool:
 
@@ -756,9 +818,20 @@ class Player:
 		the second core has waited for the first to collect its garbage.
 		`presses` is how many presses of the buttons the second core has
 		carried out, and `pressed_at` the time of the last, by `time.ticks_ms`.
+
+		How close the player came to running dry: `empty` and `one_left` count
+		the times its queue was found with nothing or one word in it while the
+		clock played. `empty_where` says where the last empty one was found: 1
+		at the first look after a backlog had played out, 2 while feeding, 3
+		while building a backlog, or 0 for never. `empty_after` is the command
+		carried out last before it, by its number, with 10 for a flash write's
+		backlog and 12 for a press of a button. `longest_write` is the longest
+		flash write in milliseconds, and `writes_past_backlog` how many writes
+		made while the clock played outlasted the backlog put by for them.
 		"""
 
 		timeline = self.timeline
+		lows = self._lows
 
 		return {
 			"running": timeline.running,
@@ -772,6 +845,12 @@ class Player:
 			"merged": timeline.merged,
 			"presses": self._pressed[0],
 			"pressed_at": self._pressed[1],
+			"empty": lows[0],
+			"one_left": lows[1],
+			"empty_where": lows[2],
+			"empty_after": lows[3],
+			"longest_write": self._writes[0],
+			"writes_past_backlog": self._writes[1],
 		}
 
 	def close (self) -> None:

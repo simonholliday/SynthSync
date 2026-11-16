@@ -547,7 +547,7 @@ def describe (status: dict) -> str:
 
 	"""Write the player's own counts for a result line."""
 
-	return "faults=%d refused=%d fewest_waiting=%d slowest_command_us=%d merged=%d" % (status["faults"], status["refused"], status["fewest_waiting"], status["slowest_command"], status["merged"])
+	return "faults=%d refused=%d fewest_waiting=%d slowest_command_us=%d merged=%d empty=%d one_left=%d empty_where=%d empty_after=%d longest_write_ms=%d writes_past_backlog=%d" % (status["faults"], status["refused"], status["fewest_waiting"], status["slowest_command"], status["merged"], status["empty"], status["one_left"], status["empty_where"], status["empty_after"], status["longest_write"], status["writes_past_backlog"])
 
 
 def test_player (load: str = "idle") -> None:
@@ -785,6 +785,53 @@ def test_saved (load: str = "idle") -> None:
 	passed = found and problems == [] and name.startswith("rig-") and leftovers == []
 
 	report("saved", passed, "found=%s host_name=%s problems=%d leftovers=%d" % (found, name, len(problems), len(leftovers)))
+
+
+# Where `shortfall` writes, and removes again within the same write.
+_SHORTFALL_PATH = "/_rig_shortfall.bin"
+
+
+def test_shortfall (load: str = "idle") -> None:
+
+	"""Give a flash write far too short a backlog, and see the player's counts say so.
+
+	The counts of an empty queue and of writes that outlast their backlog
+	read zero in every other test, which is right but shows nothing about
+	whether they work. Here the backlog lasts a millisecond and the write
+	several tens, so the write must be seen to outlast its backlog.
+
+	A write holds the second core in short pieces, not all at once: with
+	outputs that change seldom, the player's eight words last 20 ms and a
+	write 70 ms past its backlog emptied nothing. So the outputs are at
+	their busiest, where eight words last well under a millisecond and even
+	a short hold runs the player dry. The queue must be seen empty and the
+	fault counted: it is the one test where a fault is wanted.
+	"""
+
+	player = make_player(_DENSE, 30000)
+	player.start()
+	player.settle()
+	time.sleep_ms(300)
+
+	def write () -> None:
+
+		"""Write enough to the flash to take tens of milliseconds, and take it off again."""
+
+		try:
+			with open(_SHORTFALL_PATH, "w") as handle:
+				handle.write("x" * 16384)
+		finally:
+			os.remove(_SHORTFALL_PATH)
+
+	player.protect(write, 1000)
+	time.sleep_ms(300)
+
+	status = player.status()
+	player.close()
+
+	passed = status["writes_past_backlog"] >= 1 and status["empty"] >= 1 and status["empty_where"] in (1, 2) and status["faults"] >= 1 and status["longest_write"] > 20
+
+	report("shortfall", passed, "%s load=%s" % (describe(status), load))
 
 
 # Four fast outputs at ratios that nearly match. Their edges fall within
@@ -3000,6 +3047,7 @@ TESTS = {
 	"burst": test_burst,
 	"cluster": test_cluster,
 	"collect": test_collect,
+	"shortfall": test_shortfall,
 	"freerun": test_freerun,
 	"inputs": test_inputs,
 	"led": test_led,

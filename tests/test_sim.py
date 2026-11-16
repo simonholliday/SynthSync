@@ -198,7 +198,7 @@ def test_the_stand_in_reports_in_the_players_terms () -> None:
 	engine = picoclock.sim.engine.Engine(4)
 
 	# The same names as `picoclock.device.player.Player.status`, which can't be imported here.
-	assert sorted(engine.status().keys()) == ["beat", "faults", "fewest_waiting", "merged", "paused", "position", "refused", "running", "slowest_command"]
+	assert sorted(engine.status().keys()) == ["beat", "empty", "empty_after", "empty_where", "faults", "fewest_waiting", "longest_write", "merged", "one_left", "paused", "position", "refused", "running", "slowest_command", "writes_past_backlog"]
 	assert engine.status()["faults"] == 0
 
 
