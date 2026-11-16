@@ -31,6 +31,8 @@ You build it yourself from a handful of common parts. **You don't need to write 
 	- [The tempo LED](#the-tempo-led)
 	- [Power](#power)
 	- [Parts list](#parts-list)
+	- [Choosing the transistors](#choosing-the-transistors)
+	- [Choosing LEDs](#choosing-leds)
 	- [A complete example](#a-complete-example)
 - [Using PicoClock](#using-picoclock)
 - [WiFi](#wifi)
@@ -163,7 +165,7 @@ A Pico pin gives 3.3 V and shouldn't be patched straight into a modular system. 
 
 **For each output you need:**
 
-- one NPN transistor and one PNP transistor;
+- one NPN transistor and one PNP transistor, of [almost any small kind](#choosing-the-transistors);
 - three 10 kΩ resistors and one 1 kΩ resistor;
 - one 3.5 mm mono jack socket.
 
@@ -171,7 +173,7 @@ A Pico pin gives 3.3 V and shouldn't be patched straight into a modular system. 
 
 **Every other output is the same circuit** on the next pin along: output 2 on GP3, output 3 on GP4, and so on. They all share the same 5 V and the same ground.
 
-> **To come:** the transistors we recommend, once our own build has been tested with real modules. Any small general-purpose pair should do, such as a 2N3904 with a 2N3906, or a BC547 with a BC557. The voltage at the jack is expected to be about 4.7 V on USB power, and that still has to be measured.
+> **To come:** the transistors we recommend, once our own build has been tested with real modules. Until then, [Choosing the transistors](#choosing-the-transistors) lists common ones that should do. The voltage at the jack is expected to be about 4.7 V on USB power, and that still has to be measured.
 
 ### A clock output with an LED
 
@@ -179,7 +181,7 @@ A Pico pin gives 3.3 V and shouldn't be patched straight into a modular system. 
 
 ![The same clock output, with a resistor and an LED from the second transistor to ground.](docs/images/output-led.svg)
 
-An output LED shows the real pulse, so with the usual 10 ms pulse it is a quick blink. For a light that is easy to read as the beat, fit [the tempo LED](#the-tempo-led) as well. The LED's longer leg goes towards the resistor, and its shorter leg to ground.
+An output LED shows the real pulse, so with the usual 10 ms pulse it is a quick blink. For a light that is easy to read as the beat, fit [the tempo LED](#the-tempo-led) as well. The LED's longer leg goes towards the resistor, and its shorter leg to ground. Any colour will do, and [Choosing LEDs](#choosing-leds) says more.
 
 ### Why not straight from the pin?
 
@@ -223,7 +225,7 @@ It has one more job. While the stop button is held for a reset, it flashes fast 
 
 Like output 1, it goes dark while the clock is paused or stopped, and while output 1 is switched off.
 
-Unlike the output LEDs, it needs no transistors: just a resistor from the pin. The resistor can be anything from 330 Ω to 1 kΩ, and a smaller one makes the LED brighter. The light on the Pico itself flashes on the beat too, but it is hidden once the board is in a case.
+Unlike the output LEDs, it needs no transistors: just a resistor from the pin. The resistor can be anything from 330 Ω to 1 kΩ, and a smaller one makes the LED brighter. For a blue, white or bright green LED, use 330 Ω: [Choosing LEDs](#choosing-leds) says why. The light on the Pico itself flashes on the beat too, but it is hidden once the board is in a case.
 
 ### Power
 
@@ -252,7 +254,49 @@ The clock outputs take their 5 V from the Pico's VSYS pin, pin 39, as the diagra
 | Output LED, and a 1 kΩ resistor | Optional | 1 of each, for each output you want one on |
 | Breadboard and jumper wires | To build it on | |
 
-Ordinary quarter-watt resistors are fine. Start with output 1, and add outputs in order: 2, then 3, and so on.
+Ordinary quarter-watt resistors are fine. Start with output 1, and add outputs in order: 2, then 3, and so on. The next two sections help you find the transistors and LEDs in a shop.
+
+### Choosing the transistors
+
+**Any small, general-purpose NPN and PNP transistors will do.** Each one carries only a few milliamps here, far below what even the smallest can take. Most come in a small black plastic body with one flat face and three legs, called TO-92. Some common ones to search for:
+
+| NPN | PNP | Good to know |
+| --- | --- | --- |
+| 2N3904 | 2N3906 | |
+| BC547 | BC557 | BC546, BC548, BC549 and BC550 are the same family, as are BC556, BC558, BC559 and BC560 |
+| BC337 | BC327 | |
+| 2N2222 or PN2222A | 2N2907 or PN2907A | |
+| S8050 | S8550 | Common in low-cost assortment kits |
+| 2SC1815 | 2SA1015 | Printed C1815 and A1015 on the body |
+| BC107, BC108 or BC109 | BC177, BC178 or BC179 | Older, in a small metal can |
+
+- **Each row is a pair often sold together, but the two needn't match.** They do separate jobs in an output, so any NPN works with any PNP.
+- **A letter after a BC number, such as the B in BC547B, is a grade.** Any grade works.
+- **A transistor assortment kit** usually has several of these pairs, and costs little.
+- **Look up which leg is which on the ones you buy.** Search for the name and "pinout". A 2N3904 and a BC547, for example, have their legs in opposite orders.
+- **Avoid Darlington transistors, such as the TIP120, and MOSFETs, such as the 2N7000.** Shops often list them beside these, but they're different kinds of part, and this circuit isn't drawn for them.
+
+### Choosing LEDs
+
+**Any colour works** with the resistors the diagrams show.
+
+**Each colour takes a different voltage to light,** called its forward voltage, and written Vf in a shop's listing. It depends on what the LED is made of:
+
+- **Red, orange and yellow** take about 2 V.
+- **Blue, white and bright green** take about 3 V, as do pink and purple, which are usually blue LEDs inside.
+- **Green comes in two kinds:** an older, yellowish green that takes about 2 V, and a brighter "true" green that takes about 3 V. The Vf in the listing tells you which you have.
+
+**What that means here:**
+
+- **An output LED** gets about 5 V, which is plenty for any colour. Use 1 kΩ, whatever the colour.
+- **The tempo LED** gets the Pico's 3.3 V, which leaves a 3 V LED little to spare. Red, orange, yellow and yellowish green light well with anything from 330 Ω to 1 kΩ. Blue, white, bright green, pink and purple light too, but more dimly, so give them 330 Ω.
+
+**And a few tips:**
+
+- **Colours don't look equally bright,** even with the same resistor, and makes differ too. If one LED outshines the others, a larger resistor, such as 2.2 kΩ, dims it.
+- **Always fit the resistor.** It's what keeps the current safe. Without it, an LED can burn out, and the tempo LED can harm the Pico's pin.
+- **Use plain, single-colour LEDs,** 3 mm or 5 mm. Frosted ones, often listed as diffused, are easier to see from the side. LEDs that flash or change colour by themselves, or that are sold as addressable, have a chip inside and won't follow the beat.
+- **To work out a resistor for yourself,** an online LED resistor calculator does it. Give it 5 V for an output LED, or 3.3 V for the tempo LED, and aim for a few milliamps. Keep the tempo LED's resistor to 330 Ω or more.
 
 ### A complete example
 
