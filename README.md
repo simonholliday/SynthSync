@@ -2,7 +2,7 @@
 
 **A microsecond-accurate DIY master clock for modular synths, with up to eight trigger outputs, each at its own multiple or division of the clock.** You set it from your phone or computer, over its built-in WiFi.
 
-PicoClock is a clock you build yourself, on a breadboard, from about £20 of common parts. It keeps a Eurorack or other modular system, drum machines, sequencers and semi-modulars in time with each other. The software is free: you pay only for the parts.
+PicoClock is a clock you build yourself, on a breadboard, from a handful of super-cheap, common parts. It keeps a Eurorack or other modular system, drum machines, sequencers and semi-modulars in time with each other. The software is free: you pay only for the parts.
 
 - **Accurate.** Every pulse leaves within a millionth of a second of its ideal time, placed by hardware inside the Pico's chip. The outputs never drift apart, however long it runs. [How accurate is it?](#how-accurate-is-it) has the measurements.
 - **Up to eight outputs, locked together.** Four out of the box. They all count from the same start, so pulses that should land together do.
@@ -13,7 +13,7 @@ PicoClock is a clock you build yourself, on a breadboard, from about £20 of com
 - **Hands-on.** Play/pause and stop buttons, a tempo LED that flashes on the beat, and an LED on each output, if you fit them.
 - **Starts by itself,** pulsing within a second of power, with the settings you last used.
 
-**You don't need to write any code.** If you can patch a modular system and follow a simple circuit diagram, you can put PicoClock on the Pico and build your first output in about an hour.
+**You don't need to write any code.** If you can patch a modular system and follow a simple circuit diagram, you can be up and running within an hour.
 
 <p align="center">
 	<img src="docs/images/page-main.png" width="280" alt="PicoClock's page on a phone: a tempo knob reading 124 BPM, a play/pause button and a stop button, and four outputs set to ×1, ×2, ×4 and ÷4.">
