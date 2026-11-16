@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 250" width="620" height="250" role="img" aria-labelledby="title about">
+<title id="title">The quick way: straight from a pin</title><desc id="about">GP2 goes through a 1 kilohm resistor to the jack&#x27;s tip. The jack&#x27;s sleeve goes to ground.</desc>
+<style>
+	.wire { fill: none; stroke: #1f2328; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.shape { fill: #ffffff; stroke: #1f2328; stroke-width: 2; stroke-linejoin: round; }
+	.solid { fill: #1f2328; stroke: none; }
+	.pin { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.5; }
+	.maybe { fill: none; stroke: #59636e; stroke-width: 1.5; stroke-dasharray: 6 5; }
+	text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; }
+	.label { font-size: 14px; }
+	.name { font-size: 14px; font-weight: 600; }
+	.title { font-size: 17px; font-weight: 600; }
+	.note { font-size: 13px; fill: #59636e; }
+</style>
+<rect x="1" y="1" width="618" height="248" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
+<text class="title" x="24" y="36" text-anchor="start">The quick way: straight from a pin</text>
+<rect class="pin" x="26" y="96" width="124" height="28" rx="6"/>
+<text class="name" x="88" y="115" text-anchor="middle">GP2 · pin 4</text>
+<path class="wire" d="M150 110 L166 110 L170 103 L178 117 L186 103 L194 117 L202 103 L210 117 L214 110 L230 110"/>
+<text class="label" x="190" y="96" text-anchor="middle">1 kΩ</text>
+<path class="wire" d="M230 110 L250 110"/>
+<path class="wire" d="M250 110 L268 110 L278 119 L288 110"/>
+<rect class="shape" x="302" y="86" width="9" height="40" rx="2"/>
+<path class="wire" d="M306.5 126 L306.5 150"/>
+<text class="note" x="278" y="98" text-anchor="middle">tip</text>
+<text class="note" x="320" y="112" text-anchor="start">sleeve</text>
+<path class="wire" d="M292.5 150 L320.5 150"/>
+<path class="wire" d="M297.5 156 L315.5 156"/>
+<path class="wire" d="M302.5 162 L310.5 162"/>
+<text class="name" x="278" y="70" text-anchor="middle">3.5 mm jack</text>
+<text class="note" x="24" y="228" text-anchor="start">Pulses of 3.3 V, and nothing to protect the Pico. For trying things out only.</text>
+</svg>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 300" width="620" height="300" role="img" aria-labelledby="title about">
+<title id="title">The play/pause and stop buttons</title><desc id="about">Two push buttons. One joins GP21 to ground while pressed, and the other joins GP22 to ground.</desc>
+<style>
+	.wire { fill: none; stroke: #1f2328; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.shape { fill: #ffffff; stroke: #1f2328; stroke-width: 2; stroke-linejoin: round; }
+	.solid { fill: #1f2328; stroke: none; }
+	.pin { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.5; }
+	.maybe { fill: none; stroke: #59636e; stroke-width: 1.5; stroke-dasharray: 6 5; }
+	text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; }
+	.label { font-size: 14px; }
+	.name { font-size: 14px; font-weight: 600; }
+	.title { font-size: 17px; font-weight: 600; }
+	.note { font-size: 13px; fill: #59636e; }
+</style>
+<rect x="1" y="1" width="618" height="298" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
+<text class="title" x="24" y="36" text-anchor="start">The play/pause and stop buttons</text>
+<rect class="pin" x="26" y="96" width="124" height="28" rx="6"/>
+<text class="name" x="88" y="115" text-anchor="middle">GP21 · pin 27</text>
+<path class="wire" d="M150 110 L190 110"/>
+<path class="wire" d="M190 110 L216 110"/>
+<path class="wire" d="M244 110 L270 110"/>
+<circle class="shape" cx="219" cy="110" r="3.5"/>
+<circle class="shape" cx="241" cy="110" r="3.5"/>
+<path class="wire" d="M213 100 L247 100"/>
+<path class="wire" d="M230 100 L230 89"/>
+<path class="wire" d="M223 89 L237 89"/>
+<path class="wire" d="M270 110 L330 110 L330 190"/>
+<text class="label" x="230" y="78" text-anchor="middle">Play/pause</text>
+<rect class="pin" x="26" y="176" width="124" height="28" rx="6"/>
+<text class="name" x="88" y="195" text-anchor="middle">GP22 · pin 29</text>
+<path class="wire" d="M150 190 L190 190"/>
+<path class="wire" d="M190 190 L216 190"/>
+<path class="wire" d="M244 190 L270 190"/>
+<circle class="shape" cx="219" cy="190" r="3.5"/>
+<circle class="shape" cx="241" cy="190" r="3.5"/>
+<path class="wire" d="M213 180 L247 180"/>
+<path class="wire" d="M230 180 L230 169"/>
+<path class="wire" d="M223 169 L237 169"/>
+<path class="wire" d="M270 190 L330 190 L330 220"/>
+<circle class="solid" cx="330" cy="190" r="3.5"/>
+<path class="wire" d="M316 220 L344 220"/>
+<path class="wire" d="M321 226 L339 226"/>
+<path class="wire" d="M326 232 L334 232"/>
+<text class="label" x="230" y="158" text-anchor="middle">Stop</text>
+<text class="note" x="354" y="195" text-anchor="start">hold for 5 s to reset</text>
+<text class="note" x="24" y="278" text-anchor="start">No resistors are needed. Pin 28, between these two pins, is a GND pin that both can use.</text>
+</svg>
