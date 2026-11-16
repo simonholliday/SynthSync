@@ -1,6 +1,19 @@
 # PicoClock
 
-A WiFi master clock for modular synths, with up to eight trigger outputs, each at its own multiple or division of the clock. It runs on a Raspberry Pi Pico 2 W, and you set it from your phone.
+**A microsecond-accurate DIY master clock for modular synths, with up to eight trigger outputs, each at its own multiple or division of the clock.** You set it from your phone or computer, over its built-in WiFi.
+
+PicoClock is a clock you build yourself, on a breadboard, from about £20 of common parts. It keeps a Eurorack or other modular system, drum machines, sequencers and semi-modulars in time with each other. The software is free: you pay only for the parts.
+
+- **Accurate.** Every pulse leaves within a millionth of a second of its ideal time, placed by hardware inside the Pico's chip. The outputs never drift apart, however long it runs. [How accurate is it?](#how-accurate-is-it) has the measurements.
+- **Up to eight outputs, locked together.** Four out of the box. They all count from the same start, so pulses that should land together do.
+- **A multivider on outputs 2 to 8.** Output 1 is the main clock, and each of the others multiplies or divides it, from ÷128 to ×24: triplets, dotted notes, and ratios such as ×0.75 or ×1.25 for polyrhythms.
+- **Suits the gear you have.** The main clock sends from 1 to 48 pulses a beat, and any output can be set for an instrument that wants another rate. [Matching your other gear](#matching-your-other-gear) has the settings for a DFAM, a Volca and gear that wants 24 pulses a beat.
+- **Set from any phone, tablet or computer.** It makes its own WiFi network, or joins your home or studio WiFi, where any web browser on that network can reach it. There's no app to install, no account and no internet needed.
+- **More than a clock.** Any output can send a gate that stays high while the clock runs, or a single pulse when it starts or stops, for a sequencer's reset input.
+- **Hands-on.** Play/pause and stop buttons, a tempo LED that flashes on the beat, and an LED on each output, if you fit them.
+- **Starts by itself,** pulsing within a second of power, with the settings you last used.
+
+**You don't need to write any code.** If you can patch a modular system and follow a simple circuit diagram, you can put PicoClock on the Pico and build your first output in about an hour.
 
 <p align="center">
 	<img src="docs/images/page-main.png" width="280" alt="PicoClock's page on a phone: a tempo knob reading 124 BPM, a play/pause button and a stop button, and four outputs set to ×1, ×2, ×4 and ÷4.">
@@ -8,9 +21,7 @@ A WiFi master clock for modular synths, with up to eight trigger outputs, each a
 	<img src="docs/images/page-output.png" width="280" alt="The same page with output 2 opened, showing its role, Multivider, and its pulse, a set length of 10 ms.">
 </p>
 
-PicoClock sends clock pulses to your modules from a small, inexpensive board. You set the tempo, and what each output does, from a web page that the board serves to your phone. There is no app to install and it needs no internet.
-
-You build it yourself from a handful of common parts. **You don't need to write any code.** If you can patch a modular system and follow a simple circuit diagram, you can build this.
+<p align="center"><em>The page PicoClock serves to your phone's web browser. The clock itself is the hardware you build.</em></p>
 
 > **This README is a draft.** PicoClock is still being tested. Notes marked **To come** are waiting on a measurement, a decision or a piece of work.
 
