@@ -1,4 +1,4 @@
-"""Measure how close PicoClock's tempo is to true, at its output, against network time.
+"""Measure how close SynthSync's tempo is to true, at its output, against network time.
 
     python -m tools.accuracy
     python -m tools.accuracy --hours 1
@@ -21,9 +21,9 @@ time servers on the internet itself, every ten seconds or so, how far that
 clock is out. Each answer is only as good as the time it took to come back,
 so for each server only the quickest answer in every four minutes is kept.
 
-It needs PicoClock installed on a Pico on a USB port, and a computer with
+It needs SynthSync installed on a Pico on a USB port, and a computer with
 Python 3.10 or newer, mpremote and the internet: nothing else. It stops
-PicoClock while it runs and restarts the Pico at the end. Meanwhile the
+SynthSync while it runs and restarts the Pico at the end. Meanwhile the
 outputs play the tempos being measured, so anything patched to them will hear
 it. Keep the computer awake throughout.
 
@@ -61,7 +61,7 @@ MPREMOTE = [sys.executable, "-m", "mpremote"]
 RESTART_TRIES = 3
 
 # The tempos output 1 plays, in hundredths of a BPM, one stretch of each in turn,
-# and how many pulses a beat: PicoClock's own PPQN, which most people use.
+# and how many pulses a beat: SynthSync's own PPQN, which most people use.
 # 174 BPM is there because its gaps aren't a whole number of microseconds.
 TEMPOS = (3000, 6000, 12000, 17400, 30000)
 PPQN = 4
@@ -741,7 +741,7 @@ def describe (result: dict[str, typing.Any]) -> str:
 
 	ppm = result["ppm"]
 	lines = [
-		"PicoClock's accuracy, measured at output 1 over %.1f hours against network time." % result["hours"],
+		"SynthSync's accuracy, measured at output 1 over %.1f hours against network time." % result["hours"],
 		"",
 	]
 
@@ -828,7 +828,7 @@ def find_device () -> str:
 
 def restart (device: str) -> bool:
 
-	"""Restart the Pico, so that PicoClock starts again, and say whether it worked."""
+	"""Restart the Pico, so that SynthSync starts again, and say whether it worked."""
 
 	for _ in range(RESTART_TRIES):
 
@@ -879,7 +879,7 @@ def measure (device: str, log: Log, tempos: tuple[int, ...], total: int, stretch
 	said_at = began
 	heard = [began]
 
-	with tempfile.TemporaryDirectory(prefix="picoclock-accuracy-") as scratch:
+	with tempfile.TemporaryDirectory(prefix="synthsync-accuracy-") as scratch:
 
 		script = pathlib.Path(scratch) / "accuracy.py"
 		script.write_text(board_script(tempos, stretch, total), encoding="utf-8")
@@ -930,7 +930,7 @@ def measure (device: str, log: Log, tempos: tuple[int, ...], total: int, stretch
 
 def tempos_from (text: str) -> tuple[int, ...]:
 
-	"""Read the BPMs asked for, with commas between, into hundredths of a BPM, refusing any PicoClock can't play."""
+	"""Read the BPMs asked for, with commas between, into hundredths of a BPM, refusing any SynthSync can't play."""
 
 	tempos = []
 
@@ -947,7 +947,7 @@ def tempos_from (text: str) -> tuple[int, ...]:
 			raise ValueError("%s BPM has more than two decimal places" % typed.strip())
 
 		if not 2000 <= hundredths <= 30000:
-			raise ValueError("%s BPM is outside 20 to 300 BPM, which is all PicoClock plays" % typed.strip())
+			raise ValueError("%s BPM is outside 20 to 300 BPM, which is all SynthSync plays" % typed.strip())
 
 		tempos.append(hundredths)
 
@@ -958,7 +958,7 @@ def main (arguments: list[str] | None = None) -> int:
 
 	"""Measure, or work out a log from before, and say what it shows."""
 
-	parser = argparse.ArgumentParser(description="Measure how close PicoClock's tempo is to true, at its output, against network time.")
+	parser = argparse.ArgumentParser(description="Measure how close SynthSync's tempo is to true, at its output, against network time.")
 	parser.add_argument("--hours", type=float, default=12.0, help="how long to measure for; twelve hours gives the tempo to a few hundredths of a part per million")
 	parser.add_argument("--log", type=pathlib.Path, help="where to write the log; a new file named for the time, here, if left out")
 	parser.add_argument("--device", help="the Pico's serial port; found automatically when only one is plugged in")
@@ -995,7 +995,7 @@ def main (arguments: list[str] | None = None) -> int:
 	device = options.device or find_device()
 	path = options.log or pathlib.Path(time.strftime("accuracy-%Y-%m-%d-%H%M.log"))
 
-	# Before PicoClock is stopped, a time server must be answering, or the night would be wasted.
+	# Before SynthSync is stopped, a time server must be answering, or the night would be wasted.
 	print("Asking the time servers...", flush=True)
 	servers = find_servers(names)
 
@@ -1004,13 +1004,13 @@ def main (arguments: list[str] | None = None) -> int:
 		return 1
 
 	log = Log(path)
-	log.note("PicoClock accuracy, begun %s UTC, for %g hours, stretches of %d s, on %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), options.hours, stretch, device))
+	log.note("SynthSync accuracy, begun %s UTC, for %g hours, stretches of %d s, on %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), options.hours, stretch, device))
 
 	for name in names:
 		log.note("time server %s is at %s" % (name, servers[name]) if name in servers else "time server %s didn't answer, so it isn't asked" % name)
 
-	print("Measuring PicoClock's accuracy at output 1 for %g hours, at %s BPM in turn, %d minutes each." % (options.hours, options.tempos, stretch // 60), flush=True)
-	print("PicoClock is stopped meanwhile, and the outputs play the tempos being measured. The log is %s." % path, flush=True)
+	print("Measuring SynthSync's accuracy at output 1 for %g hours, at %s BPM in turn, %d minutes each." % (options.hours, options.tempos, stretch // 60), flush=True)
+	print("SynthSync is stopped meanwhile, and the outputs play the tempos being measured. The log is %s." % path, flush=True)
 
 	# A stop asked for from outside ends the run as one that finished does, with
 	# the Pico restarted, and what it measured so far is worked out.
@@ -1029,12 +1029,12 @@ def main (arguments: list[str] | None = None) -> int:
 		restarted = restart(device)
 		log.note("ended %s UTC, and the Pico was %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "restarted" if restarted else "NOT restarted"))
 		log.close()
-		print("Restarted the Pico, which starts PicoClock again." if restarted else "The Pico didn't answer when asked to restart. Unplug it and plug it in again to start PicoClock.", flush=True)
+		print("Restarted the Pico, which starts SynthSync again." if restarted else "The Pico didn't answer when asked to restart. Unplug it and plug it in again to start SynthSync.", flush=True)
 
 	run = read_log(log.lines)
 
-	if any("picoclock" in line and "Error" in line for line in run.other):
-		print("The Pico couldn't find PicoClock. Copy PicoClock onto it first, as the README's steps say, then try again.")
+	if any("synthsync" in line and "Error" in line for line in run.other):
+		print("The Pico couldn't find SynthSync. Copy SynthSync onto it first, as the README's steps say, then try again.")
 		return 1
 
 	try:

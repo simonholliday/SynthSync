@@ -1,9 +1,9 @@
-"""The names a phone looks up on PicoClock's own network are answered over a real socket, and the socket is let go when that stops."""
+"""The names a phone looks up on SynthSync's own network are answered over a real socket, and the socket is let go when that stops."""
 
 import asyncio
 import socket
 
-import picoclock.web.portal
+import synthsync.web.portal
 
 import tests.checks.check_portal
 
@@ -59,7 +59,7 @@ def test_a_look_up_is_answered_over_a_socket_only_while_the_own_network_is_up ()
 
 		"""The check itself, which needs an event loop to run in."""
 
-		answering = asyncio.create_task(picoclock.web.portal.run(lambda: where[0], port))
+		answering = asyncio.create_task(synthsync.web.portal.run(lambda: where[0], port))
 
 		# Its socket is opened at its first turn, and a look-up sent before then is lost.
 		await asyncio.sleep(0.1)
@@ -67,7 +67,7 @@ def test_a_look_up_is_answered_over_a_socket_only_while_the_own_network_is_up ()
 		try:
 			reply = await ask(port, query)
 
-			assert reply == picoclock.web.portal.answer(query, "192.168.4.1")
+			assert reply == synthsync.web.portal.answer(query, "192.168.4.1")
 
 			where[0] = ""
 

@@ -1,9 +1,9 @@
 """A press is told from chatter and knocks the same way on the Pico's Python as on a laptop's."""
 
-import picoclock.core.buttons
+import synthsync.core.buttons
 
 
-def said_yes (thing: picoclock.core.buttons.Button | picoclock.core.buttons.Hold, spans: tuple[tuple[int, bool], ...], every: int = 5, away: tuple[tuple[int, int], ...] = ()) -> list[int]:
+def said_yes (thing: synthsync.core.buttons.Button | synthsync.core.buttons.Hold, spans: tuple[tuple[int, bool], ...], every: int = 5, away: tuple[tuple[int, int], ...] = ()) -> list[int]:
 
 	"""Play a stretch of a button's life to something that looks at it, and give the times it said yes.
 
@@ -65,7 +65,7 @@ def check_a_press_counts_once_and_about_20_ms_after_it_begins () -> None:
 
 	"""However long a button is held, it is one press, believed once it has read as pressed for 20 ms."""
 
-	said = said_yes(picoclock.core.buttons.Button(), ((50, False), (400, True), (100, False)))
+	said = said_yes(synthsync.core.buttons.Button(), ((50, False), (400, True), (100, False)))
 
 	assert len(said) == 1, said
 	assert 65 <= said[0] <= 75, said
@@ -80,7 +80,7 @@ def check_chatter_as_a_button_closes_and_opens_is_one_press () -> None:
 	spans = ((50, False),) + closing + ((150, True),) + opening + ((100, False),)
 
 	for every in (1, 3, 5, 7):
-		assert len(said_yes(picoclock.core.buttons.Button(), spans, every)) == 1, every
+		assert len(said_yes(synthsync.core.buttons.Button(), spans, every)) == 1, every
 
 
 def check_a_knock_shorter_than_20_ms_is_ignored () -> None:
@@ -88,14 +88,14 @@ def check_a_knock_shorter_than_20_ms_is_ignored () -> None:
 	"""Something that reads as pressed for a moment and goes away isn't a press."""
 
 	for length in (1, 4, 10, 14):
-		assert said_yes(picoclock.core.buttons.Button(), ((50, False), (length, True), (200, False))) == [], length
+		assert said_yes(synthsync.core.buttons.Button(), ((50, False), (length, True), (200, False))) == [], length
 
 	# Nor is a spike that came and went between two looks, which only the pin's memory shows.
-	assert said_yes(picoclock.core.buttons.Button(), ((52, False), (1, True), (200, False))) == []
+	assert said_yes(synthsync.core.buttons.Button(), ((52, False), (1, True), (200, False))) == []
 
 	# Nor is one that came while the Pico was busy, however long it was busy for.
 	for length in (1, 10, 14):
-		assert said_yes(picoclock.core.buttons.Button(), ((100, False), (length, True), (500, False)), away=((40, 400),)) == [], length
+		assert said_yes(synthsync.core.buttons.Button(), ((100, False), (length, True), (500, False)), away=((40, 400),)) == [], length
 
 
 def check_knocks_one_after_another_never_add_up_to_a_press () -> None:
@@ -105,12 +105,12 @@ def check_knocks_one_after_another_never_add_up_to_a_press () -> None:
 	spans = ((50, False),) + ((8, True), (42, False)) * 10
 
 	for every in (1, 5):
-		assert said_yes(picoclock.core.buttons.Button(), spans, every) == [], every
+		assert said_yes(synthsync.core.buttons.Button(), spans, every) == [], every
 
 	# The same of a button that keeps reading as let go for a moment while it is held: it is never let go.
 	held = ((50, False), (100, True)) + ((8, False), (42, True)) * 10 + ((100, False),)
 
-	assert len(said_yes(picoclock.core.buttons.Button(), held)) == 1
+	assert len(said_yes(synthsync.core.buttons.Button(), held)) == 1
 
 
 def check_two_presses_are_two () -> None:
@@ -119,7 +119,7 @@ def check_two_presses_are_two () -> None:
 
 	spans = ((50, False), (100, True), (100, False), (100, True), (100, False))
 
-	assert len(said_yes(picoclock.core.buttons.Button(), spans)) == 2
+	assert len(said_yes(synthsync.core.buttons.Button(), spans)) == 2
 
 
 def check_a_press_made_while_the_pico_was_busy_still_counts () -> None:
@@ -129,7 +129,7 @@ def check_a_press_made_while_the_pico_was_busy_still_counts () -> None:
 	for length in (25, 100, 300):
 
 		spans = ((50, False), (length, True), (400, False))
-		said = said_yes(picoclock.core.buttons.Button(), spans, away=((40, 400),))
+		said = said_yes(synthsync.core.buttons.Button(), spans, away=((40, 400),))
 
 		assert said == [405], (length, said)
 
@@ -139,7 +139,7 @@ def check_a_press_still_held_when_the_pico_comes_back_counts_once () -> None:
 	"""A button pressed while nothing was looking, and still down afterwards, is one press."""
 
 	spans = ((100, False), (600, True), (100, False))
-	said = said_yes(picoclock.core.buttons.Button(), spans, away=((50, 400),))
+	said = said_yes(synthsync.core.buttons.Button(), spans, away=((50, 400),))
 
 	assert said == [405], said
 
@@ -148,12 +148,12 @@ def check_a_button_pressed_just_as_the_pico_comes_back_is_believed_after_20_ms_a
 
 	"""However long the Pico was busy, a press that has only just begun still has to last."""
 
-	said = said_yes(picoclock.core.buttons.Button(), ((398, False), (200, True), (100, False)), away=((40, 400),))
+	said = said_yes(synthsync.core.buttons.Button(), ((398, False), (200, True), (100, False)), away=((40, 400),))
 
 	assert len(said) == 1 and 415 <= said[0] <= 425, said
 
 	# And one that ends before then doesn't count.
-	assert said_yes(picoclock.core.buttons.Button(), ((398, False), (12, True), (300, False)), away=((40, 400),)) == []
+	assert said_yes(synthsync.core.buttons.Button(), ((398, False), (12, True), (300, False)), away=((40, 400),)) == []
 
 
 def check_letting_go_and_pressing_again_while_busy_is_a_second_press () -> None:
@@ -161,23 +161,23 @@ def check_letting_go_and_pressing_again_while_busy_is_a_second_press () -> None:
 	"""Down before and down after, but let go in between: the pin's memory shows the second press."""
 
 	spans = ((20, False), (100, True), (100, False), (400, True), (100, False))
-	said = said_yes(picoclock.core.buttons.Button(), spans, away=((130, 400),))
+	said = said_yes(synthsync.core.buttons.Button(), spans, away=((130, 400),))
 
 	assert len(said) == 2 and said[1] == 405, said
 
 	# Held all the way through, it is still only the one.
 	held = ((20, False), (600, True), (100, False))
 
-	assert len(said_yes(picoclock.core.buttons.Button(), held, away=((130, 400),))) == 1
+	assert len(said_yes(synthsync.core.buttons.Button(), held, away=((130, 400),))) == 1
 
 
 def check_stop_must_be_held_for_five_seconds_to_put_the_settings_back () -> None:
 
 	"""A knock or a press of under five seconds does nothing. Five seconds held does it, once, however long it is held after."""
 
-	hold = picoclock.core.buttons.Hold
+	hold = synthsync.core.buttons.Hold
 
-	assert picoclock.core.buttons.HOLD == 5000
+	assert synthsync.core.buttons.HOLD == 5000
 
 	assert said_yes(hold(), ((50, False), (300, True), (100, False))) == []
 	assert said_yes(hold(), ((50, False), (4900, True), (100, False))) == []
@@ -199,7 +199,7 @@ def check_letting_go_for_a_moment_starts_the_count_again () -> None:
 
 	"""Three seconds, a gap, and three more is not five seconds. Holding on from the second press is."""
 
-	hold = picoclock.core.buttons.Hold
+	hold = synthsync.core.buttons.Hold
 
 	assert said_yes(hold(), ((3000, True), (100, False), (3000, True), (100, False))) == []
 
@@ -215,7 +215,7 @@ def check_a_hold_counts_through_a_busy_spell_unless_it_was_broken () -> None:
 
 	"""Held from before the Pico was busy until after counts in full. Let go and pressed again meanwhile starts again."""
 
-	hold = picoclock.core.buttons.Hold
+	hold = synthsync.core.buttons.Hold
 
 	said = said_yes(hold(), ((50, False), (5450, True), (100, False)), away=((1000, 5200),))
 
@@ -230,7 +230,7 @@ def check_the_light_is_on_for_the_first_quarter_of_each_beat_while_the_clock_run
 
 	"""Once a beat, and never when the clock isn't running or can't say where it is."""
 
-	light = picoclock.core.buttons.light
+	light = synthsync.core.buttons.light
 
 	assert light(True, 0)
 	assert light(True, 249)
@@ -249,9 +249,9 @@ def check_holding_stop_takes_the_lights_over_from_two_seconds_and_keeps_them_lit
 
 	"""Nothing for two seconds, then fast flashes until five, then steady on until the button is let go, and both lights alike."""
 
-	hold = picoclock.core.buttons.Hold()
-	light = picoclock.core.buttons.light
-	warning = picoclock.core.buttons.warning
+	hold = synthsync.core.buttons.Hold()
+	light = synthsync.core.buttons.light
+	warning = synthsync.core.buttons.warning
 	seen = []
 	done_at = 0
 
@@ -296,16 +296,16 @@ def check_letting_go_of_stop_before_five_seconds_gives_the_lights_back () -> Non
 
 	"""Warned, and let go at four seconds: nothing is put back, and the lights are the clock's again."""
 
-	hold = picoclock.core.buttons.Hold()
+	hold = synthsync.core.buttons.Hold()
 
 	for now in range(5, 4000, 5):
 		assert not hold.look(True, 0, 5)
 
-	assert picoclock.core.buttons.warning(hold) is not None
+	assert synthsync.core.buttons.warning(hold) is not None
 
 	for now in range(0, 40, 5):
 		assert not hold.look(False, 0, 5)
 
-	assert picoclock.core.buttons.warning(hold) is None
-	assert not picoclock.core.buttons.light(False, -1, hold)
+	assert synthsync.core.buttons.warning(hold) is None
+	assert not synthsync.core.buttons.light(False, -1, hold)
 

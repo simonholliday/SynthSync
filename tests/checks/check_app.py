@@ -15,11 +15,11 @@ import time
 
 import microdot.test_client
 
-import picoclock
-import picoclock.core.clock
-import picoclock.core.ratio
-import picoclock.core.settings
-import picoclock.web.app
+import synthsync
+import synthsync.core.clock
+import synthsync.core.ratio
+import synthsync.core.settings
+import synthsync.web.app
 
 import tests.checks.check_clock
 
@@ -51,7 +51,7 @@ class Network:
 
 		"""Say how the network stands."""
 
-		return {"mode": self.mode, "name": "PicoClock 1A2B3C", "address": "192.168.4.1", "problem": self.problem, "own": "PicoClock 1A2B3C", "found_at": self.found_at}
+		return {"mode": self.mode, "name": "SynthSync 1A2B3C", "address": "192.168.4.1", "problem": self.problem, "own": "SynthSync 1A2B3C", "found_at": self.found_at}
 
 	def scan (self) -> "list[dict[str, typing.Any]]":
 
@@ -182,17 +182,17 @@ class Socket:
 		self.batches = []
 
 
-def make (outputs: int = 4) -> "tuple[picoclock.web.app.App, tests.checks.check_clock.Engine, Network]":
+def make (outputs: int = 4) -> "tuple[synthsync.web.app.App, tests.checks.check_clock.Engine, Network]":
 
 	"""Make an app on a stand-in engine, stand-in storage and a stand-in network, with the clock at its default pulses a beat."""
 
-	clock, engine, storage = tests.checks.check_clock.make(outputs, picoclock.core.ratio.DEFAULT_PPQN)
+	clock, engine, storage = tests.checks.check_clock.make(outputs, synthsync.core.ratio.DEFAULT_PPQN)
 	network = Network()
 
-	return picoclock.web.app.App(clock, network), engine, network
+	return synthsync.web.app.App(clock, network), engine, network
 
 
-async def settle (app: picoclock.web.app.App) -> None:
+async def settle (app: synthsync.web.app.App) -> None:
 
 	"""Let everything that is ready to run do so, and every open page be sent what it's behind on."""
 
@@ -212,7 +212,7 @@ async def settle (app: picoclock.web.app.App) -> None:
 		await asyncio.sleep(0)
 
 
-async def open_page (app: picoclock.web.app.App, answering: bool = True) -> Socket:
+async def open_page (app: synthsync.web.app.App, answering: bool = True) -> Socket:
 
 	"""Open a page on the app, and let it be greeted. One that isn't `answering` takes what it is sent and says nothing back."""
 
@@ -228,7 +228,7 @@ async def open_page (app: picoclock.web.app.App, answering: bool = True) -> Sock
 	return socket
 
 
-async def close_pages (app: picoclock.web.app.App, *sockets: Socket) -> None:
+async def close_pages (app: synthsync.web.app.App, *sockets: Socket) -> None:
 
 	"""Close these pages and wait for the app to finish with each."""
 
@@ -271,7 +271,7 @@ def fits (message: "dict[str, typing.Any]") -> bool:
 
 	"""Say whether a message carries exactly what the app's table says its type does."""
 
-	expected = ["type"] + list(picoclock.web.app.TO_PAGE[message["type"]])
+	expected = ["type"] + list(synthsync.web.app.TO_PAGE[message["type"]])
 
 	return sorted(message.keys()) == sorted(expected)
 
@@ -283,7 +283,7 @@ def by_type (messages: "list[dict[str, typing.Any]]", kind: str) -> "list[dict[s
 	return [message for message in messages if message["type"] == kind]
 
 
-def client_for (app: picoclock.web.app.App) -> microdot.test_client.TestClient:
+def client_for (app: synthsync.web.app.App) -> microdot.test_client.TestClient:
 
 	"""Make Microdot's test client for an app, asking for the Pico by its own address, as a page on its own network does.
 
@@ -317,8 +317,8 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 		now = state["now"]
 
 		assert sorted(state.keys()) == ["fixed", "now"]
-		assert sorted(fixed.keys()) == sorted(picoclock.web.app.FIXED)
-		assert fixed["version"] == picoclock.__version__
+		assert sorted(fixed.keys()) == sorted(synthsync.web.app.FIXED)
+		assert fixed["version"] == synthsync.__version__
 		assert fixed["slowest_tempo"] == 2000
 		assert fixed["fastest_tempo"] == 30000
 		assert fixed["slowest_ratio"] == "1/128"
@@ -336,7 +336,7 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 
 		assert ppqn["ppqn"] == 4
 		assert ppqn["fastest_ratio"] == "24"
-		assert fixed["snaps"] == [picoclock.core.ratio.to_text(snap) for snap in picoclock.core.ratio.SNAPS]
+		assert fixed["snaps"] == [synthsync.core.ratio.to_text(snap) for snap in synthsync.core.ratio.SNAPS]
 		assert sorted(message["index"] for message in by_type(now, "output")) == [0, 1, 2, 3]
 
 		tempo = by_type(now, "tempo")[0]
@@ -359,10 +359,10 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 		network_now = by_type(now, "network")[0]
 
 		assert network_now["mode"] == "own"
-		assert network_now["name"] == "PicoClock 1A2B3C"
+		assert network_now["name"] == "SynthSync 1A2B3C"
 		assert network_now["address"] == "192.168.4.1"
-		assert network_now["own"] == "PicoClock 1A2B3C"
-		assert network_now["host_name"] == "picoclock"
+		assert network_now["own"] == "SynthSync 1A2B3C"
+		assert network_now["host_name"] == "synthsync"
 		assert network_now["saved"] == ""
 
 	tests.checks.check_clock.run(work())
@@ -430,8 +430,8 @@ def check_a_bad_value_is_refused_in_the_settings_own_words () -> None:
 			({"do": "output", "index": 1}, "An output has a ratio, a snap switch, a mute, a pulse and a role"),
 			({"do": "own_password", "value": "short"}, "The password needs between 8 and 63 characters"),
 			({"do": "join", "name": "", "password": ""}, "A network's name has between 1 and 32 characters"),
-			({"do": "rewind"}, "That isn't something PicoClock can be told to do"),
-			({}, "That isn't something PicoClock can be told to do"),
+			({"do": "rewind"}, "That isn't something SynthSync can be told to do"),
+			({}, "That isn't something SynthSync can be told to do"),
 		]
 
 		for message, words in refused:
@@ -443,7 +443,7 @@ def check_a_bad_value_is_refused_in_the_settings_own_words () -> None:
 
 		app.clock.flush()
 
-		assert app.clock.settings.to_dict() == picoclock.core.settings.Settings(4).to_dict()
+		assert app.clock.settings.to_dict() == synthsync.core.settings.Settings(4).to_dict()
 		assert engine.calls == []
 
 	tests.checks.check_clock.run(work())
@@ -487,7 +487,7 @@ def check_a_change_must_be_json_and_from_the_pages_own_site () -> None:
 		response = await post(client, {"do": "tempo", "value": 20000}, dict(OTHER_SITE))
 
 		assert response.status_code == 403
-		assert response.json == {"error": "PicoClock only takes changes from its own page"}
+		assert response.json == {"error": "SynthSync only takes changes from its own page"}
 
 		assert app.clock.settings.tempo == 12000
 
@@ -550,7 +550,7 @@ def check_a_page_from_a_site_that_points_its_name_at_the_pico_can_neither_change
 		response = await post(client, {"do": "tempo", "value": 20000}, dict(rebound))
 
 		assert response.status_code == 403
-		assert response.json == {"error": "PicoClock only answers to its own name or address"}
+		assert response.json == {"error": "SynthSync only answers to its own name or address"}
 
 		response = await through_socket(client, page, dict(rebound))
 
@@ -580,7 +580,7 @@ def check_the_pico_answers_to_every_address_and_name_of_its_own () -> None:
 		network.mode = "joined"
 		tempo = 12000
 
-		for host in ("192.168.0.144", "192.168.0.144:80", "[fe80::1]:80", "picoclock", "picoclock.local", "PicoClock.Local:80", "localhost:8000"):
+		for host in ("192.168.0.144", "192.168.0.144:80", "[fe80::1]:80", "synthsync", "synthsync.local", "SynthSync.Local:80", "localhost:8000"):
 
 			client = microdot.test_client.TestClient(app.web, host=host)
 			tempo += 100
@@ -601,7 +601,7 @@ def check_the_pico_answers_to_every_address_and_name_of_its_own () -> None:
 
 		assert response.status_code == 200
 
-		response = await microdot.test_client.TestClient(app.web, host="picoclock.local").get("/api/state")
+		response = await microdot.test_client.TestClient(app.web, host="synthsync.local").get("/api/state")
 
 		assert response.status_code == 403
 
@@ -612,7 +612,7 @@ def check_the_pico_answers_to_every_address_and_name_of_its_own () -> None:
 
 		assert response.status_code == 200
 
-		response = await microdot.test_client.TestClient(app.web, host="picoclock.local").get("/api/health")
+		response = await microdot.test_client.TestClient(app.web, host="synthsync.local").get("/api/health")
 
 		assert response.status_code == 302
 
@@ -1009,7 +1009,7 @@ def check_looking_goes_on_by_itself_while_the_app_runs () -> None:
 		task = asyncio.create_task(app.run())
 
 		engine.position = 1000
-		await asyncio.sleep(picoclock.web.app.LOOK_EVERY / 1000 + 0.2)
+		await asyncio.sleep(synthsync.web.app.LOOK_EVERY / 1000 + 0.2)
 
 		assert {"type": "clock", "position": 1000, "faults": 0} in page.sent
 
@@ -1065,7 +1065,7 @@ def check_the_networks_in_range_go_only_to_the_page_that_asked () -> None:
 		await close_pages(app, asking, other)
 
 		clock, engine, storage = tests.checks.check_clock.make()
-		bare = picoclock.web.app.App(clock)
+		bare = synthsync.web.app.App(clock)
 		page = await open_page(bare)
 
 		assert by_type(page.sent[0]["now"], "network")[0]["mode"] == "none"
@@ -1154,7 +1154,7 @@ def check_a_switch_from_the_page_reaches_the_clock_and_every_page_hears_of_it ()
 		assert second.of("network")[-1]["by"] == 1
 		assert second.of("network")[-1]["found_at"] == ""
 
-		# Where a trial found PicoClock will be reaches every page, as the WiFi says it.
+		# Where a trial found SynthSync will be reaches every page, as the WiFi says it.
 		network.mode = "found"
 		network.found_at = "192.168.1.23"
 		first.say({"do": "switch"})
@@ -1215,7 +1215,7 @@ def looks (milliseconds: int) -> int:
 
 	"""Give how many looks the app takes in this long."""
 
-	return milliseconds // picoclock.web.app.LOOK_EVERY
+	return milliseconds // synthsync.web.app.LOOK_EVERY
 
 
 def check_messages_come_in_numbered_batches_and_a_page_answers_each () -> None:
@@ -1234,7 +1234,7 @@ def check_messages_come_in_numbered_batches_and_a_page_answers_each () -> None:
 		for socket in (first, second):
 
 			assert [batch["batch"] for batch in socket.batches] == [1, 2]
-			assert sorted(socket.batches[0].keys()) == sorted(picoclock.web.app.BATCH)
+			assert sorted(socket.batches[0].keys()) == sorted(synthsync.web.app.BATCH)
 			assert socket.batches[0]["messages"] == []
 			assert [message["type"] for message in socket.batches[1]["messages"]] == ["hello"]
 
@@ -1268,7 +1268,7 @@ def check_messages_come_in_numbered_batches_and_a_page_answers_each () -> None:
 		await settle(big)
 
 		assert [batch["batch"] for batch in page.batches] == [1, 2, 3, 4]
-		assert len(json.dumps(page.batches[2])) <= picoclock.web.app.MOST_BATCH
+		assert len(json.dumps(page.batches[2])) <= synthsync.web.app.MOST_BATCH
 		assert len(page.batches[2]["messages"]) + len(page.batches[3]["messages"]) == 13
 		assert [message["index"] for message in page.of("output")] == [0, 1, 2, 3, 4, 5, 6, 7]
 
@@ -1286,7 +1286,7 @@ def check_a_page_that_falls_behind_is_sent_no_more_until_it_catches_up_and_then_
 		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
-		ahead = picoclock.web.app.AHEAD
+		ahead = synthsync.web.app.AHEAD
 		keeping_up = await open_page(app)
 		behind = await open_page(app)
 
@@ -1354,7 +1354,7 @@ def check_a_page_that_stops_answering_is_given_up_on_and_one_that_is_only_slow_i
 		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
-		deadline = looks(picoclock.web.app.DEAF_FOR)
+		deadline = looks(synthsync.web.app.DEAF_FOR)
 		staying = await open_page(app)
 		slow = await open_page(app)
 		gone = await open_page(app)
@@ -1439,7 +1439,7 @@ def check_a_page_sent_nothing_for_a_while_is_asked_whether_it_is_still_there () 
 		gone.stop_answering()
 		before = len(there.batches)
 
-		for _ in range(looks(picoclock.web.app.QUIET_FOR) - 1):
+		for _ in range(looks(synthsync.web.app.QUIET_FOR) - 1):
 			app.look()
 
 		await settle(app)
@@ -1454,7 +1454,7 @@ def check_a_page_sent_nothing_for_a_while_is_asked_whether_it_is_still_there () 
 			assert socket.batches[-1]["messages"] == []
 
 		# The one that answers stays, and is asked again in its turn. The one that doesn't is given up on.
-		for _ in range(looks(picoclock.web.app.DEAF_FOR)):
+		for _ in range(looks(synthsync.web.app.DEAF_FOR)):
 			app.look()
 
 		await settle(app)
@@ -1478,7 +1478,7 @@ def check_all_the_pages_together_are_never_sent_more_than_there_is_room_for () -
 		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
-		room = picoclock.web.app.ROOM
+		room = synthsync.web.app.ROOM
 		sockets = []
 
 		for _ in range(5):
@@ -1590,7 +1590,7 @@ def check_a_page_is_greeted_only_once_it_has_shown_it_is_taking_what_it_is_sent 
 		assert by_type(stuck[0].sent[0]["now"], "tempo")[0]["tempo"] == 9000
 
 		# The rest are given up on in their turn.
-		for _ in range(looks(picoclock.web.app.DEAF_FOR)):
+		for _ in range(looks(synthsync.web.app.DEAF_FOR)):
 			app.look()
 
 		await settle(app)
@@ -1634,23 +1634,23 @@ def check_how_well_things_have_kept_up_can_be_asked_for () -> None:
 		response = await client.get("/api/health")
 
 		assert response.status_code == 200
-		assert sorted(response.json.keys()) == sorted(picoclock.web.app.HEALTH)
+		assert sorted(response.json.keys()) == sorted(synthsync.web.app.HEALTH)
 		assert response.json == {"pages": 1, "given_up": 0, "waiting": 0, "holds": 0, "held": 0, "longest_hold": 0, "faults": 3}
 
 		# Something that keeps everything here from running for a while is counted, once it lets go.
-		held = picoclock.web.app.HELD
-		picoclock.web.app.HELD = 150
+		held = synthsync.web.app.HELD
+		synthsync.web.app.HELD = 150
 
 		try:
 
 			task = asyncio.create_task(app.run())
 
-			await asyncio.sleep(picoclock.web.app.LOOK_EVERY / 1000 + 0.1)
+			await asyncio.sleep(synthsync.web.app.LOOK_EVERY / 1000 + 0.1)
 
 			assert app.health()["holds"] == 0
 			assert app.health()["longest_hold"] < 150
 
-			time.sleep(picoclock.web.app.LOOK_EVERY / 1000 + 0.3)
+			time.sleep(synthsync.web.app.LOOK_EVERY / 1000 + 0.3)
 			await asyncio.sleep(0.05)
 
 			health = app.health()
@@ -1662,7 +1662,7 @@ def check_how_well_things_have_kept_up_can_be_asked_for () -> None:
 			task.cancel()
 
 		finally:
-			picoclock.web.app.HELD = held
+			synthsync.web.app.HELD = held
 
 		await close_pages(app, page)
 
@@ -1721,8 +1721,8 @@ def check_a_connection_that_never_asks_for_anything_is_closed_and_one_that_is_on
 		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
-		patience = picoclock.web.app.PATIENCE
-		picoclock.web.app.PATIENCE = 0.05
+		patience = synthsync.web.app.PATIENCE
+		synthsync.web.app.PATIENCE = 0.05
 
 		try:
 
@@ -1744,12 +1744,12 @@ def check_a_connection_that_never_asks_for_anything_is_closed_and_one_that_is_on
 			assert b'"fixed"' in slow.written
 
 		finally:
-			picoclock.web.app.PATIENCE = patience
+			synthsync.web.app.PATIENCE = patience
 
 		# A page's socket, once open, may say nothing for as long as it likes.
 		socket = await open_page(app)
 
-		picoclock.web.app.PATIENCE = 0.05
+		synthsync.web.app.PATIENCE = 0.05
 
 		try:
 			await asyncio.sleep(0.3)
@@ -1758,7 +1758,7 @@ def check_a_connection_that_never_asks_for_anything_is_closed_and_one_that_is_on
 			assert not socket.task.done()
 
 		finally:
-			picoclock.web.app.PATIENCE = patience
+			synthsync.web.app.PATIENCE = patience
 
 		await close_pages(app, socket)
 
@@ -1779,7 +1779,7 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 	# MicroPython has no module to make one, so it is named at random until the name is a new one.
 	for _ in range(20):
 
-		folder = "/tmp/picoclock-check-files-%s-%d" % (sys.implementation.name, random.getrandbits(30))
+		folder = "/tmp/synthsync-check-files-%s-%d" % (sys.implementation.name, random.getrandbits(30))
 
 		try:
 			os.mkdir(folder)
@@ -1799,7 +1799,7 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 		"""The check itself, which needs an event loop to run in."""
 
 		clock, engine, storage = tests.checks.check_clock.make()
-		app = picoclock.web.app.App(clock, None, folder)
+		app = synthsync.web.app.App(clock, None, folder)
 		client = client_for(app)
 
 		for path in ("/", "/index.html"):
@@ -1836,7 +1836,7 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 
 		# With no folder there is no page, only the API.
 		clock, engine, storage = tests.checks.check_clock.make()
-		client = client_for(picoclock.web.app.App(clock))
+		client = client_for(synthsync.web.app.App(clock))
 
 		assert (await client.get("/")).status_code == 404
 		assert (await client.get("/api/state")).status_code == 200
@@ -1864,17 +1864,17 @@ def check_the_app_takes_every_message_its_table_lists_and_no_other () -> None:
 		"output": {"index": 1, "name": "snap", "value": False},
 		"join": {"name": "Studio", "password": "a password"},
 		"own_password": {"value": "a password"},
-		"host_name": {"value": "picoclock"},
+		"host_name": {"value": "synthsync"},
 		"heard": {"batch": 1},
 	}
 
-	for do in sorted(picoclock.web.app.FROM_PAGE.keys()):
+	for do in sorted(synthsync.web.app.FROM_PAGE.keys()):
 
 		message: "dict[str, typing.Any]" = {"do": do}
 		message.update(examples.get(do, {}))
 
 		for name in message:
-			assert name == "do" or name in picoclock.web.app.FROM_PAGE[do], (do, name)
+			assert name == "do" or name in synthsync.web.app.FROM_PAGE[do], (do, name)
 
 		answer = app.take(message)
 
@@ -1886,7 +1886,7 @@ def check_the_app_takes_every_message_its_table_lists_and_no_other () -> None:
 			app.take({"do": unknown})
 			assert False, "took a message that isn't in the table"
 		except ValueError as error:
-			assert str(error) == "That isn't something PicoClock can be told to do"
+			assert str(error) == "That isn't something SynthSync can be told to do"
 
 
 def check_two_phones_opening_the_page_together_are_sent_it_in_turn () -> None:
@@ -1898,11 +1898,11 @@ def check_two_phones_opening_the_page_together_are_sent_it_in_turn () -> None:
 		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
-		first = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 3000))
-		second = picoclock.web.app.Turn(app, io.BytesIO(b"b" * 3000))
+		first = synthsync.web.app.Turn(app, io.BytesIO(b"a" * 3000))
+		second = synthsync.web.app.Turn(app, io.BytesIO(b"b" * 3000))
 		reached: "list[tuple[str, bytes]]" = []
 
-		async def load (turn: picoclock.web.app.Turn, name: str) -> None:
+		async def load (turn: synthsync.web.app.Turn, name: str) -> None:
 
 			"""Load the page in its turn, and note what came and in what order."""
 
@@ -1935,12 +1935,12 @@ def check_a_page_load_that_never_ends_holds_the_next_one_up_only_for_a_while () 
 		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
-		stuck = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 10))
-		second = picoclock.web.app.Turn(app, io.BytesIO(b"b" * 10))
-		third = picoclock.web.app.Turn(app, io.BytesIO(b"c" * 10))
+		stuck = synthsync.web.app.Turn(app, io.BytesIO(b"a" * 10))
+		second = synthsync.web.app.Turn(app, io.BytesIO(b"b" * 10))
+		third = synthsync.web.app.Turn(app, io.BytesIO(b"c" * 10))
 		reached: "list[str]" = []
 
-		async def load (turn: picoclock.web.app.Turn, name: str) -> None:
+		async def load (turn: synthsync.web.app.Turn, name: str) -> None:
 
 			"""Load the page in its turn, and note what came and in what order."""
 
@@ -1951,7 +1951,7 @@ def check_a_page_load_that_never_ends_holds_the_next_one_up_only_for_a_while () 
 		asyncio.create_task(load(second, "second"))
 
 		# Counted in looks, so a moment when everything was held up doesn't cut a turn short.
-		for _ in range(looks(picoclock.web.app.TURN_MOST) - 1):
+		for _ in range(looks(synthsync.web.app.TURN_MOST) - 1):
 			app.look()
 
 		await asyncio.sleep(0.1)
@@ -1991,7 +1991,7 @@ def check_the_open_pages_are_sent_nothing_while_the_page_goes_to_a_phone () -> N
 
 		app, engine, network = make()
 		page = await open_page(app)
-		load = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 3000))
+		load = synthsync.web.app.Turn(app, io.BytesIO(b"a" * 3000))
 		reached: "list[str]" = []
 
 		async def begin () -> None:
@@ -2049,7 +2049,7 @@ def check_a_page_load_that_never_ends_doesnt_keep_the_open_pages_waiting_for_goo
 
 		app, engine, network = make()
 		page = await open_page(app)
-		stuck = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 10))
+		stuck = synthsync.web.app.Turn(app, io.BytesIO(b"a" * 10))
 
 		await stuck.read(5)
 		sent = len(page.batches)
@@ -2058,7 +2058,7 @@ def check_a_page_load_that_never_ends_doesnt_keep_the_open_pages_waiting_for_goo
 
 		assert len(page.batches) == sent
 
-		for _ in range(looks(picoclock.web.app.TURN_MOST)):
+		for _ in range(looks(synthsync.web.app.TURN_MOST)):
 			app.look()
 
 		await settle(app)

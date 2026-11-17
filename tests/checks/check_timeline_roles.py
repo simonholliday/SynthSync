@@ -3,7 +3,7 @@
 import gc
 import sys
 
-import picoclock.core.timeline
+import synthsync.core.timeline
 
 import tests.checks.check_timeline
 
@@ -17,7 +17,7 @@ def pin (player: tests.checks.check_timeline.Player, output: int) -> int:
 	return (player.pins >> output) & 1
 
 
-def refuses (timeline: picoclock.core.timeline.Timeline, what: str, output: int, value: int) -> bool:
+def refuses (timeline: synthsync.core.timeline.Timeline, what: str, output: int, value: int) -> bool:
 
 	"""Try one change and say whether it was refused."""
 
@@ -149,8 +149,8 @@ def check_a_start_pulse_and_a_run_output_lead_the_clocks_by_ten_milliseconds () 
 	"""A start pulse fires and a run output goes high at once, and the clocks' first beat is 10 ms later."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1), (1, 1), (2, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
-	timeline.set_role(2, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.START_PULSE)
+	timeline.set_role(2, synthsync.core.timeline.RUN)
 	player = tests.checks.check_timeline.Player(timeline)
 
 	timeline.start()
@@ -182,7 +182,7 @@ def check_either_a_start_pulse_or_a_run_output_alone_is_enough_to_lead () -> Non
 
 	"""One start pulse, or one run output, holds the first beat back by 10 ms."""
 
-	for role in (picoclock.core.timeline.START_PULSE, picoclock.core.timeline.RUN):
+	for role in (synthsync.core.timeline.START_PULSE, synthsync.core.timeline.RUN):
 
 		timeline = tests.checks.check_timeline.make([(1, 1), (1, 1)], 12000)
 		timeline.set_role(1, role)
@@ -201,8 +201,8 @@ def check_clocks_start_at_once_when_there_is_nothing_to_follow () -> None:
 	"""With no start pulse or run output, or with them muted, the first beat is immediate."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1), (1, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
-	timeline.set_role(2, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.START_PULSE)
+	timeline.set_role(2, synthsync.core.timeline.RUN)
 	timeline.set_mute(1, True)
 	timeline.set_mute(2, True)
 	player = tests.checks.check_timeline.Player(timeline)
@@ -220,7 +220,7 @@ def check_a_start_with_nothing_to_follow_keeps_no_lead_from_the_start_before () 
 	"""Started again within a lead's ten milliseconds, with the start pulse muted meanwhile, the clocks begin at once, and a change of tempo straight after puts the next beat where the new tempo says."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
+	timeline.set_role(1, synthsync.core.timeline.START_PULSE)
 	timeline.start()
 	timeline.set_mute(1, True)
 
@@ -238,8 +238,8 @@ def check_a_stop_pulse_fires_when_the_clock_stops () -> None:
 	"""Stopping sets everything low except a stop pulse, which fires once and then goes quiet."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1), (1, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.STOP_PULSE)
-	timeline.set_role(2, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.STOP_PULSE)
+	timeline.set_role(2, synthsync.core.timeline.RUN)
 	player = tests.checks.check_timeline.Player(timeline)
 
 	timeline.start()
@@ -278,7 +278,7 @@ def check_changing_what_an_output_is_for_leaves_nothing_stuck_high () -> None:
 	"""An output changing role goes low first, a new run output goes high, and a new clock joins its grid."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (3, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
 	player = tests.checks.check_timeline.Player(timeline)
 
 	player.lead = timeline.start()
@@ -287,7 +287,7 @@ def check_changing_what_an_output_is_for_leaves_nothing_stuck_high () -> None:
 	assert pin(player, 1) == 1
 
 	# Run to clock: low at once, then on the grid of three pulses a beat.
-	timeline.set_role(1, picoclock.core.timeline.CLOCK)
+	timeline.set_role(1, synthsync.core.timeline.CLOCK)
 
 	next_line = -((-player.position * 3) // UNITS)
 	before = len(player.rises[1])
@@ -304,19 +304,19 @@ def check_changing_what_an_output_is_for_leaves_nothing_stuck_high () -> None:
 	assert len(player.rises[1]) > before + 3
 
 	# Clock to run, part-way through: high at once and held.
-	timeline.set_role(1, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
 	player.play(60)
 
 	assert pin(player, 1) == 1
 
 	# Run to start pulse: low, and it stays low until the next start.
-	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
+	timeline.set_role(1, synthsync.core.timeline.START_PULSE)
 	player.play(60)
 
 	assert pin(player, 1) == 0
 
 	# Stop pulse set while running does nothing until the clock stops.
-	timeline.set_role(1, picoclock.core.timeline.STOP_PULSE)
+	timeline.set_role(1, synthsync.core.timeline.STOP_PULSE)
 	player.play(60)
 
 	assert pin(player, 1) == 0
@@ -326,10 +326,10 @@ def check_a_role_set_while_stopped_is_used_at_the_next_start () -> None:
 
 	"""Roles, mutes and lengths can all be set before the clock starts."""
 
-	timeline = picoclock.core.timeline.Timeline(3)
-	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
+	timeline = synthsync.core.timeline.Timeline(3)
+	timeline.set_role(1, synthsync.core.timeline.START_PULSE)
 	timeline.set_width(1, 3000)
-	timeline.set_role(2, picoclock.core.timeline.STOP_PULSE)
+	timeline.set_role(2, synthsync.core.timeline.STOP_PULSE)
 	timeline.set_width(2, 0)
 	player = tests.checks.check_timeline.Player(timeline)
 
@@ -352,12 +352,12 @@ def check_run_pins_names_the_run_outputs_that_sound () -> None:
 
 	"""The run outputs that aren't muted are reported as their pins."""
 
-	timeline = picoclock.core.timeline.Timeline(4)
+	timeline = synthsync.core.timeline.Timeline(4)
 
 	assert timeline.run_pins() == 0
 
-	timeline.set_role(1, picoclock.core.timeline.RUN)
-	timeline.set_role(3, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
+	timeline.set_role(3, synthsync.core.timeline.RUN)
 
 	assert timeline.run_pins() == 0b1010
 
@@ -370,8 +370,8 @@ def check_a_mute_on_a_run_output_follows_the_clock () -> None:
 
 	"""A run output unmuted while the clock runs goes high, and stays low if the clock is stopped."""
 
-	timeline = picoclock.core.timeline.Timeline(2)
-	timeline.set_role(1, picoclock.core.timeline.RUN)
+	timeline = synthsync.core.timeline.Timeline(2)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
 	timeline.set_mute(1, True)
 	player = tests.checks.check_timeline.Player(timeline)
 
@@ -400,17 +400,17 @@ def check_changes_the_clock_cannot_make_are_refused () -> None:
 
 	"""A role, a length or an output that doesn't exist is refused."""
 
-	timeline = picoclock.core.timeline.Timeline(2)
+	timeline = synthsync.core.timeline.Timeline(2)
 
 	assert refuses(timeline, "role", 1, 4)
 	assert refuses(timeline, "role", 1, -1)
-	assert refuses(timeline, "role", 2, picoclock.core.timeline.RUN)
+	assert refuses(timeline, "role", 2, synthsync.core.timeline.RUN)
 	assert refuses(timeline, "width", 1, -1)
 	assert refuses(timeline, "width", 1, 1000001)
 	assert refuses(timeline, "width", 5, 1000)
 	assert refuses(timeline, "mute", 2, 1)
 	assert not refuses(timeline, "width", 1, 0)
-	assert not refuses(timeline, "role", 1, picoclock.core.timeline.STOP_PULSE)
+	assert not refuses(timeline, "role", 1, synthsync.core.timeline.STOP_PULSE)
 
 
 def check_roles_and_mutes_ask_for_no_memory () -> None:

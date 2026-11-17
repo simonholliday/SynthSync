@@ -1,9 +1,9 @@
-"""What the Pico runs when it is switched on: PicoClock.
+"""What the Pico runs when it is switched on: SynthSync.
 
 If anything here fails, MicroPython says what went wrong over USB and waits
 there for commands, so the Pico can always be reached to put a new copy on.
 """
 
-import picoclock.device.start
+import synthsync.device.start
 
-picoclock.device.start.run()
+synthsync.device.start.run()

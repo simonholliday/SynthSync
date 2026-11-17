@@ -9,7 +9,7 @@ import pathlib
 
 import pytest
 
-import picoclock.web.app
+import synthsync.web.app
 import tools.rig
 import tools.stage
 
@@ -55,7 +55,7 @@ def laid_out (monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_no_compiler_is_reported_as_a_failure (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
 
-	"""Without mpy-cross the scheduler would run as bytecode, which isn't PicoClock as installed, so the rig refuses."""
+	"""Without mpy-cross the scheduler would run as bytecode, which isn't SynthSync as installed, so the rig refuses."""
 
 	monkeypatch.setattr(tools.rig, "find_device", lambda: "/dev/null")
 	monkeypatch.setattr(tools.stage, "find_tool", lambda name: None)
@@ -110,7 +110,7 @@ def test_every_test_the_laptop_offers_is_one_the_board_has () -> None:
 	assert sorted(ast.literal_eval(key) for key in tables[0].value.keys if key is not None) == sorted(tools.rig.TESTS)
 
 
-def test_staging_copies_picoclock_and_the_board_half (tmp_path: pathlib.Path) -> None:
+def test_staging_copies_synthsync_and_the_board_half (tmp_path: pathlib.Path) -> None:
 
 	"""The folder the Pico runs from holds the package, Microdot, the page and the rig, and no caches."""
 
@@ -121,10 +121,10 @@ def test_staging_copies_picoclock_and_the_board_half (tmp_path: pathlib.Path) ->
 
 	tools.rig.stage(tmp_path, compiler)
 
-	core = tmp_path / "picoclock" / "core"
+	core = tmp_path / "synthsync" / "core"
 
 	assert (tmp_path / "rig.mpy").exists()
-	assert (tmp_path / "picoclock" / "device" / "player.mpy").exists()
+	assert (tmp_path / "synthsync" / "device" / "player.mpy").exists()
 	assert not list(tmp_path.rglob("__pycache__"))
 
 	# Nothing is left as source for the Pico to compile, which would leave its memory too broken up for the larger tests.
@@ -138,4 +138,4 @@ def test_staging_copies_picoclock_and_the_board_half (tmp_path: pathlib.Path) ->
 	assert sorted(path.name for path in (tmp_path / "microdot").iterdir()) == sorted(pathlib.Path(part).stem + ".mpy" for part in tools.stage.MICRODOT_PARTS + (tools.stage.MICRODOT_TEST_CLIENT,))
 
 	# And the page is there gzipped, as the Pico serves it.
-	assert sorted(path.name for path in (tmp_path / "picoclock" / "web" / "static").iterdir()) == ["index.html.gz"]
+	assert sorted(path.name for path in (tmp_path / "synthsync" / "web" / "static").iterdir()) == ["index.html.gz"]

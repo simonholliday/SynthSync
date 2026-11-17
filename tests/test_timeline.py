@@ -6,8 +6,8 @@ both Pythons. These run far longer and lean on `random`, so they stay here.
 
 import random
 
-import picoclock.core.ratio
-import picoclock.core.timeline
+import synthsync.core.ratio
+import synthsync.core.timeline
 
 import tests.checks.check_timeline
 
@@ -22,15 +22,15 @@ def random_ratio (rng: random.Random) -> tuple[int, int]:
 	kind = rng.randrange(3)
 
 	if kind == 0:
-		return rng.choice(picoclock.core.ratio.SNAPS)
+		return rng.choice(synthsync.core.ratio.SNAPS)
 
 	if kind == 1:
-		return picoclock.core.ratio.parse("%d.%02d" % (rng.randrange(0, 96), rng.randrange(1, 100)))
+		return synthsync.core.ratio.parse("%d.%02d" % (rng.randrange(0, 96), rng.randrange(1, 100)))
 
 	while True:
 
 		try:
-			return picoclock.core.ratio.make(rng.randrange(1, 9601), rng.randrange(1, 9601))
+			return synthsync.core.ratio.make(rng.randrange(1, 9601), rng.randrange(1, 9601))
 		except ValueError:
 			continue
 
@@ -40,7 +40,7 @@ def test_muldiv_matches_plain_arithmetic () -> None:
 	"""The bit-by-bit multiply-and-divide agrees with ordinary whole-number arithmetic."""
 
 	rng = random.Random(21)
-	timeline = picoclock.core.timeline.Timeline(1)
+	timeline = synthsync.core.timeline.Timeline(1)
 	tried = 0
 
 	while tried < 100000:
@@ -65,13 +65,13 @@ def test_gaps_are_exact_for_every_snap_value_at_the_ends_of_the_tempo_range () -
 
 	"""The gap between pulses is exactly beats x 6,000,000,000 / (pulses x tempo) ticks."""
 
-	timeline = picoclock.core.timeline.Timeline(1)
+	timeline = synthsync.core.timeline.Timeline(1)
 
 	for tempo in (2000, 2001, 12000, 12345, 29999, 30000):
 
 		timeline.set_tempo(tempo)
 
-		for pulses, beats in picoclock.core.ratio.SNAPS + ((1, 128), (9599, 100), (9600, 101), (75, 9600)):
+		for pulses, beats in synthsync.core.ratio.SNAPS + ((1, 128), (9599, 100), (9600, 101), (75, 9600)):
 
 			timeline.set_ratio(0, pulses, beats)
 
@@ -126,7 +126,7 @@ def test_a_long_run_of_random_changes_stays_exact () -> None:
 				ratios[output] = random_ratio(rng)
 				timeline.set_ratio(output, ratios[output][0], ratios[output][1])
 
-				if timeline.role[output] == picoclock.core.timeline.CLOCK and not timeline.muted[output]:
+				if timeline.role[output] == synthsync.core.timeline.CLOCK and not timeline.muted[output]:
 					follower.moved(output)
 
 			player.play_for(rng.randrange(1, 60000))
@@ -150,7 +150,7 @@ def test_a_long_run_of_random_changes_stays_exact () -> None:
 			timeline.set_ratio(output, ratios[output][0], ratios[output][1])
 			ratio_changes += 1
 
-			if timeline.role[output] == picoclock.core.timeline.CLOCK and not timeline.muted[output]:
+			if timeline.role[output] == synthsync.core.timeline.CLOCK and not timeline.muted[output]:
 				follower.moved(output)
 
 		if rng.randrange(6) == 0:
@@ -160,7 +160,7 @@ def test_a_long_run_of_random_changes_stays_exact () -> None:
 			timeline.set_mute(output, muted)
 			other_changes += 1
 
-			if not muted and timeline.role[output] == picoclock.core.timeline.CLOCK:
+			if not muted and timeline.role[output] == synthsync.core.timeline.CLOCK:
 				follower.moved(output)
 
 			if muted:
@@ -177,7 +177,7 @@ def test_a_long_run_of_random_changes_stays_exact () -> None:
 			timeline.set_role(output, role)
 			other_changes += 1
 
-			if role == picoclock.core.timeline.CLOCK and not timeline.muted[output]:
+			if role == synthsync.core.timeline.CLOCK and not timeline.muted[output]:
 				follower.moved(output)
 			else:
 				follower.ignore(output)
@@ -186,7 +186,7 @@ def test_a_long_run_of_random_changes_stays_exact () -> None:
 		pins = timeline.mask
 
 		for output in range(count):
-			if timeline.muted[output] or timeline.role[output] in (picoclock.core.timeline.START_PULSE, picoclock.core.timeline.STOP_PULSE):
+			if timeline.muted[output] or timeline.role[output] in (synthsync.core.timeline.START_PULSE, synthsync.core.timeline.STOP_PULSE):
 				assert not (pins >> output) & 1, (step, output)
 
 		if step % 50 == 0:
@@ -195,7 +195,7 @@ def test_a_long_run_of_random_changes_stays_exact () -> None:
 			before = tests.checks.check_timeline.state(timeline)
 
 			for output in range(count):
-				if timeline.role[output] == picoclock.core.timeline.CLOCK:
+				if timeline.role[output] == synthsync.core.timeline.CLOCK:
 					timeline._place(output)
 
 			assert tests.checks.check_timeline.state(timeline) == before
@@ -224,5 +224,5 @@ def test_the_densest_pattern_never_emits_a_word_too_long_or_too_short () -> None
 	player.play(50000)
 
 	# The longest hold at 150 cycles a tick, less the player's overhead, in the bits above the pins.
-	assert player.largest < ((picoclock.core.timeline.HOLD_LIMIT * 150) << 9)
+	assert player.largest < ((synthsync.core.timeline.HOLD_LIMIT * 150) << 9)
 	assert len(player.rises[0]) > 5000

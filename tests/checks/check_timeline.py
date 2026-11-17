@@ -8,7 +8,7 @@ which one tick at a tempo of t hundredths of a BPM is exactly t units.
 import gc
 import sys
 
-import picoclock.core.timeline
+import synthsync.core.timeline
 
 UNITS = 6000 * 1000000
 
@@ -17,7 +17,7 @@ class Player:
 
 	"""Plays a timeline's words and notes when each output's pin rises and falls, and the tempo LED's."""
 
-	def __init__ (self, timeline: picoclock.core.timeline.Timeline) -> None:
+	def __init__ (self, timeline: synthsync.core.timeline.Timeline) -> None:
 
 		"""Start with every pin low, at tick zero and position zero."""
 
@@ -47,7 +47,7 @@ class Player:
 			pins, ticks = timeline.unpack(word)
 
 			assert ticks >= 1
-			assert ticks <= picoclock.core.timeline.HOLD_LIMIT
+			assert ticks <= synthsync.core.timeline.HOLD_LIMIT
 			assert 0 <= word < 2 ** 30
 
 			if word > self.largest:
@@ -65,8 +65,8 @@ class Player:
 				if before and not now:
 					self.falls[output].append(self.tick)
 
-			lit = pins & picoclock.core.timeline.LED_BIT
-			was = self.pins & picoclock.core.timeline.LED_BIT
+			lit = pins & synthsync.core.timeline.LED_BIT
+			was = self.pins & synthsync.core.timeline.LED_BIT
 
 			if lit and not was:
 				self.led_rises.append(self.tick)
@@ -125,7 +125,7 @@ class Follower:
 	pulse as having run into the one before, and that is added up to compare.
 	"""
 
-	def __init__ (self, timeline: picoclock.core.timeline.Timeline, player: Player, ratios: list[tuple[int, int]]) -> None:
+	def __init__ (self, timeline: synthsync.core.timeline.Timeline, player: Player, ratios: list[tuple[int, int]]) -> None:
 
 		"""Begin expecting line zero on every output."""
 
@@ -177,11 +177,11 @@ class Follower:
 		self.expected[output] = -((-self.player.position * self.ratios[output][0]) // line)
 
 
-def make (ratios: list[tuple[int, int]], tempo: int) -> picoclock.core.timeline.Timeline:
+def make (ratios: list[tuple[int, int]], tempo: int) -> synthsync.core.timeline.Timeline:
 
 	"""Make a timeline with these ratios at this tempo, not yet started."""
 
-	timeline = picoclock.core.timeline.Timeline(len(ratios))
+	timeline = synthsync.core.timeline.Timeline(len(ratios))
 	timeline.set_tempo(tempo)
 
 	for output in range(len(ratios)):
@@ -190,7 +190,7 @@ def make (ratios: list[tuple[int, int]], tempo: int) -> picoclock.core.timeline.
 	return timeline
 
 
-def state (timeline: picoclock.core.timeline.Timeline) -> list[int]:
+def state (timeline: synthsync.core.timeline.Timeline) -> list[int]:
 
 	"""Copy the time to every output's next pulse, whole ticks and parts."""
 
@@ -399,7 +399,7 @@ def check_stopping_sets_every_output_low_and_starting_begins_again () -> None:
 	# Both outputs, and the tempo LED on the first beat.
 	timeline.start()
 	assert not timeline.quiet()
-	assert timeline.unpack(timeline.next_word())[0] == 3 | picoclock.core.timeline.LED_BIT
+	assert timeline.unpack(timeline.next_word())[0] == 3 | synthsync.core.timeline.LED_BIT
 
 	timeline.stop()
 	assert timeline.quiet()
@@ -465,7 +465,7 @@ def check_position_says_how_far_the_clock_has_played () -> None:
 	assert timeline.position() == -1
 
 
-def refused (timeline: picoclock.core.timeline.Timeline, what: str, first: int, second: int, third: int) -> bool:
+def refused (timeline: synthsync.core.timeline.Timeline, what: str, first: int, second: int, third: int) -> bool:
 
 	"""Try one change and say whether it was refused."""
 
@@ -584,19 +584,19 @@ def check_the_tempo_led_goes_out_at_a_stop_and_waits_out_a_lead () -> None:
 	timeline.start()
 	player.play_until(50000)
 
-	assert player.pins & picoclock.core.timeline.LED_BIT
+	assert player.pins & synthsync.core.timeline.LED_BIT
 
 	timeline.stop()
 
 	assert timeline.unpack(timeline.next_word())[0] == 0
 	assert timeline.quiet()
 
-	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
+	timeline.set_role(1, synthsync.core.timeline.START_PULSE)
 	player = Player(timeline)
 	timeline.start()
 	player.play_until(600000)
 
-	assert player.led_rises == [picoclock.core.timeline.LEAD_TICKS, picoclock.core.timeline.LEAD_TICKS + 500000]
+	assert player.led_rises == [synthsync.core.timeline.LEAD_TICKS, synthsync.core.timeline.LEAD_TICKS + 500000]
 	assert player.rises[0] == player.led_rises
 
 
@@ -623,7 +623,7 @@ def check_the_tempo_leds_flash_is_a_quarter_of_a_beat_at_every_tempo_but_never_m
 	"""A quarter of a whole tick's beat, at most 100 ms, and never longer at a faster tempo, so a speeding clock never sees its flashes run together."""
 
 	timeline = make([(1, 1)], 12000)
-	before = picoclock.core.timeline.LED_LONGEST
+	before = synthsync.core.timeline.LED_LONGEST
 
 	for tempo in range(2000, 30001, 7):
 
@@ -632,13 +632,13 @@ def check_the_tempo_leds_flash_is_a_quarter_of_a_beat_at_every_tempo_but_never_m
 		quarter = 6000000000 // tempo // 4
 		width = timeline.led_width
 
-		assert width <= picoclock.core.timeline.LED_LONGEST, tempo
-		assert width == picoclock.core.timeline.LED_LONGEST or 0 <= quarter - width <= 1, tempo
+		assert width <= synthsync.core.timeline.LED_LONGEST, tempo
+		assert width == synthsync.core.timeline.LED_LONGEST or 0 <= quarter - width <= 1, tempo
 		assert width <= before, tempo
 
 		before = width
 
-	assert picoclock.core.timeline.LED_LONGEST == 100000
+	assert synthsync.core.timeline.LED_LONGEST == 100000
 
 
 def gaps_of (rises: list[int]) -> list[int]:
@@ -660,7 +660,7 @@ def check_every_gap_is_its_exact_length_rounded_down_or_up_from_any_phase () -> 
 		player.play(100)
 
 	before = gaps_of(player.rises[0])
-	lengths = picoclock.core.timeline.gap_ticks(10001, 4, 1)
+	lengths = synthsync.core.timeline.gap_ticks(10001, 4, 1)
 
 	assert lengths == (149985, 149986)
 	assert set(before) == set(lengths)
@@ -674,5 +674,5 @@ def check_every_gap_is_its_exact_length_rounded_down_or_up_from_any_phase () -> 
 	# The gap the change came in, and the one after it, are neither tempo's.
 	after = gaps_of(player.rises[0][changed + 1:])
 
-	assert set(after) == set(picoclock.core.timeline.gap_ticks(17400, 4, 1)) == {86206, 86207}
-	assert picoclock.core.timeline.gap_ticks(12000, 4, 1) == (125000, 125000)
+	assert set(after) == set(synthsync.core.timeline.gap_ticks(17400, 4, 1)) == {86206, 86207}
+	assert synthsync.core.timeline.gap_ticks(12000, 4, 1) == (125000, 125000)

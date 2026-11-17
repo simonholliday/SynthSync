@@ -1,14 +1,14 @@
 """Start, pause, stop and play/pause mean the same on the Pico's Python as on a laptop's."""
 
-import picoclock.core.timeline
-import picoclock.core.transport
+import synthsync.core.timeline
+import synthsync.core.transport
 
 
-def after (commands: tuple[str, ...]) -> picoclock.core.transport.Transport:
+def after (commands: tuple[str, ...]) -> synthsync.core.transport.Transport:
 
 	"""Make a transport and press these commands in turn."""
 
-	transport = picoclock.core.transport.Transport()
+	transport = synthsync.core.transport.Transport()
 
 	for command in commands:
 		transport.press(command)
@@ -20,14 +20,14 @@ def check_a_new_transport_is_stopped () -> None:
 
 	"""Nothing runs until something says start."""
 
-	assert picoclock.core.transport.Transport().state == picoclock.core.transport.STOPPED
+	assert synthsync.core.transport.Transport().state == synthsync.core.transport.STOPPED
 
 
 def check_every_command_from_every_state () -> None:
 
 	"""All twelve cases: what each press carries out, and what the clock is doing afterwards."""
 
-	transport = picoclock.core.transport
+	transport = synthsync.core.transport
 
 	cases = (
 		((), transport.START, transport.BEGIN, transport.RUNNING),
@@ -56,7 +56,7 @@ def check_a_whole_session_reads_as_expected () -> None:
 
 	"""A run of presses, as someone might make them, goes through the right actions."""
 
-	transport = picoclock.core.transport
+	transport = synthsync.core.transport
 	machine = transport.Transport()
 	actions = []
 
@@ -71,7 +71,7 @@ def check_an_unknown_command_is_refused () -> None:
 
 	"""Anything but start, pause, stop and play/pause is refused, and changes nothing."""
 
-	machine = after((picoclock.core.transport.START,))
+	machine = after((synthsync.core.transport.START,))
 
 	for command in ("", "resume", "START", "toggle"):
 
@@ -82,14 +82,14 @@ def check_an_unknown_command_is_refused () -> None:
 
 		assert False, command
 
-	assert machine.state == picoclock.core.transport.RUNNING
+	assert machine.state == synthsync.core.transport.RUNNING
 
 
 def check_the_names_are_listed () -> None:
 
 	"""The states and commands are each listed once, and the page can't send play/pause, so two phones can't undo each other."""
 
-	transport = picoclock.core.transport
+	transport = synthsync.core.transport
 
 	assert transport.STATES == ("stopped", "running", "paused")
 	assert transport.COMMANDS == ("start", "pause", "stop")
@@ -101,12 +101,12 @@ def check_the_scheduler_carries_out_every_press_as_the_table_says () -> None:
 
 	"""A press from a button is carried out by the scheduler on the second core, and must mean what the page's press means."""
 
-	transport = picoclock.core.transport
-	timeline = picoclock.core.timeline
+	transport = synthsync.core.transport
+	timeline = synthsync.core.timeline
 
 	assert transport.NUMBERS == {transport.START: timeline.PRESS_START, transport.PAUSE: timeline.PRESS_PAUSE, transport.STOP: timeline.PRESS_STOP, transport.PLAY_PAUSE: timeline.PRESS_PLAY_PAUSE}
 
-	def scheduler_in (state: str) -> picoclock.core.timeline.Timeline:
+	def scheduler_in (state: str) -> synthsync.core.timeline.Timeline:
 
 		"""Make a scheduler that is stopped, running or paused."""
 

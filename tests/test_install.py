@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-import picoclock.web.app
+import synthsync.web.app
 import tools.install
 import tools.stage
 
@@ -29,11 +29,11 @@ def names (folder: pathlib.Path) -> set[str]:
 
 def sources () -> set[str]:
 
-	"""Name every Python file of PicoClock that a Pico needs, without its ending."""
+	"""Name every Python file of SynthSync that a Pico needs, without its ending."""
 
 	found = set()
 
-	for path in (ROOT / "picoclock").rglob("*.py"):
+	for path in (ROOT / "synthsync").rglob("*.py"):
 
 		parts = path.relative_to(ROOT).parts
 
@@ -63,12 +63,12 @@ def test_the_page_is_packed_as_one_file_that_unpacks_to_exactly_the_page (tmp_pa
 	tools.stage.pack_page(tmp_path)
 	tools.stage.pack_page(tmp_path / "again")
 
-	folder = tmp_path / "picoclock" / "web" / "static"
+	folder = tmp_path / "synthsync" / "web" / "static"
 	packed = (folder / "index.html.gz").read_bytes()
 
 	assert sorted(path.name for path in folder.iterdir()) == ["index.html.gz"]
 	assert gzip.decompress(packed).decode() == tools.stage.one_page()
-	assert packed == (tmp_path / "again" / "picoclock" / "web" / "static" / "index.html.gz").read_bytes()
+	assert packed == (tmp_path / "again" / "synthsync" / "web" / "static" / "index.html.gz").read_bytes()
 
 
 def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () -> None:
@@ -76,7 +76,7 @@ def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () ->
 	"""The style sheet and every script are inside the one file, each script's own names kept to itself, and nothing outside it is asked for."""
 
 	page = tools.stage.one_page()
-	source = ROOT / "picoclock" / "web" / "static"
+	source = ROOT / "synthsync" / "web" / "static"
 
 	# Nothing left that a browser would fetch: the icon is written into the page itself.
 	assert re.findall(r'(?:src|href)="([^"#][^"]*)"', page) == ["data:,"]
@@ -98,14 +98,14 @@ def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () ->
 
 def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (tmp_path: pathlib.Path, compiler: str) -> None:
 
-	"""The Pico gets PicoClock and Microdot compiled, the page gzipped, the one file it runs at power-up, and nothing a laptop alone uses."""
+	"""The Pico gets SynthSync and Microdot compiled, the page gzipped, the one file it runs at power-up, and nothing a laptop alone uses."""
 
 	top = tools.stage.stage_for_pico(tmp_path, compiler)
 	laid_out = names(tmp_path)
 
 	expected = {name + ".mpy" for name in sources()}
 	expected |= {"microdot/" + pathlib.Path(part).stem + ".mpy" for part in tools.stage.MICRODOT_PARTS}
-	expected.add("picoclock/web/static/index.html.gz")
+	expected.add("synthsync/web/static/index.html.gz")
 	expected.add(tools.stage.MAIN)
 
 	assert laid_out == expected
@@ -120,8 +120,8 @@ def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (
 
 	# A file compiled for one processor says which in its third byte. Bytecode runs on any.
 	# The scheduler has to be the first kind: as bytecode it would stumble whenever the Pico tidied its memory.
-	scheduler = (tmp_path / "picoclock" / "core" / "timeline.mpy").read_bytes()
-	plain = (tmp_path / "picoclock" / "core" / "ratio.mpy").read_bytes()
+	scheduler = (tmp_path / "synthsync" / "core" / "timeline.mpy").read_bytes()
+	plain = (tmp_path / "synthsync" / "core" / "ratio.mpy").read_bytes()
 
 	assert scheduler[2] >> 2 != 0
 	assert plain[2] >> 2 == 0
@@ -136,7 +136,7 @@ def test_every_function_the_second_core_runs_is_native () -> None:
 	each one reached has to be marked native.
 	"""
 
-	tree = ast.parse((ROOT / "picoclock" / "device" / "player.py").read_text())
+	tree = ast.parse((ROOT / "synthsync" / "device" / "player.py").read_text())
 	player = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Player"][0]
 	methods = {node.name: node for node in player.body if isinstance(node, ast.FunctionDef)}
 
@@ -171,12 +171,12 @@ def test_every_function_the_second_core_runs_is_native () -> None:
 	assert [ast.unparse(decorator) for decorator in functions["_levels"].decorator_list] == ["micropython.viper"]
 
 	# And the scheduler and the buttons' rule it calls into are compiled native as a whole.
-	assert "picoclock/core/timeline.py" in tools.stage.NATIVE
-	assert "picoclock/core/buttons.py" in tools.stage.NATIVE
+	assert "synthsync/core/timeline.py" in tools.stage.NATIVE
+	assert "synthsync/core/buttons.py" in tools.stage.NATIVE
 
 
 # The code the second core runs: the player, and the scheduler and the buttons' rule it calls into.
-SECOND_CORE = ("picoclock/device/player.py", "picoclock/core/timeline.py", "picoclock/core/buttons.py")
+SECOND_CORE = ("synthsync/device/player.py", "synthsync/core/timeline.py", "synthsync/core/buttons.py")
 
 
 def methods_taken_out (source: str) -> list[str]:
@@ -254,7 +254,7 @@ def test_everything_asked_of_the_radio_chip_goes_through_the_guard () -> None:
 
 	This reads the source of the two files that use the chip. Whatever
 	switches a network, joins, leaves, listens or sets the Pico's own light
-	has to be handed to `picoclock.device.chip.unbroken`, never called
+	has to be handed to `synthsync.device.chip.unbroken`, never called
 	straight.
 	"""
 
@@ -262,7 +262,7 @@ def test_everything_asked_of_the_radio_chip_goes_through_the_guard () -> None:
 
 		"""Name what is handed to the guard: the first thing in each call to it."""
 
-		return {ast.unparse(node.args[0]) for node in ast.walk(tree) if isinstance(node, ast.Call) and ast.unparse(node.func) == "picoclock.device.chip.unbroken"}
+		return {ast.unparse(node.args[0]) for node in ast.walk(tree) if isinstance(node, ast.Call) and ast.unparse(node.func) == "synthsync.device.chip.unbroken"}
 
 	def called_in (tree: ast.Module, working: set[str], asking: set[str] = set()) -> dict[str, set[str]]:
 
@@ -290,7 +290,7 @@ def test_everything_asked_of_the_radio_chip_goes_through_the_guard () -> None:
 		return found
 
 	# The radio: switching a side on or off, naming a network, joining, leaving and listening.
-	radio = ast.parse((ROOT / "picoclock" / "device" / "radio.py").read_text())
+	radio = ast.parse((ROOT / "synthsync" / "device" / "radio.py").read_text())
 	handed = guarded(radio)
 	working = called_in(radio, {"active", "config", "connect", "disconnect", "scan"}, {"active"})
 
@@ -304,7 +304,7 @@ def test_everything_asked_of_the_radio_chip_goes_through_the_guard () -> None:
 			assert node.func.attr not in working, ast.unparse(node)
 
 	# The panel: taking hold of the Pico's own light, and setting it.
-	panel = ast.parse((ROOT / "picoclock" / "device" / "panel.py").read_text())
+	panel = ast.parse((ROOT / "synthsync" / "device" / "panel.py").read_text())
 	handed = guarded(panel)
 
 	assert handed == {"self._find_light", "self._light.value"}
@@ -325,34 +325,34 @@ def test_nothing_but_the_clock_is_loaded_before_the_first_pulse () -> None:
 	come before the first pulse.
 	"""
 
-	tree = ast.parse((ROOT / "picoclock" / "device" / "start.py").read_text())
+	tree = ast.parse((ROOT / "synthsync" / "device" / "start.py").read_text())
 	at_once = {alias.name for node in tree.body if isinstance(node, ast.Import) for alias in node.names}
 	later = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names} - at_once
 
 	assert at_once == {
 		"asyncio", "gc", "sys", "time",
-		"picoclock.core.clock", "picoclock.core.settings", "picoclock.core.transport",
-		"picoclock.device.board", "picoclock.device.chip", "picoclock.device.player", "picoclock.device.storage",
+		"synthsync.core.clock", "synthsync.core.settings", "synthsync.core.transport",
+		"synthsync.device.board", "synthsync.device.chip", "synthsync.device.player", "synthsync.device.storage",
 	}
-	assert later == {"picoclock.device.panel", "picoclock.device.radio", "picoclock.web.app", "picoclock.web.portal"}
+	assert later == {"synthsync.device.panel", "synthsync.device.radio", "synthsync.web.app", "synthsync.web.portal"}
 
 	# And the file the Pico runs at power-up loads nothing else.
 	main = ast.parse((ROOT / "main.py").read_text())
 
-	assert {alias.name for node in ast.walk(main) if isinstance(node, ast.Import) for alias in node.names} == {"picoclock.device.start"}
+	assert {alias.name for node in ast.walk(main) if isinstance(node, ast.Import) for alias in node.names} == {"synthsync.device.start"}
 
 
-def test_the_modules_the_pico_is_asked_to_load_are_all_of_picoclock (tmp_path: pathlib.Path) -> None:
+def test_the_modules_the_pico_is_asked_to_load_are_all_of_synthsync (tmp_path: pathlib.Path) -> None:
 
-	"""Every part of PicoClock is named for the Pico to load, compiled or not, and nothing else is."""
+	"""Every part of SynthSync is named for the Pico to load, compiled or not, and nothing else is."""
 
-	tools.stage.copy_picoclock(tmp_path)
+	tools.stage.copy_synthsync(tmp_path)
 
 	found = tools.install.modules(tmp_path)
 
-	assert "picoclock.core.timeline" in found
-	assert "picoclock.device.player" in found
-	assert "picoclock.web.app" in found
+	assert "synthsync.core.timeline" in found
+	assert "synthsync.device.player" in found
+	assert "synthsync.web.app" in found
 	assert sorted(found) == sorted(name.replace("/", ".") for name in sources() if not name.endswith("__init__"))
 
 
@@ -401,11 +401,11 @@ class Pico:
 
 	"""Stands in for the Pico: it notes what it was asked, and answers as told to."""
 
-	def __init__ (self, fail: str | None = None, loads: bool = True, ran: str = "PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=picoclock own=PicoClock AB78D9\n") -> None:
+	def __init__ (self, fail: str | None = None, loads: bool = True, ran: str = "SYNTHSYNC RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=synthsync own=SynthSync AB78D9\n") -> None:
 
 		"""Answer well to everything, bar a command containing `fail`, or the loading if `loads` is false.
 
-		`ran` is what comes back when PicoClock is tried.
+		`ran` is what comes back when SynthSync is tried.
 		"""
 
 		self.fail = fail
@@ -442,7 +442,7 @@ class Pico:
 @pytest.mark.usefixtures("compiler")
 def test_an_install_takes_the_old_copy_off_copies_the_new_tries_it_and_only_then_lets_it_start_by_itself (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
 
-	"""The Pico's saved settings are left alone, and what starts PicoClock at power-up goes on last, once the rest has run."""
+	"""The Pico's saved settings are left alone, and what starts SynthSync at power-up goes on last, once the rest has run."""
 
 	pico = Pico()
 
@@ -453,16 +453,17 @@ def test_an_install_takes_the_old_copy_off_copies_the_new_tries_it_and_only_then
 
 	removing, copying, loading, trying, starting, restarting = pico.asked
 
-	# The join tool's file goes too, in case anything ever left it behind with a network's password in it.
-	assert removing[0] == "exec" and "['picoclock', 'microdot', 'main.py', '_join.txt']" in removing[1]
+	# The join tool's file goes too, in case anything ever left it behind with a network's password in it,
+	# and so does the folder a copy from before the name SynthSync used.
+	assert removing[0] == "exec" and "['synthsync', 'microdot', 'main.py', '_join.txt', 'picoclock']" in removing[1]
 	assert copying[:3] == ["fs", "cp", "-r"] and copying[-1] == ":"
-	assert sorted(copying[3:-1]) == ["microdot", "picoclock"]
-	assert "picoclock.core.timeline" in loading[1] and "picoclock.device.start" in loading[1]
-	assert "picoclock.device.start.run(3000)" in trying[1]
+	assert sorted(copying[3:-1]) == ["microdot", "synthsync"]
+	assert "synthsync.core.timeline" in loading[1] and "synthsync.device.start" in loading[1]
+	assert "synthsync.device.start.run(3000)" in trying[1]
 	assert starting == ["fs", "cp", "main.py", ":"]
 	assert restarting == ["reset"]
 
-	assert "picoclock/web/static/index.html.gz" in pico.copied
+	assert "synthsync/web/static/index.html.gz" in pico.copied
 
 	said = capsys.readouterr().out
 
@@ -472,16 +473,16 @@ def test_an_install_takes_the_old_copy_off_copies_the_new_tries_it_and_only_then
 	assert "304 KB" in said
 
 	# It ends by saying how to reach the page, and never says a password that may have been changed.
-	assert said.strip().splitlines()[-1].startswith('To use it, join the WiFi network "PicoClock AB78D9" from a phone and open http://192.168.4.1.')
+	assert said.strip().splitlines()[-1].startswith('To use it, join the WiFi network "SynthSync AB78D9" from a phone and open http://192.168.4.1.')
 
 
 @pytest.mark.usefixtures("compiler")
 @pytest.mark.parametrize("ran", [
-	"PICOCLOCK RAN started_in_ms=41 beat=7 faults=3 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=picoclock own=PicoClock AB78D9\n",
-	"PICOCLOCK RAN started_in_ms=41 beat=0 faults=0 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=picoclock own=PicoClock AB78D9\n",
-	"PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0 page=0 free=312000 mode=own address=192.168.4.1 host=picoclock own=PicoClock AB78D9\n",
-	"PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=own address=none host=picoclock own=PicoClock AB78D9\n",
-	"PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0\n",
+	"SYNTHSYNC RAN started_in_ms=41 beat=7 faults=3 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=synthsync own=SynthSync AB78D9\n",
+	"SYNTHSYNC RAN started_in_ms=41 beat=0 faults=0 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=synthsync own=SynthSync AB78D9\n",
+	"SYNTHSYNC RAN started_in_ms=41 beat=7 faults=0 refused=0 page=0 free=312000 mode=own address=192.168.4.1 host=synthsync own=SynthSync AB78D9\n",
+	"SYNTHSYNC RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=own address=none host=synthsync own=SynthSync AB78D9\n",
+	"SYNTHSYNC RAN started_in_ms=41 beat=7 faults=0 refused=0\n",
 	"Traceback (most recent call last):\nValueError\n",
 	"",
 ])
@@ -504,7 +505,7 @@ def test_a_pico_with_a_network_saved_passes_its_trial_while_still_joining (monke
 
 	"""Three seconds isn't long enough to join a network, so having no address yet isn't held against it, and the network is never named."""
 
-	pico = Pico(ran="PICOCLOCK RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=joining address=none host=studio-clock own=PicoClock AB78D9\n")
+	pico = Pico(ran="SYNTHSYNC RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=joining address=none host=studio-clock own=SynthSync AB78D9\n")
 
 	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
 	monkeypatch.setattr(tools.install, "on_pico", pico)
@@ -515,7 +516,7 @@ def test_a_pico_with_a_network_saved_passes_its_trial_while_still_joining (monke
 	last = capsys.readouterr().out.strip().splitlines()[-1]
 
 	assert "http://studio-clock.local" in last
-	assert '"PicoClock AB78D9"' in last and "http://192.168.4.1" in last
+	assert '"SynthSync AB78D9"' in last and "http://192.168.4.1" in last
 
 
 @pytest.mark.usefixtures("compiler")
@@ -535,7 +536,7 @@ def test_an_install_told_not_to_start_leaves_the_pico_as_it_is (monkeypatch: pyt
 	said = capsys.readouterr().out
 
 	assert "next time" in said
-	assert "PicoClock AB78D9" in said
+	assert "SynthSync AB78D9" in said
 
 
 @pytest.mark.usefixtures("compiler")
@@ -552,9 +553,9 @@ def test_wiping_empties_the_pico_first (monkeypatch: pytest.MonkeyPatch) -> None
 	assert "for name in [] or os.listdir" in pico.asked[0][1]
 
 
-def test_removing_takes_picoclock_off_and_copies_nothing (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_removing_takes_synthsync_off_and_copies_nothing (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
 
-	"""`--remove` takes off PicoClock's own files, and any file the join tool left, and stops there."""
+	"""`--remove` takes off SynthSync's own files, any file the join tool left, and a copy from before the name SynthSync, and stops there."""
 
 	pico = Pico()
 
@@ -563,7 +564,7 @@ def test_removing_takes_picoclock_off_and_copies_nothing (monkeypatch: pytest.Mo
 
 	assert tools.install.main(["--remove"]) == 0
 	assert len(pico.asked) == 1
-	assert "['picoclock', 'microdot', 'main.py', '_join.txt']" in pico.asked[0][1]
+	assert "['synthsync', 'microdot', 'main.py', '_join.txt', 'picoclock']" in pico.asked[0][1]
 	assert "settings" in capsys.readouterr().out
 
 
@@ -604,7 +605,7 @@ def test_a_copy_the_pico_cannot_load_fails_the_install (monkeypatch: pytest.Monk
 
 def test_without_a_compiler_nothing_is_installed (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
 
-	"""PicoClock left for the Pico to compile would stumble whenever the Pico tidied its memory, so the tool stops before touching it."""
+	"""SynthSync left for the Pico to compile would stumble whenever the Pico tidied its memory, so the tool stops before touching it."""
 
 	pico = Pico()
 

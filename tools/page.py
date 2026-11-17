@@ -1,4 +1,4 @@
-"""A stand-in for the page: it talks to PicoClock the way a phone's browser does.
+"""A stand-in for the page: it talks to SynthSync the way a phone's browser does.
 
 The tests use it to drive the laptop stand-in over real sockets, and it can
 drive a real Pico over WiFi the same way. It speaks just enough HTTP and
@@ -10,8 +10,8 @@ WebSocket for that, with nothing beyond Python's own library.
     tempo = await page.wait_for("tempo")
     await page.close()
 
-PicoClock sends its messages in numbered batches and a page answers each with
-its number, which is how PicoClock knows what has arrived. This does that as
+SynthSync sends its messages in numbered batches and a page answers each with
+its number, which is how SynthSync knows what has arrived. This does that as
 each batch comes in, as a browser does, whether or not anything is waiting to
 hear what was in it. `page.answering = False` stops it, to stand in for a
 phone that has dropped off the network without saying so.
@@ -35,20 +35,20 @@ _PONG = 10
 
 class Refused (Exception):
 
-	"""Raised when PicoClock won't open a socket. `status` is the HTTP status it answered with."""
+	"""Raised when SynthSync won't open a socket. `status` is the HTTP status it answered with."""
 
 	def __init__ (self, status: int) -> None:
 
-		"""Keep the status PicoClock answered with."""
+		"""Keep the status SynthSync answered with."""
 
-		super().__init__("PicoClock answered %d and didn't open a socket" % status)
+		super().__init__("SynthSync answered %d and didn't open a socket" % status)
 
 		self.status = status
 
 
 async def fetch (host: str, port: int, path: str, body: object = None, headers: dict[str, str] | None = None) -> tuple[int, typing.Any]:
 
-	"""Ask PicoClock for one address, and give back the status and whatever JSON came with it.
+	"""Ask SynthSync for one address, and give back the status and whatever JSON came with it.
 
 	With a body, it is sent as JSON by POST. Without one, the address is
 	fetched by GET.
@@ -88,11 +88,11 @@ async def fetch (host: str, port: int, path: str, body: object = None, headers: 
 
 class Page:
 
-	"""One page open on a PicoClock, over a real socket."""
+	"""One page open on a SynthSync, over a real socket."""
 
 	def __init__ (self, host: str, port: int = 80) -> None:
 
-		"""Get ready to open a page on the PicoClock at this address."""
+		"""Get ready to open a page on the SynthSync at this address."""
 
 		self.host = host
 		self.port = port
@@ -112,7 +112,7 @@ class Page:
 
 	async def open (self, origin: str | None = None) -> Message:
 
-		"""Open the socket and give back the greeting PicoClock sends.
+		"""Open the socket and give back the greeting SynthSync sends.
 
 		`origin` is the site a browser would say the page came from. Left out,
 		none is given, as when something other than a browser connects.
@@ -149,7 +149,7 @@ class Page:
 		hello = await self.hear()
 
 		if hello is None or hello.get("type") != "hello":
-			raise OSError("PicoClock opened a socket and didn't say hello")
+			raise OSError("SynthSync opened a socket and didn't say hello")
 
 		self.number = hello["you"]
 
@@ -174,7 +174,7 @@ class Page:
 
 	async def say (self, message: Message) -> None:
 
-		"""Send PicoClock one message."""
+		"""Send SynthSync one message."""
 
 		await self._send(_TEXT, json.dumps(message).encode())
 
@@ -196,7 +196,7 @@ class Page:
 
 	async def _read (self) -> None:
 
-		"""Take in every batch PicoClock sends, answer it, and keep its messages until they are asked for.
+		"""Take in every batch SynthSync sends, answer it, and keep its messages until they are asked for.
 
 		This runs from the moment the socket opens until it closes, so a
 		batch is answered when it arrives, as a browser answers it.
@@ -223,7 +223,7 @@ class Page:
 					await self._send(_PONG, data)
 
 				elif kind == _CLOSE:
-					raise ConnectionError("PicoClock closed the socket")
+					raise ConnectionError("SynthSync closed the socket")
 
 		except (OSError, asyncio.IncompleteReadError) as problem:
 			self._ended = problem
@@ -248,7 +248,7 @@ class Page:
 
 	async def hear (self, timeout: float = 2.0) -> Message | None:
 
-		"""Give back the next message PicoClock sends, or None if nothing comes in time."""
+		"""Give back the next message SynthSync sends, or None if nothing comes in time."""
 
 		try:
 			return await asyncio.wait_for(self._next(), timeout)
@@ -257,7 +257,7 @@ class Page:
 
 	async def hear_for (self, seconds: float) -> list[Message]:
 
-		"""Give back everything PicoClock sends over this long."""
+		"""Give back everything SynthSync sends over this long."""
 
 		loop = asyncio.get_running_loop()
 		until = loop.time() + seconds
@@ -293,7 +293,7 @@ class Page:
 			message = await self.hear(max(until - loop.time(), 0.001))
 
 			if message is None:
-				raise TimeoutError("PicoClock sent no %s message in %.1f s" % (kind, timeout))
+				raise TimeoutError("SynthSync sent no %s message in %.1f s" % (kind, timeout))
 
 			if message.get("type") == kind and all(message.get(name) == value for name, value in matching.items()):
 				return message
@@ -315,7 +315,7 @@ class Page:
 			await asyncio.wait_for(self._writer.wait_closed(), 2.0)
 
 		except asyncio.TimeoutError:
-			# A PicoClock that has stopped taking anything would keep the last of what
+			# A SynthSync that has stopped taking anything would keep the last of what
 			# was said waiting for ever, so the socket is dropped with it unsent.
 			self._writer.transport.abort()
 

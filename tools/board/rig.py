@@ -9,7 +9,7 @@ While it captures, it can load the Pico the way real use would: collecting
 garbage, writing to flash, running the radio.
 
 `tools/rig.py` copies this to the board and runs it, and `tools/soak.py`
-runs its `soak` for hours. It is not part of PicoClock itself, and it only
+runs its `soak` for hours. It is not part of SynthSync itself, and it only
 runs on MicroPython.
 
 Pins: the test board has GP0 jumpered to GP1, so a pulse sent on GP0 is read on
@@ -26,18 +26,18 @@ import rp2
 import sys
 import time
 
-import picoclock.core.clock
-import picoclock.core.ratio
-import picoclock.core.settings
-import picoclock.core.transport
-import picoclock.core.timeline
-import picoclock.device.board
-import picoclock.device.chip
-import picoclock.device.led
-import picoclock.device.panel
-import picoclock.device.player
-import picoclock.device.start
-import picoclock.device.storage
+import synthsync.core.clock
+import synthsync.core.ratio
+import synthsync.core.settings
+import synthsync.core.transport
+import synthsync.core.timeline
+import synthsync.device.board
+import synthsync.device.chip
+import synthsync.device.led
+import synthsync.device.panel
+import synthsync.device.player
+import synthsync.device.start
+import synthsync.device.storage
 
 SYSTEM_HZ = machine.freq()
 
@@ -316,9 +316,9 @@ def _radio_up ():
 
 	"""Bring up the Pico's own network, and give it with the side of the radio that listens for others.
 
-	A test that has PicoClock's own network up already keeps it: the load
+	A test that has SynthSync's own network up already keeps it: the load
 	then runs beside the real thing. The listening side is not switched on.
-	It can listen without being, and PicoClock never has it on beside its
+	It can listen without being, and SynthSync never has it on beside its
 	own network.
 	"""
 
@@ -327,7 +327,7 @@ def _radio_up ():
 	own = network.WLAN(network.AP_IF)
 
 	if not own.active():
-		own.config(ssid="PicoClock rig", password="rig-test-only")
+		own.config(ssid="SynthSync rig", password="rig-test-only")
 		own.active(True)
 
 	return own, network.WLAN(network.STA_IF)
@@ -338,7 +338,7 @@ def _listen (own, scanner) -> bool:
 	"""Listen for networks as a page asking for them would, and say whether it was done.
 
 	It is left alone while the Pico's own network is down, which is while a
-	test has PicoClock joining a network: no page can reach it to ask then,
+	test has SynthSync joining a network: no page can reach it to ask then,
 	and listening in the middle of a join holds the first core for ten seconds.
 	"""
 
@@ -384,7 +384,7 @@ def _load_ble (finished) -> str:
 
 	radio = bluetooth.BLE()
 	radio.active(True)
-	radio.gap_advertise(100000, adv_data=b"\x02\x01\x06\x0e\x09PicoClock rig")
+	radio.gap_advertise(100000, adv_data=b"\x02\x01\x06\x0e\x09SynthSync rig")
 
 	while not finished():
 		time.sleep_ms(10)
@@ -403,7 +403,7 @@ def _load_all (finished) -> str:
 	own, scanner = _radio_up()
 	radio = bluetooth.BLE()
 	radio.active(True)
-	radio.gap_advertise(100000, adv_data=b"\x02\x01\x06\x0e\x09PicoClock rig")
+	radio.gap_advertise(100000, adv_data=b"\x02\x01\x06\x0e\x09SynthSync rig")
 
 	held = [bytearray(64) for _ in range(1200)]
 	loops = 0
@@ -492,7 +492,7 @@ def keep_settings () -> "str | None":
 	"""Read the board's own settings, and keep a copy of them aside while a test writes over them, giving back what they were, or None for none."""
 
 	try:
-		with open(picoclock.device.storage.PATH) as handle:
+		with open(synthsync.device.storage.PATH) as handle:
 			kept = handle.read()
 
 	except OSError:
@@ -508,7 +508,7 @@ def put_back_settings (kept: "str | None") -> None:
 
 	"""Put the board's own settings back as they were before a test, or take away a test's own when there were none, and forget the copy."""
 
-	path = picoclock.device.storage.PATH
+	path = synthsync.device.storage.PATH
 
 	try:
 		os.remove(path)
@@ -547,7 +547,7 @@ def test_freerun (load: str = "idle", hz: int = 200, count: int = 2000) -> None:
 
 	"""Time the rig's own reference: a pulse made by PIO alone, which should be within the two cycles the capture sees an edge to.
 
-	This proves the rig rather than PicoClock. If it fails, nothing else the
+	This proves the rig rather than SynthSync. If it fails, nothing else the
 	rig says can be trusted.
 	"""
 
@@ -587,7 +587,7 @@ def gap_lengths (tempo: int, pulses: int, beats: int) -> set:
 
 	per_tick = SYSTEM_HZ // 1000000
 
-	return {ticks * per_tick for ticks in picoclock.core.timeline.gap_ticks(tempo, pulses, beats)}
+	return {ticks * per_tick for ticks in synthsync.core.timeline.gap_ticks(tempo, pulses, beats)}
 
 
 def listen_to_buttons (player) -> None:
@@ -597,7 +597,7 @@ def listen_to_buttons (player) -> None:
 	Nothing is wired to them on the test board, so they read as let go.
 	"""
 
-	for name, (pin, low) in picoclock.device.panel.wiring().items():
+	for name, (pin, low) in synthsync.device.panel.wiring().items():
 		player.listen(name, pin, low)
 
 
@@ -605,7 +605,7 @@ def make_player (ratios, tempo: int):
 
 	"""Make the real player with these ratios at this tempo, reading the buttons, not yet started."""
 
-	player = picoclock.device.player.Player(picoclock.device.board.FIRST_OUTPUT_PIN, len(ratios))
+	player = synthsync.device.player.Player(synthsync.device.board.FIRST_OUTPUT_PIN, len(ratios))
 	listen_to_buttons(player)
 	player.set_tempo(tempo)
 
@@ -628,7 +628,7 @@ _SLOWEST_COMMAND = 6000
 # what was asked; and the second core may be busy with another command first.
 # A change is heard up to about 25 ms after it is sent, by design: the words
 # ahead are what keep the player from ever running dry.
-_HEARD_WITHIN = (picoclock.device.player._DEPTH + 2) * picoclock.core.timeline.HOLD_LIMIT + _SLOWEST_COMMAND
+_HEARD_WITHIN = (synthsync.device.player._DEPTH + 2) * synthsync.core.timeline.HOLD_LIMIT + _SLOWEST_COMMAND
 
 # How far the rig's own clock and the capture can disagree about when a gap
 # was, in microseconds: the gaps are placed from the start's pulse, which comes
@@ -664,7 +664,7 @@ def test_player (load: str = "idle") -> None:
 	"""Time the real player's fastest output in the busiest pattern: every gap must be exact."""
 
 	count = 2000
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
+	capture = Capture(synthsync.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_player(_DENSE, 30000)
 
 	player.start()
@@ -688,7 +688,7 @@ def test_sweep (load: str = "idle") -> None:
 	"""Change the tempo many times a second in the busiest pattern: the player must never run dry."""
 
 	count = 2000
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
+	capture = Capture(synthsync.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_player(_DENSE, 12000)
 	state = [0, time.ticks_ms(), time.ticks_us()]
 
@@ -718,7 +718,7 @@ def test_sweep (load: str = "idle") -> None:
 	capture.close()
 
 	# A tempo change is covered by words for each output.
-	late = _HEARD_WITHIN + picoclock.device.player._COVER_TEMPO + picoclock.device.player._COVER_TEMPO_EACH * len(_DENSE)
+	late = _HEARD_WITHIN + synthsync.device.player._COVER_TEMPO + synthsync.device.player._COVER_TEMPO_EACH * len(_DENSE)
 	outside = sweep_outside(gaps, before, changes, late, 12000, _DENSE[0][0], _DENSE[0][1])
 	passed = len(gaps) >= count - _SKIP and outside == 0 and sound(status)
 
@@ -754,13 +754,13 @@ def sweep_outside (gaps: list, before: int, changes: list, late: int, tempo: int
 			current = changes[later][1]
 			later += 1
 
-		shortest = picoclock.core.timeline.gap_ticks(current, pulses, beats)[0]
-		longest = picoclock.core.timeline.gap_ticks(current, pulses, beats)[1]
+		shortest = synthsync.core.timeline.gap_ticks(current, pulses, beats)[0]
+		longest = synthsync.core.timeline.gap_ticks(current, pulses, beats)[1]
 		look = later
 
 		while look < len(changes) and changes[look][0] <= end:
-			shortest = min(shortest, picoclock.core.timeline.gap_ticks(changes[look][1], pulses, beats)[0])
-			longest = max(longest, picoclock.core.timeline.gap_ticks(changes[look][1], pulses, beats)[1])
+			shortest = min(shortest, synthsync.core.timeline.gap_ticks(changes[look][1], pulses, beats)[0])
+			longest = max(longest, synthsync.core.timeline.gap_ticks(changes[look][1], pulses, beats)[1])
 			look += 1
 
 		if cycles < shortest * per_us - 2 or cycles > longest * per_us + 2:
@@ -810,12 +810,12 @@ def test_pause (load: str = "idle") -> None:
 	"""
 
 	count = 600
-	first = picoclock.device.board.FIRST_OUTPUT_PIN
+	first = synthsync.device.board.FIRST_OUTPUT_PIN
 	ratios = ((24, 1), (1, 1), (2, 1), (3, 1))
 	capture = Capture(first, count)
 	player = make_player(ratios, 12500)
 
-	player.set_role(3, picoclock.core.timeline.RUN)
+	player.set_role(3, synthsync.core.timeline.RUN)
 	player.settle()
 
 	# The run output's pin is only named here, not set up, so the player keeps it.
@@ -888,11 +888,11 @@ def test_pause (load: str = "idle") -> None:
 	# pause falls in is one gap, the pause, and the lead the run output's rise
 	# gives the clocks as they carry on.
 	per_us = SYSTEM_HZ // 1000000
-	lead = picoclock.core.timeline.LEAD_TICKS * per_us
+	lead = synthsync.core.timeline.LEAD_TICKS * per_us
 	span_error = max([abs(span - max(allowed) - lows[index] - lead) for index, span in enumerate(spans) if index < len(lows)] or [0])
 
 	# And each pause was heard when it should have been.
-	late = _HEARD_WITHIN + picoclock.device.player._COVER_TRANSPORT
+	late = _HEARD_WITHIN + synthsync.device.player._COVER_TRANSPORT
 	worst_late = max([abs(lows[index] // per_us - paused[index]) for index in range(min(len(lows), len(paused)))] or [0])
 	passed = len(gaps) >= count - _SKIP and len(spans) == state[0] == len(paused) == len(lows) and state[0] > 0 and worst <= 2 and span_error <= _DRIFT_MOST and worst_late <= late and sound(status)
 
@@ -911,16 +911,16 @@ def test_startstop (load: str = "idle") -> None:
 	before its stop, and is allowed that.
 	"""
 
-	first = picoclock.device.board.FIRST_OUTPUT_PIN
+	first = synthsync.device.board.FIRST_OUTPUT_PIN
 	ratios = ((4, 1), (4, 1), (4, 1), (4, 1))
 	tempo = 6000
 	capture = Capture(first, 4000)
 	player = make_player(ratios, tempo)
-	pins = [first + output for output in range(len(ratios))] + [picoclock.device.board.LED_PIN]
+	pins = [first + output for output in range(len(ratios))] + [synthsync.device.board.LED_PIN]
 	gap_ms = 6000000 // (tempo * ratios[0][0])
 
 	# How long after a stop the pins are looked at, in milliseconds.
-	look_ms = (_HEARD_WITHIN + picoclock.device.player._COVER_TRANSPORT) // 1000 + 3
+	look_ms = (_HEARD_WITHIN + synthsync.device.player._COVER_TRANSPORT) // 1000 + 3
 
 	for output in range(len(ratios)):
 		player.set_width(output, 0)
@@ -988,7 +988,7 @@ def test_startstop (load: str = "idle") -> None:
 	report("startstop", passed, "starts=%d edges=%d most_edges=%d stops_left_high=%d %s load=%s" % (state[0], edges, state[4], left_high, describe(status), described))
 
 
-# Where the save tests keep their settings, apart from PicoClock's own file, and
+# Where the save tests keep their settings, apart from SynthSync's own file, and
 # a path in a folder that isn't there, for a save that must fail.
 _SAVE_PATH = "/_rig_settings.json"
 _SAVE_NOWHERE = "/_rig_no_such_folder/settings.json"
@@ -1003,10 +1003,10 @@ def test_save (load: str = "idle") -> None:
 	"""
 
 	count = 5000
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
+	capture = Capture(synthsync.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_player(_DENSE, 30000)
-	settings = picoclock.core.settings.Settings(len(_DENSE))
-	storage = picoclock.device.storage.Storage(settings, player, _SAVE_PATH)
+	settings = synthsync.core.settings.Settings(len(_DENSE))
+	storage = synthsync.device.storage.Storage(settings, player, _SAVE_PATH)
 	state = [0, time.ticks_ms()]
 
 	def meanwhile () -> None:
@@ -1026,7 +1026,7 @@ def test_save (load: str = "idle") -> None:
 	gaps = capture.gaps()
 
 	# A save that fails, here into a folder that isn't there, is due again.
-	broken = picoclock.device.storage.Storage(settings, player, _SAVE_NOWHERE)
+	broken = synthsync.device.storage.Storage(settings, player, _SAVE_NOWHERE)
 	settings.set_host_name("rig-nowhere")
 
 	try:
@@ -1054,8 +1054,8 @@ def test_saved (load: str = "idle") -> None:
 
 	"""After a reset, read back what `save` left, and remove it."""
 
-	settings = picoclock.core.settings.Settings(len(_DENSE))
-	storage = picoclock.device.storage.Storage(settings, None, _SAVE_PATH)
+	settings = synthsync.core.settings.Settings(len(_DENSE))
+	storage = synthsync.device.storage.Storage(settings, None, _SAVE_PATH)
 
 	try:
 		os.stat(_SAVE_PATH)
@@ -1100,11 +1100,11 @@ def test_stopsave (load: str = "idle") -> None:
 	once the write is over, whether the clock was stopped or playing.
 	"""
 
-	transport = picoclock.core.transport
-	first = picoclock.device.board.FIRST_OUTPUT_PIN
+	transport = synthsync.core.transport
+	first = synthsync.device.board.FIRST_OUTPUT_PIN
 	player = make_player(((4, 1), (4, 1), (4, 1), (4, 1)), 12000)
-	settings = picoclock.core.settings.Settings(4)
-	storage = picoclock.device.storage.Storage(settings, player, _STOPSAVE_PATH)
+	settings = synthsync.core.settings.Settings(4)
+	storage = synthsync.device.storage.Storage(settings, player, _STOPSAVE_PATH)
 	finger = Finger(True)
 	never = Never()
 
@@ -1314,11 +1314,11 @@ def test_cluster (load: str = "idle") -> None:
 	"""
 
 	count = 4000
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
+	capture = Capture(synthsync.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_clustered_player(30000)
 	finger = Finger(True)
 
-	player.listen(picoclock.core.transport.STOP, _INPUT_PIN, True)
+	player.listen(synthsync.core.transport.STOP, _INPUT_PIN, True)
 	player.start()
 
 	described = run_load(load, capture, 30)
@@ -1359,7 +1359,7 @@ def test_burst (load: str = "idle") -> None:
 
 	count = 4000
 	ratios = _CLUSTERED
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
+	capture = Capture(synthsync.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_clustered_player(30000)
 
 	# How many bursts have been sent, when the last one was, and when the clock
@@ -1403,8 +1403,8 @@ def test_burst (load: str = "idle") -> None:
 	capture.close()
 
 	# A burst is covered by words for the tempo with every output, then for each output's four parts.
-	cover = picoclock.device.player._COVER_TEMPO + picoclock.device.player._COVER_TEMPO_EACH * len(ratios)
-	cover += len(ratios) * (picoclock.device.player._COVER_RATIO + picoclock.device.player._COVER_ROLE + 2 * picoclock.device.player._COVER_SWITCH)
+	cover = synthsync.device.player._COVER_TEMPO + synthsync.device.player._COVER_TEMPO_EACH * len(ratios)
+	cover += len(ratios) * (synthsync.device.player._COVER_RATIO + synthsync.device.player._COVER_ROLE + 2 * synthsync.device.player._COVER_SWITCH)
 	judged, off, too_long = burst_gaps(gaps, before, bursts, _HEARD_WITHIN + cover, 30000, ratios[0][0])
 	passed = edges >= count and state[0] >= 20 and judged >= count // 4 and off == 0 and too_long == 0 and sound(status)
 
@@ -1470,7 +1470,7 @@ def test_collect (load: str = "idle") -> None:
 	"""Change outputs while the first core collects a large heap, a collection straight after each change: the player must never run dry.
 
 	Anything the second core asks of the memory waits for a collection on
-	the first core to finish. With PicoClock's page and network loaded, one
+	the first core to finish. With SynthSync's page and network loaded, one
 	can take longer than the player's words last, so carrying out a command
 	must ask for nothing. Here the heap is filled, beside whatever the load
 	holds, until a collection takes longer than the words last, and output 2
@@ -1479,7 +1479,7 @@ def test_collect (load: str = "idle") -> None:
 
 	count = 600
 	tempo = 12000
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN + 1, count)
+	capture = Capture(synthsync.device.board.FIRST_OUTPUT_PIN + 1, count)
 
 	# Output 2 at 16 pulses a second, the rest slow, so each word holds the pins as long as a word can.
 	player = make_player(((1, 1), (8, 1), (1, 1), (1, 1)), tempo)
@@ -1551,10 +1551,10 @@ def test_position (load: str = "idle") -> None:
 	tempo = 15000
 	ratios = ((24, 1), (1, 1), (4, 1), (3, 2))
 	count = 500
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
+	capture = Capture(synthsync.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_player(ratios, tempo)
-	settings = picoclock.core.settings.Settings(len(ratios))
-	storage = picoclock.device.storage.Storage(settings, player, _POSITION_PATH)
+	settings = synthsync.core.settings.Settings(len(ratios))
+	storage = synthsync.device.storage.Storage(settings, player, _POSITION_PATH)
 
 	# How many times it was asked, how many answers were withheld, the worst
 	# answer in thousandths of a beat, how many saves, and when it last asked and saved.
@@ -1702,9 +1702,9 @@ class TempoLed:
 
 	def __init__ (self) -> None:
 
-		"""Take hold of the LED as PicoClock does, leaving it to the player."""
+		"""Take hold of the LED as SynthSync does, leaving it to the player."""
 
-		self._led = picoclock.device.led.Led()
+		self._led = synthsync.device.led.Led()
 		self._lit = False
 		self.taken = False
 		self.flashes = 0
@@ -1729,7 +1729,7 @@ class TempoLed:
 
 		"""Say whether the LED's pin is high, read from the pins themselves."""
 
-		return (machine.mem32[_GPIO_IN] >> picoclock.device.board.LED_PIN) & 1 == 1
+		return (machine.mem32[_GPIO_IN] >> synthsync.device.board.LED_PIN) & 1 == 1
 
 	def close (self) -> None:
 
@@ -1773,11 +1773,11 @@ def test_inputs (load: str = "idle") -> None:
 	The light must come on once a beat while the clock runs.
 	"""
 
-	transport = picoclock.core.transport
-	player = picoclock.device.player.Player(picoclock.device.board.FIRST_OUTPUT_PIN, 4)
-	settings = picoclock.core.settings.Settings(4)
-	storage = picoclock.device.storage.Storage(settings, player, _INPUTS_PATH)
-	clock = picoclock.core.clock.Clock(settings, player, storage)
+	transport = synthsync.core.transport
+	player = synthsync.device.player.Player(synthsync.device.board.FIRST_OUTPUT_PIN, 4)
+	settings = synthsync.core.settings.Settings(4)
+	storage = synthsync.device.storage.Storage(settings, player, _INPUTS_PATH)
+	clock = synthsync.core.clock.Clock(settings, player, storage)
 	light = Light()
 	shown = TempoLed()
 	never = Never()
@@ -1801,7 +1801,7 @@ def test_inputs (load: str = "idle") -> None:
 		if panel[0] is not None:
 			panel[0].close()
 
-		panel[0] = picoclock.device.panel.Panel(clock, player, {name: (_INPUT_PIN, low)}, light, shown)
+		panel[0] = synthsync.device.panel.Panel(clock, player, {name: (_INPUT_PIN, low)}, light, shown)
 
 	def expect (what: str, truth: bool) -> None:
 
@@ -2123,11 +2123,11 @@ def test_led (load: str = "idle") -> None:
 	flashes are counted instead: they go on, once a beat.
 	"""
 
-	board = picoclock.device.board
+	board = synthsync.device.board
 	cycles = SYSTEM_HZ // 1000000
-	player = picoclock.device.player.Player(board.FIRST_OUTPUT_PIN, 4)
-	settings = picoclock.core.settings.Settings(4)
-	clock = picoclock.core.clock.Clock(settings, player)
+	player = synthsync.device.player.Player(board.FIRST_OUTPUT_PIN, 4)
+	settings = synthsync.core.settings.Settings(4)
+	clock = synthsync.core.clock.Clock(settings, player)
 	never = Never()
 
 	clock.load()
@@ -2135,11 +2135,11 @@ def test_led (load: str = "idle") -> None:
 	# The LED's pin is only named here, not set up, so the player keeps it.
 	timer = rp2.StateMachine(_CAPTURE_MACHINE, _flash_program(board.FIRST_OUTPUT_PIN), freq=SYSTEM_HZ, jmp_pin=machine.Pin(board.LED_PIN))
 	counter = rp2.StateMachine(_FLASH_COUNTER, _count_program(board.LED_PIN), freq=SYSTEM_HZ)
-	panel = picoclock.device.panel.Panel(clock, player, {}, Light(), picoclock.device.led.Led())
+	panel = synthsync.device.panel.Panel(clock, player, {}, Light(), synthsync.device.led.Led())
 
 	timer.active(1)
 	counter.active(1)
-	clock.press(picoclock.core.transport.START)
+	clock.press(synthsync.core.transport.START)
 
 	# Each stage: the clock's pulses a beat, the tempo, output 1's pulse in
 	# milliseconds, whether output 1 is on, how long to watch for in
@@ -2310,11 +2310,11 @@ def _powerup_cases (load: str) -> None:
 	"""Start the clock as power-up does, from no saved settings, from a damaged file and from a good one, and then everything that follows it.
 
 	Each start must leave the clock running and pulsing: at the saved tempo
-	when the file is good, and as a new PicoClock otherwise.
+	when the file is good, and as a new SynthSync otherwise.
 
 	What follows the clock is the buttons, the saving, the Pico's own network
 	and the page. With all of it going, the network must be up under
-	PicoClock's own name, and the page's port and the port for the names a
+	SynthSync's own name, and the page's port and the port for the names a
 	phone looks up answered for. Stopped, the network must be off and both
 	ports let go, with the clock still playing. That must hold when it is
 	interrupted from the Pico's prompt too, which is how it is stopped in
@@ -2327,14 +2327,14 @@ def _powerup_cases (load: str) -> None:
 	import network
 	import socket
 
-	import picoclock.web.portal
+	import synthsync.web.portal
 
-	path = picoclock.device.storage.PATH
-	first = machine.Pin(picoclock.device.board.FIRST_OUTPUT_PIN)
+	path = synthsync.device.storage.PATH
+	first = machine.Pin(synthsync.device.board.FIRST_OUTPUT_PIN)
 	wrong = []
 	slowest = 0
 
-	good = picoclock.core.settings.Settings(picoclock.device.board.OUTPUTS)
+	good = synthsync.core.settings.Settings(synthsync.device.board.OUTPUTS)
 	good.set_tempo(24000)
 	good.set_ppqn(2)
 
@@ -2358,7 +2358,7 @@ def _powerup_cases (load: str) -> None:
 				handle.write(text)
 
 		began = time.ticks_ms()
-		parts = picoclock.device.start.begin()
+		parts = synthsync.device.start.begin()
 		took = time.ticks_diff(time.ticks_ms(), began)
 		slowest = max(slowest, took)
 
@@ -2396,10 +2396,10 @@ def _powerup_cases (load: str) -> None:
 
 		parts.player.close()
 
-	start = picoclock.device.start
+	start = synthsync.device.start
 	own = network.WLAN(network.AP_IF)
 	identity = machine.unique_id()
-	called = "PicoClock %02X%02X%02X" % (identity[-3], identity[-2], identity[-1])
+	called = "SynthSync %02X%02X%02X" % (identity[-3], identity[-2], identity[-1])
 
 	def answered () -> bool:
 
@@ -2434,7 +2434,7 @@ def _powerup_cases (load: str) -> None:
 		probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 		try:
-			probe.bind(("0.0.0.0", picoclock.web.portal.PORT))
+			probe.bind(("0.0.0.0", synthsync.web.portal.PORT))
 			return False
 
 		except OSError:
@@ -2444,7 +2444,7 @@ def _powerup_cases (load: str) -> None:
 			probe.close()
 
 	# Everything that follows the clock, left going for a few seconds. The radio is given a
-	# name of the rig's first, so that one left over from an earlier run can't pass for PicoClock's.
+	# name of the rig's first, so that one left over from an earlier run can't pass for SynthSync's.
 	own.config(ssid="PICO-not-ours")
 
 	parts = start.begin()
@@ -2484,7 +2484,7 @@ def _powerup_cases (load: str) -> None:
 
 	async def interrupt () -> None:
 
-		"""Interrupt PicoClock the way Ctrl-C does."""
+		"""Interrupt SynthSync the way Ctrl-C does."""
 
 		await asyncio.sleep_ms(1500)
 
@@ -2563,9 +2563,9 @@ _NETWORK_PATH = "/_rig_network.json"
 
 def test_network (load: str = "idle") -> None:
 
-	"""Work the radio as PicoClock does, while the clock's fastest output is timed.
+	"""Work the radio as SynthSync does, while the clock's fastest output is timed.
 
-	The Pico's own network must come up under PicoClock's own name and no
+	The Pico's own network must come up under SynthSync's own name and no
 	other, at 192.168.4.1. A new password must start it again, half a second
 	after it was asked for and not before, and so must putting every setting
 	back. A change that leaves the password alone must not. Looking for other
@@ -2586,31 +2586,31 @@ def test_network (load: str = "idle") -> None:
 
 	import network
 
-	import picoclock.core.wifi
-	import picoclock.device.radio
+	import synthsync.core.wifi
+	import synthsync.device.radio
 
 	# Room for a minute of pulses, so that everything the radio does falls inside what is timed.
 	count = 9600
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
+	capture = Capture(synthsync.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_player(_DENSE, 30000)
-	settings = picoclock.core.settings.Settings(len(_DENSE))
-	storage = picoclock.device.storage.Storage(settings, player, _NETWORK_PATH)
+	settings = synthsync.core.settings.Settings(len(_DENSE))
+	storage = synthsync.device.storage.Storage(settings, player, _NETWORK_PATH)
 
 	# The clock is never asked to give the player its settings, so the player keeps the busy pattern it was made with.
-	clock = picoclock.core.clock.Clock(settings, player, storage)
+	clock = synthsync.core.clock.Clock(settings, player, storage)
 	own = network.WLAN(network.AP_IF)
 	other = network.WLAN(network.STA_IF)
 	never = Never()
 
 	identity = machine.unique_id()
-	name = "PicoClock %02X%02X%02X" % (identity[-3], identity[-2], identity[-1])
+	name = "SynthSync %02X%02X%02X" % (identity[-3], identity[-2], identity[-1])
 	missing = "no such network 4f1c"
 	also_missing = "no such network 9d2e"
 	wrong = []
 
-	# A join is tried for six seconds here, where PicoClock allows twenty, so that the test is over sooner.
-	radio = picoclock.device.radio.Radio()
-	wifi = [picoclock.core.wifi.Wifi(clock, radio, name, 6000)]
+	# A join is tried for six seconds here, where SynthSync allows twenty, so that the test is over sooner.
+	radio = synthsync.device.radio.Radio()
+	wifi = [synthsync.core.wifi.Wifi(clock, radio, name, 6000)]
 
 	# When the own network was last asked to start, how many times it has been, when it was
 	# last up again, and how many times a join has been begun.
@@ -2646,7 +2646,7 @@ def test_network (load: str = "idle") -> None:
 
 	def standing (what: str, problem: str = "") -> None:
 
-		"""See that the own network is up under PicoClock's own name, where the page is expected, and the other side is off."""
+		"""See that the own network is up under SynthSync's own name, where the page is expected, and the other side is off."""
 
 		expect(what + ": the own network isn't up", own.active())
 		expect(what + ": the own network has the wrong name", own.config("ssid") == name)
@@ -2725,8 +2725,8 @@ def test_network (load: str = "idle") -> None:
 		yield 2500
 		restarted("a reset", changed, before)
 		standing("a reset")
-		expect("a reset: the password isn't back as new", wifi[0]._own_password == picoclock.core.settings.DEFAULT_PASSWORD)
-		expect("a reset: the Pico doesn't answer to its name as new", network.hostname() == picoclock.core.settings.DEFAULT_HOST_NAME)
+		expect("a reset: the password isn't back as new", wifi[0]._own_password == synthsync.core.settings.DEFAULT_PASSWORD)
+		expect("a reset: the Pico doesn't answer to its name as new", network.hostname() == synthsync.core.settings.DEFAULT_HOST_NAME)
 
 		before = started[1]
 		clock.reset()
@@ -2754,7 +2754,7 @@ def test_network (load: str = "idle") -> None:
 		expect("switched off: the own network is still up", not own.active())
 
 		settings.set_network(missing, "not a password")
-		wifi[0] = picoclock.core.wifi.Wifi(clock, radio, name, 6000)
+		wifi[0] = synthsync.core.wifi.Wifi(clock, radio, name, 6000)
 		before = started[1]
 		tries = started[3]
 
@@ -2808,7 +2808,7 @@ def test_network (load: str = "idle") -> None:
 	player.start()
 	playing_from = time.ticks_ms()
 
-	# Names of the rig's own, so that ones left over from an earlier run can't pass for PicoClock's.
+	# Names of the rig's own, so that ones left over from an earlier run can't pass for SynthSync's.
 	# The radio keeps the last network name it was given until the Pico loses power.
 	settings.set_host_name("rig-first")
 	own.config(ssid="PICO-not-ours")
@@ -2862,7 +2862,7 @@ def test_network (load: str = "idle") -> None:
 _PAGE_PATH = "/_rig_page.json"
 _PAGE_FOLDER = "/_rig_page"
 
-# What a browser sends with a request from PicoClock's own page.
+# What a browser sends with a request from SynthSync's own page.
 _OWN_SITE = {"Origin": "http://192.168.4.1", "Host": "192.168.4.1"}
 
 
@@ -2870,7 +2870,7 @@ def page_files () -> list:
 
 	"""Give the page's files as an install leaves them on the Pico, which is the page alone, with everything inside it."""
 
-	return sorted(name[:-3] for name in os.listdir("picoclock/web/static") if name.endswith(".gz"))
+	return sorted(name[:-3] for name in os.listdir("synthsync/web/static") if name.endswith(".gz"))
 
 
 def copy_page_file (name: str) -> int:
@@ -2883,7 +2883,7 @@ def copy_page_file (name: str) -> int:
 
 	length = 0
 
-	with open("picoclock/web/static/" + name + ".gz", "rb") as source:
+	with open("synthsync/web/static/" + name + ".gz", "rb") as source:
 		with open(_PAGE_FOLDER + "/" + name + ".gz", "wb") as target:
 
 			while True:
@@ -3002,10 +3002,10 @@ def test_page (load: str = "idle") -> None:
 
 	import microdot.test_client
 
-	import picoclock.device.radio
-	import picoclock.web.app
+	import synthsync.device.radio
+	import synthsync.web.app
 
-	board = picoclock.device.board
+	board = synthsync.device.board
 	tempo = 30000
 	count = 3000
 	names = page_files()
@@ -3022,23 +3022,23 @@ def test_page (load: str = "idle") -> None:
 
 	# Output 2 is the one timed, and nothing below changes it. The changes go to outputs 3 and 4.
 	capture = Capture(board.FIRST_OUTPUT_PIN + 1, count)
-	player = picoclock.device.player.Player(board.FIRST_OUTPUT_PIN, 4)
-	settings = picoclock.core.settings.Settings(4)
-	storage = picoclock.device.storage.Storage(settings, player, _PAGE_PATH)
-	clock = picoclock.core.clock.Clock(settings, player, storage)
+	player = synthsync.device.player.Player(board.FIRST_OUTPUT_PIN, 4)
+	settings = synthsync.core.settings.Settings(4)
+	storage = synthsync.device.storage.Storage(settings, player, _PAGE_PATH)
+	clock = synthsync.core.clock.Clock(settings, player, storage)
 
 	# At one pulse a beat, so output 2 at ×24 sends the 24 a beat this has always timed.
 	clock.set_ppqn(1)
 	clock.set_tempo(tempo)
 	clock.set_output(1, "ratio", "24")
 	clock.load()
-	clock.press(picoclock.core.transport.START)
+	clock.press(synthsync.core.transport.START)
 	player.settle()
 
-	wifi = picoclock.device.radio.make(clock)
+	wifi = synthsync.device.radio.make(clock)
 	wifi.look(0)
 
-	app = picoclock.web.app.App(clock, wifi, _PAGE_FOLDER)
+	app = synthsync.web.app.App(clock, wifi, _PAGE_FOLDER)
 	client = microdot.test_client.TestClient(app.web)
 
 	# The page is counted as it comes, not kept, as a phone's browser would take it in.
@@ -3083,7 +3083,7 @@ def test_page (load: str = "idle") -> None:
 
 		response = await client.get("/api/state", headers={"Host": "192.168.4.1"})
 
-		expect("a new page wasn't given everything", response.status_code == 200 and len(response.json["now"]) == 9 and response.json["fixed"]["roles"] == list(picoclock.core.settings.ROLES))
+		expect("a new page wasn't given everything", response.status_code == 200 and len(response.json["now"]) == 9 and response.json["fixed"]["roles"] == list(synthsync.core.settings.ROLES))
 
 	async def change () -> None:
 
@@ -3095,7 +3095,7 @@ def test_page (load: str = "idle") -> None:
 		ratio = ratios[counts[1] % len(ratios)]
 		response = await client.post("/api/change", headers=dict(_OWN_SITE), body={"do": "output", "index": 2, "name": "ratio", "value": ratio})
 
-		expect("a change wasn't carried out", response.status_code == 200 and response.json == {"ok": True} and settings.outputs[2].ratio == picoclock.core.ratio.parse(ratio, settings.ppqn))
+		expect("a change wasn't carried out", response.status_code == 200 and response.json == {"ok": True} and settings.outputs[2].ratio == synthsync.core.ratio.parse(ratio, settings.ppqn))
 
 	async def refuse () -> None:
 
@@ -3105,11 +3105,11 @@ def test_page (load: str = "idle") -> None:
 		expect("nonsense wasn't refused", response.status_code == 400 and "error" in response.json)
 
 		response = await client.post("/api/change", headers={"Origin": "http://elsewhere.example", "Host": "192.168.4.1"}, body={"do": "stop"})
-		expect("another site's page wasn't refused", response.status_code == 403 and clock.transport.state == picoclock.core.transport.RUNNING)
+		expect("another site's page wasn't refused", response.status_code == 403 and clock.transport.state == synthsync.core.transport.RUNNING)
 
 		# A site that has pointed its own name at the Pico gets nothing of it, nor the network's name.
 		response = await client.post("/api/change", headers={"Origin": "http://clock-stopper.example", "Host": "clock-stopper.example"}, body={"do": "stop"})
-		expect("a page sent to another site's name wasn't refused", response.status_code in (302, 403) and clock.transport.state == picoclock.core.transport.RUNNING)
+		expect("a page sent to another site's name wasn't refused", response.status_code in (302, 403) and clock.transport.state == synthsync.core.transport.RUNNING)
 
 		response = await client.get("/api/state", headers={"Host": "clock-stopper.example"})
 		expect("the state was given to a page sent to another site's name", response.status_code in (302, 403))
@@ -3189,7 +3189,7 @@ def test_page (load: str = "idle") -> None:
 			if counts[1] == 1:
 				counts[3] = counts[6]
 
-	jobs = [asyncio.create_task(job()) for job in (clock.run, storage.run, app.run, lambda: picoclock.device.radio.run(wifi), lambda: app.serve(visitor))]
+	jobs = [asyncio.create_task(job()) for job in (clock.run, storage.run, app.run, lambda: synthsync.device.radio.run(wifi), lambda: app.serve(visitor))]
 
 	def meanwhile () -> None:
 
@@ -3243,7 +3243,7 @@ def test_page (load: str = "idle") -> None:
 	report("page", passed, "requests=%d rounds=%d slowest_ms=%d look_ms=%d found=%d told=%d/%d/%d saves=%d free_kb=%d..%d wrong=%d first_wrong=%s pulses=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (counts[0], counts[1], counts[2], counts[5], counts[4], told.get("hello", 0), told.get("output", 0), told.get("clock", 0), storage.saves, counts[3] // 1024, counts[6] // 1024, len(wrong), wrong[0].replace(" ", "_") if wrong else "none", timed, worst, drifted, describe(status), described))
 
 
-# How long the air test runs PicoClock for, in milliseconds, and how many of
+# How long the air test runs SynthSync for, in milliseconds, and how many of
 # its first pulses aren't judged: the ones from before its tempo was set.
 _AIR_FOR = 45000
 _AIR_SKIP = 40
@@ -3251,7 +3251,7 @@ _AIR_SKIP = 40
 
 def test_air (load: str = "idle") -> None:
 
-	"""Run the whole of PicoClock on the WiFi network it has saved, with its page being used hard from that network, and time a fast output.
+	"""Run the whole of SynthSync on the WiFi network it has saved, with its page being used hard from that network, and time a fast output.
 
 	This is the measurement the design is for: real requests arriving over
 	the air, the first core answering them and saving settings, and every
@@ -3263,12 +3263,12 @@ def test_air (load: str = "idle") -> None:
 	The saved settings are put back afterwards.
 	"""
 
-	import picoclock.core.wifi
-	import picoclock.web.app
+	import synthsync.core.wifi
+	import synthsync.web.app
 
-	start = picoclock.device.start
-	board = picoclock.device.board
-	path = picoclock.device.storage.PATH
+	start = synthsync.device.start
+	board = synthsync.device.board
+	path = synthsync.device.storage.PATH
 	tempo = 30000
 	names = page_files()
 
@@ -3307,7 +3307,7 @@ def test_air (load: str = "idle") -> None:
 		pulses, worst = capture.judge(gap_lengths(tempo, 24, 1), _AIR_SKIP)
 		drifted = capture.drift(tempo, 24, 1, _AIR_SKIP)
 		going = kept_going(pulses + _AIR_SKIP, played_for, tempo, 24, 1) and status["running"]
-		joined = parts.wifi is not None and parts.wifi.mode == picoclock.core.wifi.JOINED
+		joined = parts.wifi is not None and parts.wifi.mode == synthsync.core.wifi.JOINED
 		opened = parts.app._opened if parts.app is not None else 0
 		kept_up = parts.app.health() if parts.app is not None else {}
 		saves = parts.storage.saves
@@ -3351,7 +3351,7 @@ def test_air (load: str = "idle") -> None:
 
 
 # ---------------------------------------------------------------------------
-# The soak: the whole of PicoClock for hours, timed in windows.
+# The soak: the whole of SynthSync for hours, timed in windows.
 
 # How long each window times output 2 for, in milliseconds, and the most gaps
 # one holds: a minute at the fastest the soak sets output 2, 120 pulses a second.
@@ -3394,7 +3394,7 @@ class Settled:
 
 		"""Count a change, if it is one that moves output 2's pulses."""
 
-		if what == picoclock.core.clock.TEMPO or what == picoclock.core.clock.PPQN or what == picoclock.core.clock.TRANSPORT or what == picoclock.core.clock.EVERYTHING or what == 1:
+		if what == synthsync.core.clock.TEMPO or what == synthsync.core.clock.PPQN or what == synthsync.core.clock.TRANSPORT or what == synthsync.core.clock.EVERYTHING or what == 1:
 			self.changes += 1
 			self.at = time.ticks_ms()
 
@@ -3410,7 +3410,7 @@ def soak_lengths (tempo: int, pulses: int, beats: int) -> tuple:
 	"""Give the two lengths output 2's gaps may be, in cycles: the exact gap in ticks, rounded down and up, as `gap_lengths` gives them, shorter first."""
 
 	per_tick = SYSTEM_HZ // 1000000
-	shorter, longer = picoclock.core.timeline.gap_ticks(tempo, pulses, beats)
+	shorter, longer = synthsync.core.timeline.gap_ticks(tempo, pulses, beats)
 
 	return (shorter * per_tick, longer * per_tick)
 
@@ -3445,7 +3445,7 @@ def soak_playing (parts) -> bool:
 
 	output = parts.clock.settings.outputs[1]
 
-	return parts.clock.transport.state == picoclock.core.transport.RUNNING and not output.muted and output.role == picoclock.core.settings.ROLES[0]
+	return parts.clock.transport.state == synthsync.core.transport.RUNNING and not output.muted and output.role == synthsync.core.settings.ROLES[0]
 
 
 async def soak_window (parts, capture: Capture, settled: Settled, counts: dict) -> bool:
@@ -3458,7 +3458,7 @@ async def soak_window (parts, capture: Capture, settled: Settled, counts: dict) 
 
 	settings = parts.clock.settings
 	tempo = settings.tempo
-	pulses, beats = picoclock.core.ratio.effective(settings.outputs[1].ratio, settings.ppqn)
+	pulses, beats = synthsync.core.ratio.effective(settings.outputs[1].ratio, settings.ppqn)
 	gap_ms = 6000000 * beats // (tempo * pulses) + 1
 
 	if not soak_playing(parts) or settled.since() < max(_SOAK_QUIET, _SOAK_QUIET_GAPS * gap_ms):
@@ -3512,7 +3512,7 @@ async def soak_windows (parts, capture: Capture, settled: Settled, counts: dict)
 	"""Time output 2 in one window after another, for as long as the soak lasts.
 
 	Anything that goes wrong here is printed and counted, and the windows
-	carry on: the soak is for what PicoClock does, and a mistake in the
+	carry on: the soak is for what SynthSync does, and a mistake in the
 	measuring shouldn't end it unseen.
 	"""
 
@@ -3544,12 +3544,12 @@ async def soak_windows (parts, capture: Capture, settled: Settled, counts: dict)
 
 async def soaking (parts, capture: Capture, settled: Settled, counts: dict, minutes: int) -> None:
 
-	"""Run the whole of PicoClock and the windows beside it, for this many minutes."""
+	"""Run the whole of SynthSync and the windows beside it, for this many minutes."""
 
 	windows = asyncio.create_task(soak_windows(parts, capture, settled, counts))
 
 	try:
-		await picoclock.device.start.carry_on(parts, minutes * 60000, _PAGE_FOLDER)
+		await synthsync.device.start.carry_on(parts, minutes * 60000, _PAGE_FOLDER)
 
 	finally:
 
@@ -3563,7 +3563,7 @@ async def soaking (parts, capture: Capture, settled: Settled, counts: dict, minu
 
 def soak (minutes: int) -> None:
 
-	"""Run the whole of PicoClock on the WiFi network it has saved for this many minutes, timing output 2 in windows of a minute throughout.
+	"""Run the whole of SynthSync on the WiFi network it has saved for this many minutes, timing output 2 in windows of a minute throughout.
 
 	This is the air test made long. The laptop half, `tools/soak.py`, uses
 	the page throughout and changes the tempo, the transport and output 2
@@ -3571,7 +3571,7 @@ def soak (minutes: int) -> None:
 	tempo and output 2 were set to when it began. A line is printed for each
 	window, and one result line at the end.
 
-	The clock runs at the PPQN PicoClock starts at, 4, as most people's will:
+	The clock runs at the PPQN SynthSync starts at, 4, as most people's will:
 	output 1 sends four pulses a beat, and every other output a ratio of it.
 
 	The settings it found are kept on the Pico's storage too while it runs,
@@ -3579,11 +3579,11 @@ def soak (minutes: int) -> None:
 	them there, and the next soak puts those back instead.
 	"""
 
-	import picoclock.core.wifi
+	import synthsync.core.wifi
 
-	start = picoclock.device.start
-	board = picoclock.device.board
-	path = picoclock.device.storage.PATH
+	start = synthsync.device.start
+	board = synthsync.device.board
+	path = synthsync.device.storage.PATH
 	names = page_files()
 
 	try:
@@ -3624,7 +3624,7 @@ def soak (minutes: int) -> None:
 
 		# Output 2 begins at 48 pulses a second: 120 BPM and 24 pulses a beat.
 		# The laptop half's ratios are of a clock of this PPQN too.
-		ppqn = picoclock.core.ratio.DEFAULT_PPQN
+		ppqn = synthsync.core.ratio.DEFAULT_PPQN
 		parts.clock.set_ppqn(ppqn)
 		parts.clock.set_tempo(12000)
 		parts.clock.set_output(1, "ratio", "24/%d" % ppqn)
@@ -3632,7 +3632,7 @@ def soak (minutes: int) -> None:
 		asyncio.run(soaking(parts, capture, settled, counts, minutes))
 
 		status = parts.player.status()
-		joined = parts.wifi is not None and parts.wifi.mode == picoclock.core.wifi.JOINED
+		joined = parts.wifi is not None and parts.wifi.mode == synthsync.core.wifi.JOINED
 		opened = parts.app._opened if parts.app is not None else 0
 		kept_up = parts.app.health() if parts.app is not None else {}
 		saves = parts.storage.saves
@@ -3653,7 +3653,7 @@ def soak (minutes: int) -> None:
 			except KeyboardInterrupt:
 				pass
 
-		picoclock.device.chip.hold()
+		synthsync.device.chip.hold()
 
 		try:
 
@@ -3688,7 +3688,7 @@ def soak (minutes: int) -> None:
 					pass
 
 		finally:
-			picoclock.device.chip.release()
+			synthsync.device.chip.release()
 
 	# Windows come about once a minute and pages about twice. Half as many, and
 	# at most a quarter of the windows spoiled, leaves room for every pause and

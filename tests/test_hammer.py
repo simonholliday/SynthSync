@@ -18,7 +18,7 @@ import tools.page
 @pytest.fixture()
 def stand () -> typing.Iterator[tests.stand.Stand]:
 
-	"""A stand-in PicoClock of its own, since this changes its settings hard."""
+	"""A stand-in SynthSync of its own, since this changes its settings hard."""
 
 	stand = tests.stand.Stand()
 
@@ -78,7 +78,7 @@ def test_the_tempo_is_dragged_only_when_asked_and_put_back_after (stand: tests.s
 	assert stand.now("tempo")["tempo"] == 9900
 
 
-def test_a_picoclock_that_never_answers_counts_no_rounds () -> None:
+def test_a_synthsync_that_never_answers_counts_no_rounds () -> None:
 
 	"""With nothing at the address it gives up waiting, and that is not counted as having gone well."""
 
@@ -93,7 +93,7 @@ def test_a_picoclock_that_never_answers_counts_no_rounds () -> None:
 
 def test_a_round_that_fails_as_a_test_ends_is_not_counted_against_it (stand: tests.stand.Stand) -> None:
 
-	"""The rig stops PicoClock at the end of its test, which fails the round under way. Within the grace allowed, that round is left out."""
+	"""The rig stops SynthSync at the end of its test, which fails the round under way. Within the grace allowed, that round is left out."""
 
 	began = time.monotonic()
 
@@ -109,7 +109,7 @@ def test_a_round_that_fails_as_a_test_ends_is_not_counted_against_it (stand: tes
 	assert totals["failed"] == 0 and totals["out_of_step"] == 0
 	assert totals["rounds"] == 0
 
-	# Something did go wrong in that round. It just isn't held against PicoClock.
+	# Something did go wrong in that round. It just isn't held against SynthSync.
 	assert tools.hammer.notes
 
 
@@ -135,7 +135,7 @@ def test_a_round_that_fails_while_the_test_goes_on_is_counted (stand: tests.stan
 @pytest.mark.parametrize("problem", [asyncio.IncompleteReadError(b"", 2), tools.page.Refused(403)])
 def test_a_page_that_fails_to_open_fails_the_round_and_neither_page_is_left_open (monkeypatch: pytest.MonkeyPatch, problem: BaseException) -> None:
 
-	"""A socket closed part way through opening, or one PicoClock refuses, is counted as a failure rather than ending the run, and both pages are closed."""
+	"""A socket closed part way through opening, or one SynthSync refuses, is counted as a failure rather than ending the run, and both pages are closed."""
 
 	opened: list[object] = []
 	closed: list[object] = []
@@ -176,9 +176,9 @@ def test_a_page_that_fails_to_open_fails_the_round_and_neither_page_is_left_open
 	assert tools.hammer.notes[0].startswith("opening a second page failed")
 
 
-def test_how_picoclock_has_kept_up_is_asked_until_it_answers (monkeypatch: pytest.MonkeyPatch) -> None:
+def test_how_synthsync_has_kept_up_is_asked_until_it_answers (monkeypatch: pytest.MonkeyPatch) -> None:
 
-	"""A first ask of how PicoClock has kept up that goes unanswered is asked again, so what held it up is counted rather than left unknown, and unknown never counts as having gone well."""
+	"""A first ask of how SynthSync has kept up that goes unanswered is asked again, so what held it up is counted rather than left unknown, and unknown never counts as having gone well."""
 
 	answers: list[dict[str, int] | None] = [None, None, {"holds": 2, "held": 2500, "given_up": 0}, {"holds": 2, "held": 2500, "given_up": 0}]
 	rounds: list[int] = []
@@ -217,5 +217,5 @@ def test_how_picoclock_has_kept_up_is_asked_until_it_answers (monkeypatch: pytes
 	assert totals["holds"] == 0 and totals["held_ms"] == 0 and totals["given_up"] == 0
 	assert tools.hammer.went_well(totals)
 
-	# Never told, it can't be said that nothing held PicoClock up.
+	# Never told, it can't be said that nothing held SynthSync up.
 	assert not tools.hammer.went_well(dict(totals, holds=-1))

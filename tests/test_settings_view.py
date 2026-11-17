@@ -11,8 +11,8 @@ import typing
 
 import pytest
 
-import picoclock
-import picoclock.sim.network
+import synthsync
+import synthsync.sim.network
 
 import tests.pages
 import tests.stand
@@ -24,7 +24,7 @@ if typing.TYPE_CHECKING:
 @pytest.fixture(scope="module", params=("six files", "one file"))
 def stand (request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> typing.Iterator[tests.stand.Stand]:
 
-	"""One stand-in PicoClock for all of these tests, serving the page's own six files, and then the page packed into one as the Pico holds it."""
+	"""One stand-in SynthSync for all of these tests, serving the page's own six files, and then the page packed into one as the Pico holds it."""
 
 	stand = tests.stand.Stand(static=tests.stand.packed(tmp_path_factory.mktemp("packed")) if request.param == "one file" else None)
 
@@ -125,17 +125,17 @@ def test_the_settings_open_from_the_main_view_and_close_again (chromium: "playwr
 	page.context.close()
 
 
-def test_it_says_how_picoclock_is_reached_and_how_it_is_doing (phone: "playwright.sync_api.Page") -> None:
+def test_it_says_how_synthsync_is_reached_and_how_it_is_doing (phone: "playwright.sync_api.Page") -> None:
 
-	"""The view opens saying which network PicoClock is running, what its own is called, its version and its faults."""
+	"""The view opens saying which network SynthSync is running, what its own is called, its version and its faults."""
 
-	own = picoclock.sim.network.OWN_NAME
+	own = synthsync.sim.network.OWN_NAME
 
-	assert text(phone, "#wifi-status") == "PicoClock is running its own network, %s. This page is at http://localhost." % own
+	assert text(phone, "#wifi-status") == "SynthSync is running its own network, %s. This page is at http://localhost." % own
 	assert text(phone, "#own-status") == "It is called %s, and it is on now." % own
-	assert text(phone, "#version") == "PicoClock " + picoclock.__version__
+	assert text(phone, "#version") == "SynthSync " + synthsync.__version__
 	assert text(phone, "#faults") == "Timing faults: 0, as it should be."
-	assert phone.input_value("#host-name") == "picoclock"
+	assert phone.input_value("#host-name") == "synthsync"
 
 	assert phone.is_hidden("#join")
 	assert phone.is_hidden("#forget")
@@ -155,9 +155,9 @@ def test_the_networks_in_range_are_listed_strongest_first (phone: "playwright.sy
 	assert text(phone, "#scan-status") == ""
 
 
-def test_a_join_is_tried_first_says_where_picoclock_will_be_and_switches_when_asked (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+def test_a_join_is_tried_first_says_where_synthsync_will_be_and_switches_when_asked (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""Picking a network explains what joining does before anything is sent. The right password finds it, the page says where PicoClock will be there, and Switch joins it."""
+	"""Picking a network explains what joining does before anything is sent. The right password finds it, the page says where SynthSync will be there, and Switch joins it."""
 
 	pick(phone, "Studio")
 
@@ -170,7 +170,7 @@ def test_a_join_is_tried_first_says_where_picoclock_will_be_and_switches_when_as
 
 	assert "switch its own network off to try Studio" in warning
 	assert "this page will stop responding" in warning
-	assert "this page says where PicoClock will be on Studio" in warning
+	assert "this page says where SynthSync will be on Studio" in warning
 	assert "about 20 seconds" in warning
 
 	# Nothing has been asked of the Pico yet.
@@ -184,25 +184,25 @@ def test_a_join_is_tried_first_says_where_picoclock_will_be_and_switches_when_as
 	assert tests.pages.eventually(lambda: stand.now("network")["mode"] == "found")
 	assert stand.now("network")["saved"] == "Studio"
 
-	assert tests.pages.eventually(lambda: text(phone, "#wifi-status") == "PicoClock can join Studio. Once it has, this page will be at http://localhost.")
+	assert tests.pages.eventually(lambda: text(phone, "#wifi-status") == "SynthSync can join Studio. Once it has, this page will be at http://localhost.")
 	assert phone.is_visible("#trial")
 
-	# Where PicoClock will be is brought into sight, from wherever the form that asked had been scrolled to.
+	# Where SynthSync will be is brought into sight, from wherever the form that asked had been scrolled to.
 	assert tests.pages.eventually(lambda: in_sight(phone, "#wifi-status") and in_sight(phone, "#trial-address"))
 	assert text(phone, "#trial-address") == "http://localhost"
 	assert "Note that address down" in text(phone, "#trial-words")
 	assert "two minutes" in text(phone, "#trial-words")
 	assert text(phone, "#switch") == "Switch to Studio now"
-	assert text(phone, "#own-status") == "It is called %s, and it is on until PicoClock switches to Studio." % picoclock.sim.network.OWN_NAME
+	assert text(phone, "#own-status") == "It is called %s, and it is on until SynthSync switches to Studio." % synthsync.sim.network.OWN_NAME
 	assert phone.is_hidden("#join")
 
 	phone.tap("#switch")
 
 	assert tests.pages.eventually(lambda: stand.now("network")["mode"] == "joined")
-	assert tests.pages.eventually(lambda: text(phone, "#wifi-status") == "PicoClock is on Studio. This page is at http://localhost, or http://picoclock.local.")
+	assert tests.pages.eventually(lambda: text(phone, "#wifi-status") == "SynthSync is on Studio. This page is at http://localhost, or http://synthsync.local.")
 	assert phone.is_hidden("#trial")
-	assert text(phone, "#own-status") == "It is called %s. It is off while PicoClock is on Studio." % picoclock.sim.network.OWN_NAME
-	assert text(phone, "#forget") == "Leave Studio and go back to PicoClock's own network"
+	assert text(phone, "#own-status") == "It is called %s. It is off while SynthSync is on Studio." % synthsync.sim.network.OWN_NAME
+	assert text(phone, "#forget") == "Leave Studio and go back to SynthSync's own network"
 
 	# Joining another from there says it will leave the first, and where the news of it will be.
 	pick(phone, "Cafe")
@@ -210,7 +210,7 @@ def test_a_join_is_tried_first_says_where_picoclock_will_be_and_switches_when_as
 	warning = text(phone, "#join-warning")
 
 	assert "leave Studio to try Cafe" in warning
-	assert "join this phone to PicoClock's own network, %s, and open http://192.168.4.1" % picoclock.sim.network.OWN_NAME in warning
+	assert "join this phone to SynthSync's own network, %s, and open http://192.168.4.1" % synthsync.sim.network.OWN_NAME in warning
 
 	phone.tap("#join-cancel")
 
@@ -225,15 +225,15 @@ def test_a_join_is_tried_first_says_where_picoclock_will_be_and_switches_when_as
 
 def test_a_trial_that_nobody_acts_on_switches_by_itself (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""Left alone, PicoClock joins the network it found once its stay on its own network is up, which on the stand-in is five seconds."""
+	"""Left alone, SynthSync joins the network it found once its stay on its own network is up, which on the stand-in is five seconds."""
 
 	pick(phone, "Studio")
 	phone.fill("#join-password", "studio wifi")
 	phone.tap("#join-go")
 
 	assert tests.pages.eventually(lambda: stand.now("network")["mode"] == "found")
-	assert tests.pages.eventually(lambda: stand.now("network")["mode"] == "joined", within=picoclock.sim.network.STAY_FOR / 1000 + 3)
-	assert tests.pages.eventually(lambda: text(phone, "#wifi-status").startswith("PicoClock is on Studio."))
+	assert tests.pages.eventually(lambda: stand.now("network")["mode"] == "joined", within=synthsync.sim.network.STAY_FOR / 1000 + 3)
+	assert tests.pages.eventually(lambda: text(phone, "#wifi-status").startswith("SynthSync is on Studio."))
 	assert phone.is_hidden("#trial")
 
 
@@ -280,7 +280,7 @@ def cut_when (page: "playwright.sync_api.Page", do: str, last: "typing.Callable[
 	network from that answer, for the page to hear just as the line goes, as
 	a Pico might just manage to say as it begins a join. With `back`, trying
 	again waits at that gate, and finds the stand-in once the test lets it
-	through, as a phone that stayed on PicoClock's own network finds the Pico
+	through, as a phone that stayed on SynthSync's own network finds the Pico
 	once that network is back.
 	"""
 
@@ -361,11 +361,11 @@ def settings_cut_when (chromium: "playwright.sync_api.Browser", stand: tests.sta
 		page.context.close()
 
 
-def test_once_picoclock_changes_networks_the_page_says_where_it_has_gone (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
+def test_once_synthsync_changes_networks_the_page_says_where_it_has_gone (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
 
-	"""The line goes as PicoClock changes networks, before the page hears what came of it, so the page says where PicoClock is going in place of trying again."""
+	"""The line goes as SynthSync changes networks, before the page hears what came of it, so the page says where SynthSync is going in place of trying again."""
 
-	own = picoclock.sim.network.OWN_NAME
+	own = synthsync.sim.network.OWN_NAME
 
 	stand.as_new()
 
@@ -379,14 +379,14 @@ def test_once_picoclock_changes_networks_the_page_says_where_it_has_gone (chromi
 
 		assert tests.pages.eventually(lambda: text(page, "#link") == "Not connected.")
 		assert text(page, "#where") == (
-			f"PicoClock is trying Studio. In a few seconds its own network, {own}, comes back to say where PicoClock will be. "
+			f"SynthSync is trying Studio. In a few seconds its own network, {own}, comes back to say where SynthSync will be. "
 			f"If this phone has gone to another network meanwhile, join it to {own} again."
 		)
 
-		# What it says is brought into sight, from wherever the button that sent PicoClock away had been scrolled to.
+		# What it says is brought into sight, from wherever the button that sent SynthSync away had been scrolled to.
 		assert in_sight(page, "#where")
 
-	# A switch, from where a trial that worked leaves PicoClock. The page hears the join begin just as
+	# A switch, from where a trial that worked leaves SynthSync. The page hears the join begin just as
 	# the line goes, which is still the switch, not another trial.
 	stand.as_new()
 	stand.change({"do": "join", "name": "Studio", "password": "studio wifi"})
@@ -404,10 +404,10 @@ def test_once_picoclock_changes_networks_the_page_says_where_it_has_gone (chromi
 		page.tap("#switch")
 
 		assert tests.pages.eventually(lambda: text(page, "#link") == "Not connected.")
-		assert text(page, "#where") == "PicoClock is switching to Studio. Join this phone to Studio too, then open http://localhost."
+		assert text(page, "#where") == "SynthSync is switching to Studio. Join this phone to Studio too, then open http://localhost."
 		assert page.get_attribute("#where a", "href") == "http://localhost"
 
-	# Leaving a network that was joined, for PicoClock's own. The switch that was asked for has been made.
+	# Leaving a network that was joined, for SynthSync's own. The switch that was asked for has been made.
 	assert tests.pages.eventually(lambda: stand.now("network")["mode"] == "joined")
 
 	with settings_cut_when(chromium, stand, "forget") as page:
@@ -416,13 +416,13 @@ def test_once_picoclock_changes_networks_the_page_says_where_it_has_gone (chromi
 		page.tap("#forget")
 
 		assert tests.pages.eventually(lambda: text(page, "#link") == "Not connected.")
-		assert text(page, "#where") == f"PicoClock is going back to its own network, {own}. Join this phone to it, then open http://192.168.4.1."
+		assert text(page, "#where") == f"SynthSync is going back to its own network, {own}. Join this phone to it, then open http://192.168.4.1."
 		assert in_sight(page, "#where")
 
 
 def test_a_trial_that_took_the_line_says_how_it_went_once_the_line_is_back (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
 
-	"""A phone that stays on PicoClock's own network through a trial finds the Pico again when that network is back, and the page then shows what was found, in sight."""
+	"""A phone that stays on SynthSync's own network through a trial finds the Pico again when that network is back, and the page then shows what was found, in sight."""
 
 	stand.as_new()
 
@@ -443,7 +443,7 @@ def test_a_trial_that_took_the_line_says_how_it_went_once_the_line_is_back (chro
 		back.let_through()
 
 		assert tests.pages.eventually(lambda: text(page, "#link") == "" and page.is_visible("#trial"))
-		assert text(page, "#wifi-status") == "PicoClock can join Studio. Once it has, this page will be at http://localhost."
+		assert text(page, "#wifi-status") == "SynthSync can join Studio. Once it has, this page will be at http://localhost."
 		assert text(page, "#trial-address") == "http://localhost"
 		assert text(page, "#where") == ""
 		assert tests.pages.eventually(lambda: in_sight(page, "#wifi-status") and in_sight(page, "#trial-address"))
@@ -451,7 +451,7 @@ def test_a_trial_that_took_the_line_says_how_it_went_once_the_line_is_back (chro
 
 def test_a_join_that_fails_says_why (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""With the wrong password PicoClock comes back to its own network, says what went wrong, and keeps nothing of the network."""
+	"""With the wrong password SynthSync comes back to its own network, says what went wrong, and keeps nothing of the network."""
 
 	pick(phone, "Studio")
 	phone.fill("#join-password", "not the password")
@@ -478,13 +478,13 @@ def test_a_join_that_fails_says_why (phone: "playwright.sync_api.Page", stand: t
 
 def test_a_network_still_saved_is_said_to_be_gone_back_to_by_itself (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
 
-	"""Back on its own network with a network still saved, as after losing it, PicoClock is said to go back to that one by itself.
+	"""Back on its own network with a network still saved, as after losing it, SynthSync is said to go back to that one by itself.
 
 	The stand-in's networks never go away, so the page is greeted as a Pico
 	that has lost one greets it.
 	"""
 
-	own = picoclock.sim.network.OWN_NAME
+	own = synthsync.sim.network.OWN_NAME
 
 	stand.as_new()
 	page = tests.pages.phone(chromium)
@@ -504,7 +504,7 @@ def test_a_network_still_saved_is_said_to_be_gone_back_to_by_itself (chromium: "
 			for each in batch["messages"]:
 				for said in [each] + (each["now"] if each["type"] == "hello" else []):
 					if said["type"] == "network":
-						said.update(saved="Studio", problem="PicoClock lost Studio and couldn't get it back")
+						said.update(saved="Studio", problem="SynthSync lost Studio and couldn't get it back")
 
 			socket.send(json.dumps(batch))
 
@@ -516,10 +516,10 @@ def test_a_network_still_saved_is_said_to_be_gone_back_to_by_itself (chromium: "
 		page.wait_for_function("!document.body.classList.contains('lost') && document.getElementById('wifi-status').textContent !== ''")
 
 		assert text(page, "#wifi-status") == (
-			f"PicoClock is running its own network, {own}. This page is at http://localhost. "
-			f"When Studio is back in range, PicoClock goes back to it by itself, as soon as no phone is on {own}."
+			f"SynthSync is running its own network, {own}. This page is at http://localhost. "
+			f"When Studio is back in range, SynthSync goes back to it by itself, as soon as no phone is on {own}."
 		)
-		assert text(page, "#wifi-problem") == "PicoClock lost Studio and couldn't get it back"
+		assert text(page, "#wifi-problem") == "SynthSync lost Studio and couldn't get it back"
 		assert text(page, "#forget") == "Forget Studio"
 
 	finally:
@@ -625,7 +625,7 @@ def test_the_own_networks_password_can_be_changed (phone: "playwright.sync_api.P
 
 def test_its_name_on_wifi_can_be_changed (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""The name PicoClock answers to is set as typed, tidied, and a name that can't be one is refused."""
+	"""The name SynthSync answers to is set as typed, tidied, and a name that can't be one is refused."""
 
 	phone.fill("#host-name", "Drum-Clock")
 	phone.tap("#host-go")
@@ -642,7 +642,7 @@ def test_its_name_on_wifi_can_be_changed (phone: "playwright.sync_api.Page", sta
 	assert tests.pages.eventually(lambda: text(phone, "#host-problem") == "The name can use letters, digits and hyphens, up to 32 of them, and can't begin or end with a hyphen")
 	assert stand.now("network")["host_name"] == "drum-clock"
 
-	# Once PicoClock has joined, the new name is the one the page gives beside its address.
+	# Once SynthSync has joined, the new name is the one the page gives beside its address.
 	stand.change({"do": "join", "name": "Studio", "password": "studio wifi"})
 
 	assert tests.pages.eventually(lambda: stand.now("network")["mode"] == "found")
@@ -654,7 +654,7 @@ def test_its_name_on_wifi_can_be_changed (phone: "playwright.sync_api.Page", sta
 
 def test_a_reset_asks_first_and_then_puts_everything_back (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
-	"""Reset shows what it will do and waits. Cancel changes nothing, and going ahead brings back a new PicoClock's settings."""
+	"""Reset shows what it will do and waits. Cancel changes nothing, and going ahead brings back a new SynthSync's settings."""
 
 	stand.change({"do": "tempo", "value": 9900})
 	stand.change({"do": "output", "index": 1, "name": "ratio", "value": "3"})
@@ -664,7 +664,7 @@ def test_a_reset_asks_first_and_then_puts_everything_back (phone: "playwright.sy
 
 	assert phone.is_visible("#reset-confirm")
 	assert phone.is_hidden("#reset-ask")
-	assert "password picoclock" in text(phone, "#reset-confirm")
+	assert "password synthsync" in text(phone, "#reset-confirm")
 
 	phone.tap("#reset-cancel")
 
@@ -700,7 +700,7 @@ def test_what_another_page_does_to_the_network_shows_here (chromium: "playwright
 
 	stand.change({"do": "join", "name": "Cafe", "password": ""})
 
-	assert tests.pages.eventually(lambda: text(phone, "#wifi-status").startswith("PicoClock can join Cafe."))
+	assert tests.pages.eventually(lambda: text(phone, "#wifi-status").startswith("SynthSync can join Cafe."))
 	assert phone.is_visible("#join")
 	assert phone.input_value("#join-password") == "half typed"
 

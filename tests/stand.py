@@ -1,4 +1,4 @@
-"""A stand-in PicoClock running on its own, for the tests that open the page in a real browser.
+"""A stand-in SynthSync running on its own, for the tests that open the page in a real browser.
 
 Those tests can't run an event loop of their own, so the stand-in runs as a
 separate program, and they talk to it over plain requests.
@@ -28,7 +28,7 @@ def packed (folder: pathlib.Path) -> pathlib.Path:
 
 	tools.stage.pack_page(folder)
 
-	return folder / "picoclock" / "web" / "static"
+	return folder / "synthsync" / "web" / "static"
 
 
 def free_port () -> int:
@@ -42,7 +42,7 @@ def free_port () -> int:
 
 class Stand:
 
-	"""One stand-in PicoClock, started from the command line as a person would."""
+	"""One stand-in SynthSync, started from the command line as a person would."""
 
 	def __init__ (self, outputs: int = 4, port: int | None = None, static: pathlib.Path | None = None) -> None:
 
@@ -58,7 +58,7 @@ class Stand:
 		self.packed = static is not None
 
 		self.process = subprocess.Popen(
-			[sys.executable, "-B", "-m", "picoclock.sim", "--port", str(self.port), "--outputs", str(outputs)] + (["--static", str(static)] if static is not None else []),
+			[sys.executable, "-B", "-m", "synthsync.sim", "--port", str(self.port), "--outputs", str(outputs)] + (["--static", str(static)] if static is not None else []),
 			cwd = ROOT,
 			stdout = subprocess.PIPE,
 			stderr = subprocess.STDOUT,

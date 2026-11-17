@@ -2,12 +2,12 @@
 
 import json
 
-import picoclock.core.ratio
-import picoclock.core.settings
-import picoclock.core.timeline
+import synthsync.core.ratio
+import synthsync.core.settings
+import synthsync.core.timeline
 
 
-def refusal (settings: picoclock.core.settings.Settings, what: str, first: object, second: object = None, third: object = None) -> str:
+def refusal (settings: synthsync.core.settings.Settings, what: str, first: object, second: object = None, third: object = None) -> str:
 
 	"""Try one change and give the message it was refused with, or nothing if it was taken."""
 
@@ -34,7 +34,7 @@ def tempo_refused (text: str) -> bool:
 	"""Say whether a typed tempo is refused."""
 
 	try:
-		picoclock.core.settings.parse_tempo(text)
+		synthsync.core.settings.parse_tempo(text)
 	except ValueError:
 		return True
 
@@ -45,7 +45,7 @@ def check_the_defaults () -> None:
 
 	"""A new set of settings is 120 BPM, every output a clock at one pulse a beat, and the Pico's own network."""
 
-	settings = picoclock.core.settings.Settings(4)
+	settings = synthsync.core.settings.Settings(4)
 
 	assert settings.tempo == 12000
 	assert len(settings.outputs) == 4
@@ -57,8 +57,8 @@ def check_the_defaults () -> None:
 		assert output.pulse == 10
 		assert output.role == "clock"
 
-	assert settings.own_password == "picoclock"
-	assert settings.host_name == "picoclock"
+	assert settings.own_password == "synthsync"
+	assert settings.host_name == "synthsync"
 	assert settings.network_name == ""
 	assert settings.network_password == ""
 
@@ -67,8 +67,8 @@ def check_a_tempo_is_typed_in_bpm_and_held_in_hundredths () -> None:
 
 	"""A typed tempo becomes exact hundredths of a BPM, and writes back the way it was typed."""
 
-	parse = picoclock.core.settings.parse_tempo
-	text = picoclock.core.settings.tempo_text
+	parse = synthsync.core.settings.parse_tempo
+	text = synthsync.core.settings.tempo_text
 
 	assert parse("120") == 12000
 	assert parse(" 120.5 ") == 12050
@@ -89,7 +89,7 @@ def check_tempo_limits () -> None:
 
 	"""The tempo runs from 20 to 300 BPM and nothing else is taken."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 
 	settings.set_tempo(2000)
 	settings.set_tempo(30000)
@@ -106,7 +106,7 @@ def check_each_output_setting_can_be_changed () -> None:
 
 	"""Ratio, snap, mute, pulse and role each take a good value and keep it."""
 
-	settings = picoclock.core.settings.Settings(3)
+	settings = synthsync.core.settings.Settings(3)
 
 	settings.set_output(1, "ratio", "4/3")
 	settings.set_output(1, "snap", False)
@@ -121,7 +121,7 @@ def check_each_output_setting_can_be_changed () -> None:
 	assert settings.outputs[1].muted is True
 	assert settings.outputs[1].pulse == 25
 	assert settings.outputs[1].role == "run"
-	assert settings.outputs[2].pulse == picoclock.core.settings.HALF
+	assert settings.outputs[2].pulse == synthsync.core.settings.HALF
 	assert settings.outputs[2].ratio == (2, 3)
 
 	# The other outputs are untouched.
@@ -133,7 +133,7 @@ def check_bad_output_settings_are_refused_with_a_reason () -> None:
 
 	"""A value that makes no sense is refused, says why, and changes nothing."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 
 	assert "fastest" in refusal(settings, "output", 1, "ratio", "97")
 	assert refusal(settings, "output", 1, "ratio", 2)
@@ -158,7 +158,7 @@ def check_output_one_is_always_the_main_clock () -> None:
 
 	"""The first output keeps its ratio and its role, and can still be muted or given another pulse."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 
 	assert "main clock" in refusal(settings, "output", 0, "ratio", "2")
 	assert "main clock" in refusal(settings, "output", 0, "role", "run")
@@ -177,29 +177,29 @@ def check_an_output_gives_the_scheduler_what_it_takes () -> None:
 
 	"""A pulse in milliseconds becomes ticks, half stays as nought, and a role becomes its number."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 
 	assert settings.outputs[1].width_ticks() == 10000
-	assert settings.outputs[1].role_number() == picoclock.core.timeline.CLOCK
+	assert settings.outputs[1].role_number() == synthsync.core.timeline.CLOCK
 
 	settings.set_output(1, "pulse", "half")
 	settings.set_output(1, "role", "stop")
 
 	assert settings.outputs[1].width_ticks() == 0
-	assert settings.outputs[1].role_number() == picoclock.core.timeline.STOP_PULSE
+	assert settings.outputs[1].role_number() == synthsync.core.timeline.STOP_PULSE
 
 	settings.set_output(1, "role", "start")
-	assert settings.outputs[1].role_number() == picoclock.core.timeline.START_PULSE
+	assert settings.outputs[1].role_number() == synthsync.core.timeline.START_PULSE
 
 	settings.set_output(1, "role", "run")
-	assert settings.outputs[1].role_number() == picoclock.core.timeline.RUN
+	assert settings.outputs[1].role_number() == synthsync.core.timeline.RUN
 
 
 def check_network_settings_are_checked () -> None:
 
 	"""Passwords and names that a WiFi network couldn't use are refused."""
 
-	settings = picoclock.core.settings.Settings(1)
+	settings = synthsync.core.settings.Settings(1)
 
 	settings.set_own_password("a better one")
 	settings.set_host_name(" Studio-Clock ")
@@ -235,7 +235,7 @@ def check_saving_and_loading_gives_back_the_same_settings () -> None:
 
 	"""Everything set survives being written to text and read back, with nothing reported."""
 
-	settings = picoclock.core.settings.Settings(4)
+	settings = synthsync.core.settings.Settings(4)
 	settings.set_tempo(12345)
 	settings.set_output(0, "muted", True)
 	settings.set_output(1, "ratio", "137/100")
@@ -249,7 +249,7 @@ def check_saving_and_loading_gives_back_the_same_settings () -> None:
 	settings.set_network("Home WiFi", "correct horse")
 
 	text = settings.to_text()
-	loaded = picoclock.core.settings.Settings(4)
+	loaded = synthsync.core.settings.Settings(4)
 	problems = loaded.load_text(text)
 
 	assert problems == []
@@ -257,7 +257,7 @@ def check_saving_and_loading_gives_back_the_same_settings () -> None:
 	assert loaded.outputs[0].muted is True
 	assert loaded.outputs[1].ratio == (137, 100)
 	assert loaded.outputs[1].snap is False
-	assert loaded.outputs[2].pulse == picoclock.core.settings.HALF
+	assert loaded.outputs[2].pulse == synthsync.core.settings.HALF
 	assert loaded.outputs[2].role == "start"
 	assert loaded.outputs[3].pulse == 3
 	assert loaded.outputs[3].role == "run"
@@ -277,14 +277,14 @@ def check_a_missing_or_damaged_file_gives_the_defaults () -> None:
 
 	for text in ("", "not json", "{", "[1, 2, 3]", "null", "42", "\"text\""):
 
-		settings = picoclock.core.settings.Settings(2)
+		settings = synthsync.core.settings.Settings(2)
 		settings.set_tempo(9000)
 		problems = settings.load_text(text)
 
 		assert len(problems) == 1, text
 		assert settings.tempo == 12000
 		assert settings.outputs[1].ratio == (1, 1)
-		assert settings.own_password == "picoclock"
+		assert settings.own_password == "synthsync"
 
 
 def check_a_partly_damaged_file_keeps_what_it_can () -> None:
@@ -307,7 +307,7 @@ def check_a_partly_damaged_file_keeps_what_it_can () -> None:
 		"something_new": [1, 2, 3],
 	})
 
-	settings = picoclock.core.settings.Settings(4)
+	settings = synthsync.core.settings.Settings(4)
 	problems = settings.load_text(text)
 
 	# The tempo, output 1's ratio, output 2's snap and pulse, output 3 and the password.
@@ -323,7 +323,7 @@ def check_a_partly_damaged_file_keeps_what_it_can () -> None:
 	assert settings.outputs[2].ratio == (1, 1)
 	assert settings.outputs[3].ratio == (1, 4)
 	assert settings.outputs[3].role == "stop"
-	assert settings.own_password == "picoclock"
+	assert settings.own_password == "synthsync"
 	assert settings.host_name == "good-name"
 	assert settings.network_name == "Home WiFi"
 
@@ -332,11 +332,11 @@ def check_a_ratio_saved_with_snap_on_loads_as_it_was_saved () -> None:
 
 	"""A ratio typed with snap on is saved as typed, and loads as typed, even into settings whose snap was off: loading starts afresh, with snap on, so nothing turns it on."""
 
-	settings = picoclock.core.settings.Settings(4)
+	settings = synthsync.core.settings.Settings(4)
 	settings.set_output(1, "ratio", "29/10")
 
 	text = settings.to_text()
-	loaded = picoclock.core.settings.Settings(4)
+	loaded = synthsync.core.settings.Settings(4)
 
 	loaded.set_output(1, "snap", False)
 
@@ -349,7 +349,7 @@ def check_turning_snap_on_says_the_ratio_changed_only_when_it_did () -> None:
 
 	"""The settings give the names of what a change changed: the ratio too when turning snap on moved it."""
 
-	settings = picoclock.core.settings.Settings(4)
+	settings = synthsync.core.settings.Settings(4)
 
 	assert settings.set_output(1, "snap", False) == ("snap",)
 	assert settings.set_output(1, "ratio", "2.9") == ("ratio",)
@@ -365,16 +365,16 @@ def check_a_file_for_more_or_fewer_outputs_still_loads () -> None:
 
 	"""Outputs the file doesn't mention keep their defaults, and ones this Pico lacks are ignored."""
 
-	saved = picoclock.core.settings.Settings(4)
+	saved = synthsync.core.settings.Settings(4)
 	saved.set_output(1, "ratio", "2")
 	saved.set_output(3, "ratio", "8")
 
-	fewer = picoclock.core.settings.Settings(2)
+	fewer = synthsync.core.settings.Settings(2)
 
 	assert fewer.load_text(saved.to_text()) == []
 	assert fewer.outputs[1].ratio == (2, 1)
 
-	more = picoclock.core.settings.Settings(6)
+	more = synthsync.core.settings.Settings(6)
 
 	assert more.load_text(saved.to_text()) == []
 	assert more.outputs[3].ratio == (8, 1)
@@ -385,19 +385,19 @@ def check_an_older_file_with_fields_missing_loads () -> None:
 
 	"""A file that lacks whole fields takes the defaults for them without complaint."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 
 	assert settings.load_text("{\"tempo\": 9000}") == []
 	assert settings.tempo == 9000
 	assert settings.outputs[1].ratio == (1, 1)
-	assert settings.own_password == "picoclock"
+	assert settings.own_password == "synthsync"
 
 
 def check_a_reset_goes_back_to_the_defaults () -> None:
 
 	"""A factory reset forgets everything, the network included."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 	settings.set_tempo(9000)
 	settings.set_output(1, "ratio", "3")
 	settings.set_own_password("another password")
@@ -407,16 +407,16 @@ def check_a_reset_goes_back_to_the_defaults () -> None:
 
 	assert settings.tempo == 12000
 	assert settings.outputs[1].ratio == (1, 1)
-	assert settings.own_password == "picoclock"
+	assert settings.own_password == "synthsync"
 	assert settings.network_name == ""
 	assert len(settings.outputs) == 2
 
 
 def check_the_clock_sends_four_pulses_a_beat_until_told_otherwise () -> None:
 
-	"""A new PicoClock, a reset and a file saved before there was a PPQN all give the default of four."""
+	"""A new SynthSync, a reset and a file saved before there was a PPQN all give the default of four."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 
 	assert settings.ppqn == 4
 
@@ -436,7 +436,7 @@ def check_the_ppqn_is_saved_and_loaded_before_the_ratios_it_allows () -> None:
 
 	"""A ratio only allowed at the saved PPQN still loads, because the PPQN is loaded first."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 	settings.set_ppqn(1)
 	settings.set_output(1, "ratio", "96")
 
@@ -445,7 +445,7 @@ def check_the_ppqn_is_saved_and_loaded_before_the_ratios_it_allows () -> None:
 	assert json.loads(saved)["ppqn"] == 1
 	assert json.loads(saved)["version"] == 2
 
-	again = picoclock.core.settings.Settings(2)
+	again = synthsync.core.settings.Settings(2)
 
 	assert again.load_text(saved) == []
 	assert again.ppqn == 1
@@ -456,7 +456,7 @@ def check_a_ratio_is_checked_against_the_ppqn () -> None:
 
 	"""At four pulses a beat the fastest ratio is ×24, and a refusal says why."""
 
-	settings = picoclock.core.settings.Settings(2)
+	settings = synthsync.core.settings.Settings(2)
 
 	assert refusal(settings, "output", 1, "ratio", "24") == ""
 	assert refusal(settings, "output", 1, "ratio", "25") == "At 4 PPQN the fastest ratio is ×24"
@@ -475,7 +475,7 @@ def check_a_change_of_ppqn_moves_only_the_outputs_that_would_be_too_fast () -> N
 
 	"""Each output keeps its ratio of the clock, unless that would pass 96 pulses a beat."""
 
-	settings = picoclock.core.settings.Settings(4)
+	settings = synthsync.core.settings.Settings(4)
 	settings.set_ppqn(1)
 	settings.set_output(1, "ratio", "96")
 	settings.set_output(2, "ratio", "4")
@@ -499,7 +499,7 @@ def check_a_ratio_too_fine_for_a_higher_ppqn_takes_its_nearest_snap_value () -> 
 
 	"""A fraction fine enough to type at a low PPQN, whose pulses a beat would then need numbers too large to play exactly, moves as turning snap on would."""
 
-	settings = picoclock.core.settings.Settings(4)
+	settings = synthsync.core.settings.Settings(4)
 	settings.set_ppqn(1)
 
 	for index in (1, 2):
@@ -509,7 +509,7 @@ def check_a_ratio_too_fine_for_a_higher_ppqn_takes_its_nearest_snap_value () -> 
 	settings.set_output(2, "ratio", "3/2")
 
 	assert settings.set_ppqn(48) == [1]
-	assert settings.outputs[1].ratio == picoclock.core.ratio.nearest_snap((9599, 9598), 48)
+	assert settings.outputs[1].ratio == synthsync.core.ratio.nearest_snap((9599, 9598), 48)
 	assert settings.outputs[2].ratio == (3, 2)
 
 	settings.set_ppqn(4)
@@ -517,7 +517,7 @@ def check_a_ratio_too_fine_for_a_higher_ppqn_takes_its_nearest_snap_value () -> 
 	settings.set_output(3, "ratio", "2399/4799")
 
 	assert settings.set_ppqn(8) == [3]
-	assert settings.outputs[3].ratio == picoclock.core.ratio.nearest_snap((2399, 4799), 8)
+	assert settings.outputs[3].ratio == synthsync.core.ratio.nearest_snap((2399, 4799), 8)
 
 
 def check_every_ratio_held_after_any_change_of_ppqn_is_one_the_scheduler_takes () -> None:
@@ -525,29 +525,29 @@ def check_every_ratio_held_after_any_change_of_ppqn_is_one_the_scheduler_takes (
 	"""Whatever ratio the settings took at one PPQN, every PPQN after it leaves something the scheduler will play."""
 
 	fine = ("9599/9598", "9600/9599", "4799/4800", "2399/4799", "1199/2399", "599/1199", "75/9599", "96", "1/128", "95.99", "0.01", "47.99")
-	timeline = picoclock.core.timeline.Timeline(2)
+	timeline = synthsync.core.timeline.Timeline(2)
 
-	for first in picoclock.core.ratio.PPQNS:
+	for first in synthsync.core.ratio.PPQNS:
 
 		for typed in fine:
 
-			settings = picoclock.core.settings.Settings(2)
+			settings = synthsync.core.settings.Settings(2)
 			settings.set_ppqn(first)
 			settings.set_output(1, "snap", False)
 
 			if refusal(settings, "output", 1, "ratio", typed):
 				continue
 
-			for then in picoclock.core.ratio.PPQNS:
+			for then in synthsync.core.ratio.PPQNS:
 
 				settings.set_ppqn(then)
-				pulses, beats = picoclock.core.ratio.effective(settings.outputs[1].ratio, then)
+				pulses, beats = synthsync.core.ratio.effective(settings.outputs[1].ratio, then)
 
 				# The scheduler refuses by raising, so taking it is all there is to see.
 				timeline.set_ratio(1, pulses, beats)
 
 
-def refusal_of_ppqn (settings: picoclock.core.settings.Settings, ppqn: object) -> str:
+def refusal_of_ppqn (settings: synthsync.core.settings.Settings, ppqn: object) -> str:
 
 	"""Try to set the PPQN and give the message it was refused with, or nothing if it was taken."""
 

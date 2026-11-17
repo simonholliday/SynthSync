@@ -1,4 +1,4 @@
-"""Give a PicoClock a WiFi network to join, from a file, without showing its name or its password.
+"""Give a SynthSync a WiFi network to join, from a file, without showing its name or its password.
 
     python -m tools.join wifi.txt
     python -m tools.join --forget
@@ -14,14 +14,14 @@ back up as it was before: on the network it had saved, or on its own.
 
 `--forget` has the Pico forget the network it has saved and go back to its
 own. `--wrong-password` is for testing: it tries the file's network with a
-password that isn't its own, to see PicoClock refused with nothing saved, and
+password that isn't its own, to see SynthSync refused with nothing saved, and
 it succeeds when that is what happens.
 
 Nothing in the file is printed, here or by the Pico, and nothing in it is
-ever put on a command line. This is for setting a PicoClock up over USB when
+ever put on a command line. This is for setting a SynthSync up over USB when
 its page can't be reached, and for testing.
 
-It needs a Pico 2 W with PicoClock installed, on a USB port. With more than
+It needs a Pico 2 W with SynthSync installed, on a USB port. With more than
 one plugged in, name one with `--device`. It exits with 0 when the Pico
 joined, or forgot, and 1 when it didn't.
 """
@@ -38,7 +38,7 @@ HANDOVER = "/" + tools.install.JOIN_FILE
 # Run on the Pico to read the file, remove it, and try the network as a join
 # from the page is tried. It says how that went and never what was in the file.
 # The file is read and removed before anything else, so that nothing failing
-# later, not even PicoClock missing from the Pico, can leave it behind. The
+# later, not even SynthSync missing from the Pico, can leave it behind. The
 # settings are saved only when the network was joined, so a join that fails
 # leaves what the Pico had saved as it was.
 JOIN = """
@@ -52,19 +52,19 @@ finally:
 
 import time
 
-import picoclock.core.clock
-import picoclock.core.settings
-import picoclock.core.wifi
-import picoclock.device.board
-import picoclock.device.radio
-import picoclock.device.storage
+import synthsync.core.clock
+import synthsync.core.settings
+import synthsync.core.wifi
+import synthsync.device.board
+import synthsync.device.radio
+import synthsync.device.storage
 
-settings = picoclock.core.settings.Settings(picoclock.device.board.OUTPUTS)
-storage = picoclock.device.storage.Storage(settings)
+settings = synthsync.core.settings.Settings(synthsync.device.board.OUTPUTS)
+storage = synthsync.device.storage.Storage(settings)
 storage.load()
 
-clock = picoclock.core.clock.Clock(settings, None, storage)
-wifi = picoclock.device.radio.make(clock)
+clock = synthsync.core.clock.Clock(settings, None, storage)
+wifi = synthsync.device.radio.make(clock)
 joined = False
 
 try:
@@ -89,18 +89,18 @@ try:
 
 		# A join from the page is a trial, which ends with the Pico back on its own network and the address known.
 		# The settings then hold the network, so the restart that follows joins it for good.
-		while waited < 30000 and wifi.mode != picoclock.core.wifi.FOUND and not wifi.reason:
+		while waited < 30000 and wifi.mode != synthsync.core.wifi.FOUND and not wifi.reason:
 			time.sleep_ms(100)
 			wifi.look(100)
 			waited += 100
 
 		took = time.ticks_diff(time.ticks_ms(), began)
-		joined = wifi.mode == picoclock.core.wifi.FOUND
+		joined = wifi.mode == synthsync.core.wifi.FOUND
 
 		if joined:
 			print("JOINED", wifi.status()["found_at"], settings.host_name, took)
 		else:
-			print("FAILED", wifi.reason or picoclock.core.wifi.TRYING, took)
+			print("FAILED", wifi.reason or synthsync.core.wifi.TRYING, took)
 
 finally:
 	wifi.close()
@@ -111,12 +111,12 @@ finally:
 
 # Run on the Pico to forget the network it has saved.
 FORGET = """
-import picoclock.core.settings
-import picoclock.device.board
-import picoclock.device.storage
+import synthsync.core.settings
+import synthsync.device.board
+import synthsync.device.storage
 
-settings = picoclock.core.settings.Settings(picoclock.device.board.OUTPUTS)
-storage = picoclock.device.storage.Storage(settings)
+settings = synthsync.core.settings.Settings(synthsync.device.board.OUTPUTS)
+storage = synthsync.device.storage.Storage(settings)
 storage.load()
 settings.forget_network()
 storage.save_now()
@@ -154,14 +154,14 @@ def take_off (device: str) -> bool:
 	if worked and "REMOVED" in output:
 		return True
 
-	print("The file may still be on the Pico, with the network's name and password in it. Installing PicoClock again removes it.")
+	print("The file may still be on the Pico, with the network's name and password in it. Installing SynthSync again removes it.")
 
 	return False
 
 
 def restart (device: str) -> bool:
 
-	"""Restart the Pico, which starts PicoClock, and say whether that worked."""
+	"""Restart the Pico, which starts SynthSync, and say whether that worked."""
 
 	worked, output = tools.install.on_pico(device, ["reset"])
 
@@ -174,9 +174,9 @@ def restart (device: str) -> bool:
 
 def not_installed (output: str) -> bool:
 
-	"""Say whether what the Pico printed means PicoClock isn't on it."""
+	"""Say whether what the Pico printed means SynthSync isn't on it."""
 
-	return "ImportError" in output and "picoclock" in output
+	return "ImportError" in output and "synthsync" in output
 
 
 def seconds (milliseconds: str) -> str:
@@ -218,7 +218,7 @@ def join (device: str, file: pathlib.Path, wrong: bool = False) -> bool:
 		restart(device)
 		return False
 
-	print("PicoClock is trying to join it, which can take twenty seconds.")
+	print("SynthSync is trying to join it, which can take twenty seconds.")
 
 	# Whatever the Pico prints here could only hold the file's contents if it failed
 	# in some way nobody has thought of, so on failure it is not shown.
@@ -242,22 +242,22 @@ def join (device: str, file: pathlib.Path, wrong: bool = False) -> bool:
 			return True
 
 		if joined is not None:
-			print("PicoClock joined with a password that isn't the network's own, so the network takes any. It is saved with that password.")
+			print("SynthSync joined with a password that isn't the network's own, so the network takes any. It is saved with that password.")
 			return False
 
 	if joined is not None and len(joined) == 3:
-		print("PicoClock joined it in %s seconds and was given the address %s." % (seconds(joined[2]), joined[0]))
+		print("SynthSync joined it in %s seconds and was given the address %s." % (seconds(joined[2]), joined[0]))
 		print("Restarted the Pico, which joins it again as it starts. In about ten seconds its page is at http://%s, or http://%s.local." % (joined[0], joined[1]))
 		return True
 
 	if failed is not None:
-		print("PicoClock couldn't join it: %s. It gave up after %s seconds. Nothing was saved." % (WHY.get(failed[0] if failed else "", "it failed"), seconds(failed[-1]) if failed else "?"))
+		print("SynthSync couldn't join it: %s. It gave up after %s seconds. Nothing was saved." % (WHY.get(failed[0] if failed else "", "it failed"), seconds(failed[-1]) if failed else "?"))
 
 	elif refused is not None:
-		print("PicoClock wouldn't take what is in the file: %s." % " ".join(refused))
+		print("SynthSync wouldn't take what is in the file: %s." % " ".join(refused))
 
 	elif not_installed(output):
-		print("PicoClock isn't installed on this Pico. Install it first with python -m tools.install.")
+		print("SynthSync isn't installed on this Pico. Install it first with python -m tools.install.")
 
 	else:
 		print("The Pico didn't say how the join went, so it may have failed part way. What it printed isn't shown, in case it holds something from the file.")
@@ -276,7 +276,7 @@ def forget (device: str) -> bool:
 	if not worked or said(output, "FORGOTTEN") is None:
 
 		if not_installed(output):
-			print("PicoClock isn't installed on this Pico. Install it first with python -m tools.install.")
+			print("SynthSync isn't installed on this Pico. Install it first with python -m tools.install.")
 		else:
 			print("The Pico couldn't forget its network. It said:")
 			print(output)
@@ -286,7 +286,7 @@ def forget (device: str) -> bool:
 	if not restart(device):
 		return False
 
-	print("PicoClock has forgotten its WiFi network. Restarted the Pico, which comes up on its own network.")
+	print("SynthSync has forgotten its WiFi network. Restarted the Pico, which comes up on its own network.")
 
 	return True
 
@@ -295,7 +295,7 @@ def main (arguments: list[str] | None = None) -> int:
 
 	"""Do what the command line asks, and say how it went."""
 
-	parser = argparse.ArgumentParser(description="Give a PicoClock a WiFi network to join, from a file, without showing its name or its password.")
+	parser = argparse.ArgumentParser(description="Give a SynthSync a WiFi network to join, from a file, without showing its name or its password.")
 	parser.add_argument("file", nargs="?", type=pathlib.Path, help="a file with the network's name on its first line and its password on its second")
 	parser.add_argument("--forget", action="store_true", help="have the Pico forget its saved network and go back to its own")
 	parser.add_argument("--wrong-password", action="store_true", help="for testing: try the file's network with a password that isn't its own, and succeed if it is refused")

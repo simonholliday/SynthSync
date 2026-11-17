@@ -1,6 +1,6 @@
 """The shared checks pass on this Python and on MicroPython.
 
-`picoclock/core` and `picoclock/web` run on the Pico as well as on a laptop, and
+`synthsync/core` and `synthsync/web` run on the Pico as well as on a laptop, and
 most of the faults that code can have show only on MicroPython. So every shared
 check runs twice: once here as an ordinary test, and once in a MicroPython
 started from here.

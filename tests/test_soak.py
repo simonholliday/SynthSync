@@ -11,7 +11,7 @@ import typing
 
 import pytest
 
-import picoclock.core.ratio
+import synthsync.core.ratio
 import tests.stand
 import tools.hammer
 import tools.soak
@@ -46,19 +46,19 @@ def test_every_tempo_with_every_ratio_keeps_output_2_within_what_a_window_holds 
 	for tempo in tools.soak.TEMPOS:
 		for text in tools.soak.RATIOS + tools.soak.FREE_RATIOS:
 
-			ratio = picoclock.core.ratio.parse(text, ppqn)
-			pulses, beats = picoclock.core.ratio.effective(ratio, ppqn)
+			ratio = synthsync.core.ratio.parse(text, ppqn)
+			pulses, beats = synthsync.core.ratio.effective(ratio, ppqn)
 			per_second = tempo * pulses / (6000 * beats)
 
 			assert 1 <= per_second <= 120, (tempo, text)
 
 	# The ratios set with snap on are snap values, so setting them never moves them.
 	for text in tools.soak.RATIOS:
-		assert picoclock.core.ratio.is_snap(picoclock.core.ratio.parse(text, ppqn), ppqn), text
+		assert synthsync.core.ratio.is_snap(synthsync.core.ratio.parse(text, ppqn), ppqn), text
 
 	# The free ones aren't, so turning snap on again always moves the ratio.
 	for text in tools.soak.FREE_RATIOS:
-		assert not picoclock.core.ratio.is_snap(picoclock.core.ratio.parse(text, ppqn), ppqn), text
+		assert not synthsync.core.ratio.is_snap(synthsync.core.ratio.parse(text, ppqn), ppqn), text
 
 
 def test_snap_turned_off_is_turned_on_again_at_the_next_change (log: tools.soak.Log) -> None:
@@ -91,10 +91,10 @@ def test_the_picos_lines_are_counted_and_its_address_followed (log: tools.soak.L
 
 	soak = tools.soak.Soak("192.168.1.23", 80, log, 1)
 
-	soak.heard("PICOCLOCK NETWORK mode=joining address=none reason=none")
+	soak.heard("SYNTHSYNC NETWORK mode=joining address=none reason=none")
 	assert not soak.joined.is_set()
 
-	soak.heard("PICOCLOCK NETWORK mode=joined address=192.168.1.23 reason=none")
+	soak.heard("SYNTHSYNC NETWORK mode=joined address=192.168.1.23 reason=none")
 	assert soak.joined.is_set()
 
 	soak.heard("SOAK window n=1 tempo=12000 ratio=24/1 pulses=2880 worst_cycles=0 address=192.168.1.23")
@@ -111,7 +111,7 @@ def test_the_picos_lines_are_counted_and_its_address_followed (log: tools.soak.L
 
 def test_the_page_is_used_and_output_2_changed_after_windows (log: tools.soak.Log, monkeypatch: pytest.MonkeyPatch) -> None:
 
-	"""Against the stand-in: a page stays open, a round of hammering runs, PicoClock is asked how it kept up, and a change follows each window, leaving the clock running and output 2 sounding."""
+	"""Against the stand-in: a page stays open, a round of hammering runs, SynthSync is asked how it kept up, and a change follows each window, leaving the clock running and output 2 sounding."""
 
 	monkeypatch.setattr(tools.soak, "HAMMER_EVERY", 0.5)
 	monkeypatch.setattr(tools.soak, "HEALTH_EVERY", 1.0)

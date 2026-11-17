@@ -22,7 +22,7 @@ class Pico:
 
 	"""Stands in for the Pico: it notes what it was asked, and answers the join as told to."""
 
-	def __init__ (self, says: str = "JOINED 192.168.1.23 picoclock 4200\n", fail: str | None = None) -> None:
+	def __init__ (self, says: str = "JOINED 192.168.1.23 synthsync 4200\n", fail: str | None = None) -> None:
 
 		"""Answer the join with `says`, and fail any command containing `fail`."""
 
@@ -99,7 +99,7 @@ def test_a_network_is_copied_tried_and_the_pico_restarted (monkeypatch: pytest.M
 
 	said = capsys.readouterr().out
 
-	assert "http://192.168.1.23" in said and "http://picoclock.local" in said
+	assert "http://192.168.1.23" in said and "http://synthsync.local" in said
 	assert "in 4.2 seconds" in said
 	never_shown(pico, said, network)
 
@@ -139,7 +139,7 @@ def test_trying_a_wrong_password_succeeds_when_the_network_refuses_it (monkeypat
 	# The Pico is told to use a password of its own making, and still never sent the file's on a command line.
 	assert "if True:" in pico.asked[1][1]
 
-	for says in ("FAILED not_found 20600\n", "JOINED 192.168.1.23 picoclock 4200\n"):
+	for says in ("FAILED not_found 20600\n", "JOINED 192.168.1.23 synthsync 4200\n"):
 
 		pico = Pico(says=says)
 		use(monkeypatch, pico)
@@ -158,7 +158,7 @@ def test_every_reason_the_pico_can_give_has_words () -> None:
 
 	"""The reasons are the ones the WiFi code gives for a join that failed."""
 
-	wifi = ast.parse((tools.stage.ROOT / "picoclock" / "core" / "wifi.py").read_text())
+	wifi = ast.parse((tools.stage.ROOT / "synthsync" / "core" / "wifi.py").read_text())
 	names = {}
 
 	for node in wifi.body:
@@ -197,11 +197,11 @@ def test_a_name_or_password_the_pico_will_not_take_is_said_in_its_words (monkeyp
 	assert pico.asked[-1] == ["reset"]
 
 
-def test_a_pico_without_picoclock_is_told_apart (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], network: pathlib.Path) -> None:
+def test_a_pico_without_synthsync_is_told_apart (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], network: pathlib.Path) -> None:
 
 	"""With nothing installed the Pico can't try a network, and the tool says what to do first."""
 
-	pico = Pico(says="Traceback (most recent call last):\nImportError: no module named 'picoclock'\n")
+	pico = Pico(says="Traceback (most recent call last):\nImportError: no module named 'synthsync'\n")
 	use(monkeypatch, pico)
 
 	assert tools.join.main([str(network)]) == 1
@@ -221,7 +221,7 @@ def test_a_file_that_cannot_be_copied_stops_there_and_the_pico_is_restarted (mon
 	never_shown(pico, capsys.readouterr().out, network)
 
 
-@pytest.mark.parametrize("says", ["JOINED 192.168.1.23 picoclock 4200\n", "FAILED not_found 20600\n", "REFUSED A network's name has between 1 and 32 characters\n", "Traceback (most recent call last):\nImportError: no module named 'picoclock'\n", ""])
+@pytest.mark.parametrize("says", ["JOINED 192.168.1.23 synthsync 4200\n", "FAILED not_found 20600\n", "REFUSED A network's name has between 1 and 32 characters\n", "Traceback (most recent call last):\nImportError: no module named 'synthsync'\n", ""])
 def test_the_file_is_removed_from_the_pico_however_the_join_went (monkeypatch: pytest.MonkeyPatch, network: pathlib.Path, says: str) -> None:
 
 	"""The Pico removes the file as it reads it, but it may never have run: so the file is removed again before every restart."""
@@ -245,7 +245,7 @@ def test_a_file_that_cannot_be_removed_is_said_to_be_there_still (monkeypatch: p
 	tools.join.main([str(network)])
 	said = capsys.readouterr().out
 
-	assert "may still be on the Pico" in said and "Installing PicoClock again removes it" in said
+	assert "may still be on the Pico" in said and "Installing SynthSync again removes it" in said
 	assert "boom" not in said
 	assert pico.asked[-1] == ["reset"]
 
@@ -343,7 +343,7 @@ def test_what_runs_on_the_pico_is_python_that_prints_nothing_from_the_file () ->
 	assert len(removing) == 1
 	assert "open(" in ast.unparse(removing[0].body[0])
 
-	# And before anything else is done, so that nothing failing first, such as PicoClock not being there to import, can leave it behind.
+	# And before anything else is done, so that nothing failing first, such as SynthSync not being there to import, can leave it behind.
 	assert ast.unparse(tree.body[0]) == "import os"
 	assert tree.body[1] is removing[0]
 
@@ -358,4 +358,4 @@ def test_the_pico_saves_its_settings_only_when_the_network_was_joined () -> None
 	assert "save_now" in tools.join.JOIN
 	assert len(saving) == 1 and ast.unparse(saving[0].test) == "joined"
 	assert tools.join.JOIN.count("save_now") == 1
-	assert "joined = wifi.mode == picoclock.core.wifi.FOUND" in tools.join.JOIN
+	assert "joined = wifi.mode == synthsync.core.wifi.FOUND" in tools.join.JOIN

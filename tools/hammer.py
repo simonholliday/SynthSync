@@ -1,4 +1,4 @@
-"""Use a PicoClock's page hard over the network, the way several phones at once would, and count what happened.
+"""Use a SynthSync's page hard over the network, the way several phones at once would, and count what happened.
 
     python -m tools.hammer 192.168.4.1
     python -m tools.hammer 192.168.1.23 --seconds 60 --tempo
@@ -15,14 +15,14 @@ It changes outputs 3 and 4 only, so that outputs 1 and 2 pulse steadily and
 can be timed while it runs. With `--tempo` it drags the tempo too. What it
 found is put back when it finishes.
 
-After each round it asks PicoClock how well its side has kept up, and counts
+After each round it asks SynthSync how well its side has kept up, and counts
 how often and for how long everything there but the clock was held up for over
-a second while this ran, and how many pages PicoClock gave up on. Each reads
--1 if PicoClock never said, and it is asked until it does.
+a second while this ran, and how many pages SynthSync gave up on. Each reads
+-1 if SynthSync never said, and it is asked until it does.
 
 This is traffic for the timing rig's `air` test and for a long soak. It exits
 with 0 when every request was answered, the two pages stayed in step and
-PicoClock said nothing held its side up.
+SynthSync said nothing held its side up.
 """
 
 import argparse
@@ -114,7 +114,7 @@ async def get (host: str, port: int, path: str) -> float:
 
 async def count (totals: Totals, work: typing.Awaitable[typing.Any], what: str) -> typing.Any:
 
-	"""Do one thing that asks PicoClock for an answer, and count whether it got one in time."""
+	"""Do one thing that asks SynthSync for an answer, and count whether it got one in time."""
 
 	totals["requests"] += 1
 	began = time.monotonic()
@@ -122,7 +122,7 @@ async def count (totals: Totals, work: typing.Awaitable[typing.Any], what: str) 
 	try:
 		return await asyncio.wait_for(work, PATIENCE)
 
-	# A socket closed part way through, or one PicoClock wouldn't open, is a failure like any other.
+	# A socket closed part way through, or one SynthSync wouldn't open, is a failure like any other.
 	except (OSError, asyncio.TimeoutError, asyncio.IncompleteReadError, tools.page.Refused, ValueError, IndexError) as problem:
 
 		totals["failed"] += 1
@@ -182,7 +182,7 @@ async def use_pages (host: str, port: int, totals: Totals, turn: int, tempo: boo
 
 			except (OSError, asyncio.IncompleteReadError) as problem:
 
-				# PicoClock closed the page, or went away.
+				# SynthSync closed the page, or went away.
 				totals["failed"] += 1
 				note("a page's socket was lost: %s" % type(problem).__name__)
 
@@ -284,7 +284,7 @@ async def use_pages (host: str, port: int, totals: Totals, turn: int, tempo: boo
 
 async def settings (host: str, port: int) -> dict[typing.Any, typing.Any] | None:
 
-	"""Ask PicoClock how the things this changes stand, or give None if it doesn't answer."""
+	"""Ask SynthSync how the things this changes stand, or give None if it doesn't answer."""
 
 	try:
 		status, state = await asyncio.wait_for(tools.page.fetch(host, port, "/api/state"), PATIENCE)
@@ -310,7 +310,7 @@ async def settings (host: str, port: int) -> dict[typing.Any, typing.Any] | None
 
 async def health (host: str, port: int) -> dict[str, int] | None:
 
-	"""Ask PicoClock how well its side of things has kept up since it was switched on, or give None if it doesn't say."""
+	"""Ask SynthSync how well its side of things has kept up since it was switched on, or give None if it doesn't say."""
 
 	try:
 		status, answer = await asyncio.wait_for(tools.page.fetch(host, port, "/api/health"), PATIENCE)
@@ -326,7 +326,7 @@ async def health (host: str, port: int) -> dict[str, int] | None:
 
 async def put_back (host: str, port: int, found: dict[typing.Any, typing.Any]) -> None:
 
-	"""Set what this changed back to how it was found, as far as PicoClock still answers."""
+	"""Set what this changed back to how it was found, as far as SynthSync still answers."""
 
 	origin = {"Origin": "http://%s" % (host if port == 80 else "%s:%d" % (host, port))}
 	changes: list[dict[str, typing.Any]] = [{"do": "tempo", "value": found["tempo"]}] if "tempo" in found else []
@@ -347,10 +347,10 @@ async def put_back (host: str, port: int, found: dict[typing.Any, typing.Any]) -
 
 def keep_at_it (host: str, port: int, still_going: typing.Callable[[], bool], tempo: bool = False, wait: float = 60.0, grace: float = 0.0) -> Totals:
 
-	"""Wait for a PicoClock to answer, then use its page hard for as long as `still_going` says, and give back the counts.
+	"""Wait for a SynthSync to answer, then use its page hard for as long as `still_going` says, and give back the counts.
 
 	A round under way when `still_going` turns false is the last. A test
-	that ends by stopping PicoClock makes the round it stops under fail, a
+	that ends by stopping SynthSync makes the round it stops under fail, a
 	moment before the test is seen to have ended. With a `grace`, a round
 	that fails is not counted if `still_going` turns false within that many
 	seconds of it.
@@ -371,7 +371,7 @@ def keep_at_it (host: str, port: int, still_going: typing.Callable[[], bool], te
 		return totals
 
 	# How things stood before any of this, to count only what happens while it runs. Without it nothing
-	# can be said of what held PicoClock up, which counts against the run, so it is asked for until it comes.
+	# can be said of what held SynthSync up, which counts against the run, so it is asked for until it comes.
 	at_first = None
 
 	while at_first is None and still_going() and time.monotonic() - began < wait:
@@ -390,7 +390,7 @@ def keep_at_it (host: str, port: int, still_going: typing.Callable[[], bool], te
 
 		asyncio.run(one_round(host, port, totals, turn, tempo))
 
-		# Asked after every round, because a test that ends by stopping PicoClock leaves nothing to ask at the end.
+		# Asked after every round, because a test that ends by stopping SynthSync leaves nothing to ask at the end.
 		lately = asyncio.run(health(host, port)) if at_first is not None else None
 
 		if at_first is not None and lately is not None:
@@ -406,7 +406,7 @@ def keep_at_it (host: str, port: int, still_going: typing.Callable[[], bool], te
 		while still_going() and time.monotonic() - waited < grace:
 			time.sleep(0.1)
 
-		# PicoClock was stopped under this round, so what failed in it failed for that.
+		# SynthSync was stopped under this round, so what failed in it failed for that.
 		if not still_going() and grace:
 			totals.update(before)
 			break
@@ -425,9 +425,9 @@ def describe (totals: Totals) -> str:
 
 def went_well (totals: Totals) -> bool:
 
-	"""Say whether the page was used, every request was answered, the two pages stayed in step, PicoClock said nothing held its side up and the clock reported no timing fault.
+	"""Say whether the page was used, every request was answered, the two pages stayed in step, SynthSync said nothing held its side up and the clock reported no timing fault.
 
-	Holds of -1 mean PicoClock never said, which isn't the same as nothing holding it up.
+	Holds of -1 mean SynthSync never said, which isn't the same as nothing holding it up.
 	"""
 
 	return totals["rounds"] >= 1 and totals["failed"] == 0 and totals["out_of_step"] == 0 and totals["faults"] == 0 and totals["holds"] == 0
@@ -437,8 +437,8 @@ def main (arguments: list[str] | None = None) -> int:
 
 	"""Use the page hard for a while, and say how it went."""
 
-	parser = argparse.ArgumentParser(description="Use a PicoClock's page hard over the network, and count what happened.")
-	parser.add_argument("address", help="where PicoClock's page is, such as 192.168.4.1")
+	parser = argparse.ArgumentParser(description="Use a SynthSync's page hard over the network, and count what happened.")
+	parser.add_argument("address", help="where SynthSync's page is, such as 192.168.4.1")
 	parser.add_argument("--port", type=int, default=80, help="the port the page is served on")
 	parser.add_argument("--seconds", type=float, default=30.0, help="how long to keep at it")
 	parser.add_argument("--tempo", action="store_true", help="drag the tempo as well, which changes the timing of every output")
@@ -449,7 +449,7 @@ def main (arguments: list[str] | None = None) -> int:
 	totals = keep_at_it(options.address, options.port, lambda: time.monotonic() < until, options.tempo, min(options.seconds, 60.0))
 
 	if not totals["rounds"]:
-		print("PicoClock didn't answer at %s." % options.address)
+		print("SynthSync didn't answer at %s." % options.address)
 		return 1
 
 	print(describe(totals))

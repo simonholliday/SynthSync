@@ -1,19 +1,19 @@
-"""Copy PicoClock onto a Pico, or take it off again.
+"""Copy SynthSync onto a Pico, or take it off again.
 
     python -m tools.install
     python -m tools.install --wipe
     python -m tools.install --remove
 
-The first puts PicoClock on the Pico in place of any copy already there, and
+The first puts SynthSync on the Pico in place of any copy already there, and
 leaves the settings the Pico has saved alone. `--wipe` empties the Pico's
 storage first, which also forgets its settings and its WiFi. `--remove` takes
-PicoClock off and stops, and with `--wipe` leaves the Pico empty.
+SynthSync off and stops, and with `--wipe` leaves the Pico empty.
 
-Everything is laid out in a temporary folder on local disk first: PicoClock
+Everything is laid out in a temporary folder on local disk first: SynthSync
 and Microdot compiled for the Pico, and the page gzipped. Once it is copied,
-the Pico is asked to load every part and then to run PicoClock for a few
+the Pico is asked to load every part and then to run SynthSync for a few
 seconds, in which the clock has to keep time and the page has to be served.
-Only when that has worked is `main.py` copied, which is what makes PicoClock
+Only when that has worked is `main.py` copied, which is what makes SynthSync
 start by itself, and the Pico restarted. It ends by saying which WiFi network
 to join to reach the page.
 
@@ -34,14 +34,19 @@ import sys
 import tempfile
 import time
 
-import picoclock.core.wifi
+import synthsync.core.wifi
 import tools.stage
 
 # The file the join tool puts on the Pico for a moment, with a network's name
 # and password in it. The Pico removes it as it reads it, and so does the join
-# tool afterwards. An install, or taking PicoClock off, removes it too, in case
+# tool afterwards. An install, or taking SynthSync off, removes it too, in case
 # anything ever left it behind.
 JOIN_FILE = "_join.txt"
+
+# What SynthSync's folder on the Pico was called before it had that name. An
+# install, or taking SynthSync off, removes it, so an old copy is never left
+# beside the new one. The settings it saved are kept.
+OLD_NAMES = ["picoclock"]
 
 # Run on the Pico to take files and folders off it. Given no names, it takes
 # off everything there is.
@@ -66,7 +71,7 @@ for name in %r or os.listdir("/"):
 print("REMOVED")
 """
 
-# Run on the Pico to load every part of PicoClock and say how much memory is left.
+# Run on the Pico to load every part of SynthSync and say how much memory is left.
 LOAD = """
 import gc
 
@@ -77,14 +82,14 @@ gc.collect()
 print("LOADED", gc.mem_free())
 """
 
-# Run on the Pico to start PicoClock as power-up does, and stop it after a few seconds.
+# Run on the Pico to start SynthSync as power-up does, and stop it after a few seconds.
 TRY = """
-import picoclock.device.start
+import synthsync.device.start
 
-picoclock.device.start.run(%d)
+synthsync.device.start.run(%d)
 """
 
-# How long the Pico runs PicoClock for when a new copy is tried, in milliseconds.
+# How long the Pico runs SynthSync for when a new copy is tried, in milliseconds.
 TRY_FOR = 3000
 
 # Said when an install fails after the old copy has been taken off.
@@ -144,11 +149,11 @@ def on_pico (device: str, arguments: list[str], folder: pathlib.Path | None = No
 
 def modules (folder: pathlib.Path) -> list[str]:
 
-	"""Name every module of PicoClock laid out in a folder, as Python imports them."""
+	"""Name every module of SynthSync laid out in a folder, as Python imports them."""
 
 	found = []
 
-	for path in sorted((folder / "picoclock").rglob("*")):
+	for path in sorted((folder / "synthsync").rglob("*")):
 
 		if path.suffix in (".py", ".mpy") and path.stem != "__init__":
 			found.append(".".join(path.relative_to(folder).with_suffix("").parts))
@@ -175,7 +180,7 @@ def trial (output: str) -> dict[str, str]:
 
 	for line in output.splitlines():
 
-		if line.startswith("PICOCLOCK RAN "):
+		if line.startswith("SYNTHSYNC RAN "):
 
 			rest, _, own = line.partition(" own=")
 			found = dict(part.split("=", 1) for part in rest.split()[2:] if "=" in part)
@@ -202,7 +207,7 @@ def remove (device: str, names: list[str]) -> bool:
 
 def install (device: str, wipe: bool, start: bool) -> bool:
 
-	"""Lay PicoClock out, copy it to the Pico, check that it loads, and say whether all of that worked."""
+	"""Lay SynthSync out, copy it to the Pico, check that it loads, and say whether all of that worked."""
 
 	compiler = tools.stage.find_tool("mpy-cross")
 
@@ -210,7 +215,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 		print(tools.stage.NO_COMPILER)
 		return False
 
-	with tempfile.TemporaryDirectory(prefix="picoclock-install-") as scratch:
+	with tempfile.TemporaryDirectory(prefix="synthsync-install-") as scratch:
 
 		folder = pathlib.Path(scratch)
 		top = tools.stage.stage_for_pico(folder, compiler)
@@ -220,7 +225,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 		print("Laid out %d files, %d KB in all." % (count, total // 1024))
 
 		# The old copy goes first, so that nothing it had and this one hasn't is left behind.
-		if not remove(device, [] if wipe else top + [JOIN_FILE]):
+		if not remove(device, [] if wipe else top + [JOIN_FILE] + OLD_NAMES):
 			return False
 
 		print("Emptied the Pico's storage." if wipe else "Took off any copy that was there.")
@@ -240,7 +245,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 		loaded = [line for line in output.splitlines() if line.startswith("LOADED ")]
 
 		if not worked or not loaded:
-			print("PicoClock was copied, but the Pico couldn't load it. It said:")
+			print("SynthSync was copied, but the Pico couldn't load it. It said:")
 			print(output)
 			print("If it names a .mpy file as incompatible, the Pico's MicroPython and this machine's mpy-cross are different releases.")
 			print(NOTHING_STARTS)
@@ -261,9 +266,9 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 		served = ran.get("page") == "1" and (ran.get("address", "none") != "none" or ran.get("mode") == "joining")
 
 		if not worked or not kept_time or not served:
-			print("PicoClock was copied, but didn't run as it should when tried. The Pico said:")
+			print("SynthSync was copied, but didn't run as it should when tried. The Pico said:")
 			print(output)
-			print("%s has not been copied, so PicoClock won't start by itself. If the Pico has stopped answering, unplug it and plug it in again." % tools.stage.MAIN)
+			print("%s has not been copied, so SynthSync won't start by itself. If the Pico has stopped answering, unplug it and plug it in again." % tools.stage.MAIN)
 			return False
 
 		print("Tried it for %d seconds: the clock was running %s ms after it was asked for and kept time, and the page was served with %d KB of memory to spare." % (TRY_FOR // 1000, ran.get("started_in_ms", "?"), int(ran.get("free", "0")) // 1024))
@@ -278,13 +283,13 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 
 	# The password isn't said: it may have been changed, and the Pico keeps its settings through an install.
 	if ran.get("mode") == "own":
-		reach = "To use it, join the WiFi network \"%s\" from a phone and open http://%s. Its password is picoclock unless you have changed it." % (ran["own"], ran["address"])
+		reach = "To use it, join the WiFi network \"%s\" from a phone and open http://%s. Its password is synthsync unless you have changed it." % (ran["own"], ran["address"])
 
 	else:
-		reach = "It has a WiFi network saved, and joins it when it starts: the page is then at http://%s.local. If it can't join within twenty seconds its own network, \"%s\", comes back, with the page at http://%s." % (ran.get("host", "picoclock"), ran["own"], picoclock.core.wifi.OWN_ADDRESS)
+		reach = "It has a WiFi network saved, and joins it when it starts: the page is then at http://%s.local. If it can't join within twenty seconds its own network, \"%s\", comes back, with the page at http://%s." % (ran.get("host", "synthsync"), ran["own"], synthsync.core.wifi.OWN_ADDRESS)
 
 	if not start:
-		print("Not started. PicoClock starts the next time the Pico is switched on.")
+		print("Not started. SynthSync starts the next time the Pico is switched on.")
 		print(reach)
 		return True
 
@@ -295,7 +300,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 		print(output)
 		return False
 
-	print("Restarted the Pico, which starts PicoClock.")
+	print("Restarted the Pico, which starts SynthSync.")
 	print(reach)
 
 	return True
@@ -305,10 +310,10 @@ def main (arguments: list[str] | None = None) -> int:
 
 	"""Do what the command line asks, and say how it went."""
 
-	parser = argparse.ArgumentParser(description="Copy PicoClock onto a Pico, or take it off again.")
+	parser = argparse.ArgumentParser(description="Copy SynthSync onto a Pico, or take it off again.")
 	parser.add_argument("--device", help="the Pico's serial port; found automatically when only one is plugged in")
 	parser.add_argument("--wipe", action="store_true", help="empty the Pico's storage first, which forgets its saved settings and WiFi too")
-	parser.add_argument("--remove", action="store_true", help="take PicoClock off the Pico and stop")
+	parser.add_argument("--remove", action="store_true", help="take SynthSync off the Pico and stop")
 	parser.add_argument("--no-start", action="store_true", help="don't restart the Pico afterwards")
 	options = parser.parse_args(arguments)
 
@@ -328,16 +333,16 @@ def main (arguments: list[str] | None = None) -> int:
 
 	if options.remove:
 
-		print("Taking %s off %s" % ("everything" if options.wipe else "PicoClock", device))
+		print("Taking %s off %s" % ("everything" if options.wipe else "SynthSync", device))
 
-		if not remove(device, [] if options.wipe else ["picoclock", "microdot", tools.stage.MAIN, JOIN_FILE]):
+		if not remove(device, [] if options.wipe else ["synthsync", "microdot", tools.stage.MAIN, JOIN_FILE] + OLD_NAMES):
 			return 1
 
 		print("Done. The Pico's storage is empty." if options.wipe else "Done. Any settings the Pico had saved are still there.")
 
 		return 0
 
-	print("Installing PicoClock on %s" % device)
+	print("Installing SynthSync on %s" % device)
 
 	return 0 if install(device, options.wipe, not options.no_start) else 1
 

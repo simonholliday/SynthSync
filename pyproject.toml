@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "picoclock"
+name = "synthsync"
 dynamic = ["version"]
 description = "A master clock for modular synths on a Raspberry Pi Pico 2 W, set from a phone."
 requires-python = ">=3.10"
@@ -51,10 +51,10 @@ dev = [
 [tool.hatch.version]
 # One place says which version this is, and the Pico reads the same place for
 # the page's About view.
-path = "picoclock/__init__.py"
+path = "synthsync/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["picoclock"]
+packages = ["synthsync"]
 
 [tool.hatch.build.targets.sdist]
 # Keep local agent config, including its token, the tracker's marker and caches
@@ -71,19 +71,19 @@ exclude = [
 testpaths = ["tests"]
 # The working tree lives on a network share, so pytest's cache stays on local
 # disk. It is disposable and never committed.
-cache_dir = "/tmp/pytest-cache-picoclock"
+cache_dir = "/tmp/pytest-cache-synthsync"
 
 [tool.mypy]
 strict = true
 # The oldest Python the host side supports. Checking against it flags syntax the
 # shared code must not use, since MicroPython runs that code too.
 python_version = "3.10"
-files = ["picoclock", "tests", "tools"]
-# `picoclock/device` and `tools/board` only run on the Pico: they import
+files = ["synthsync", "tests", "tools"]
+# `synthsync/device` and `tools/board` only run on the Pico: they import
 # `machine`, `rp2` and `_thread`, which don't exist here. They are checked on
 # the board instead.
-exclude = ["^picoclock/device/", "^tools/board/"]
+exclude = ["^synthsync/device/", "^tools/board/"]
 # The working tree lives on a network share, where mypy's incremental cache goes
 # stale in ways that abort the run with an internal error rather than a type
 # error. Keep the cache on local disk. It is disposable and never committed.
-cache_dir = "/tmp/mypy-cache-picoclock"
+cache_dir = "/tmp/mypy-cache-synthsync"

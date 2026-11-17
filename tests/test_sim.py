@@ -10,12 +10,12 @@ import sys
 
 import pytest
 
-import picoclock.core.clock
-import picoclock.core.settings
-import picoclock.sim.__main__
-import picoclock.sim.engine
-import picoclock.sim.network
-import picoclock.web.app
+import synthsync.core.clock
+import synthsync.core.settings
+import synthsync.sim.__main__
+import synthsync.sim.engine
+import synthsync.sim.network
+import synthsync.web.app
 import tools.page
 
 ROOT = pathlib.Path(__file__).parent.parent
@@ -38,12 +38,12 @@ class Hands:
 		return self.time
 
 
-def play (engine: picoclock.sim.engine.Engine, hands: Hands, seconds: float) -> None:
+def play (engine: synthsync.sim.engine.Engine, hands: Hands, seconds: float) -> None:
 
 	"""Move the clock on for this long, in the steps the engine takes when it runs."""
 
-	for _ in range(round(seconds / picoclock.sim.engine.STEP_EVERY)):
-		hands.time += picoclock.sim.engine.STEP_EVERY
+	for _ in range(round(seconds / synthsync.sim.engine.STEP_EVERY)):
+		hands.time += synthsync.sim.engine.STEP_EVERY
 		engine.step()
 
 
@@ -76,7 +76,7 @@ def test_pulses_keep_to_the_tempo_and_each_outputs_ratio () -> None:
 	"""Over ten seconds at 120 BPM, each output begins as many pulses as its ratio says."""
 
 	hands = Hands()
-	engine = picoclock.sim.engine.Engine(3, hands.now)
+	engine = synthsync.sim.engine.Engine(3, hands.now)
 
 	engine.set_ratio(1, 4, 1)
 	engine.set_ratio(2, 1, 2)
@@ -95,7 +95,7 @@ def test_a_tempo_change_shows_in_the_pulses () -> None:
 	"""Doubling the tempo doubles how many pulses the next ten seconds hold."""
 
 	hands = Hands()
-	engine = picoclock.sim.engine.Engine(2, hands.now)
+	engine = synthsync.sim.engine.Engine(2, hands.now)
 
 	engine.start()
 	engine.step()
@@ -115,7 +115,7 @@ def test_a_pause_holds_everything_and_carrying_on_picks_it_up () -> None:
 	"""While paused no pulse begins and the position stands still, and afterwards both move again."""
 
 	hands = Hands()
-	engine = picoclock.sim.engine.Engine(2, hands.now)
+	engine = synthsync.sim.engine.Engine(2, hands.now)
 
 	engine.set_ratio(1, 8, 1)
 	engine.start()
@@ -148,7 +148,7 @@ def test_stopping_goes_quiet_and_starting_begins_at_zero_again () -> None:
 	"""A stopped stand-in has every pin low and no position, and a start pulses at once."""
 
 	hands = Hands()
-	engine = picoclock.sim.engine.Engine(2, hands.now)
+	engine = synthsync.sim.engine.Engine(2, hands.now)
 
 	engine.start()
 	engine.step()
@@ -174,7 +174,7 @@ def test_time_the_laptop_was_asleep_for_is_not_played_back () -> None:
 	"""After a long gap the stand-in carries on from now, and doesn't race through what it missed."""
 
 	hands = Hands()
-	engine = picoclock.sim.engine.Engine(1, hands.now)
+	engine = synthsync.sim.engine.Engine(1, hands.now)
 
 	engine.start()
 	engine.step()
@@ -196,7 +196,7 @@ def test_the_stand_in_reports_in_the_players_terms () -> None:
 
 	"""Its status carries what the player's does on the Pico, so the page's code can't tell them apart."""
 
-	engine = picoclock.sim.engine.Engine(4)
+	engine = synthsync.sim.engine.Engine(4)
 
 	assert sorted(engine.status().keys()) == players_status_names()
 	assert engine.status()["faults"] == 0
@@ -204,9 +204,9 @@ def test_the_stand_in_reports_in_the_players_terms () -> None:
 
 def players_status_names () -> list[str]:
 
-	"""Read the names `picoclock.device.player.Player.status` gives from the player's source, since it can't be imported off the Pico."""
+	"""Read the names `synthsync.device.player.Player.status` gives from the player's source, since it can't be imported off the Pico."""
 
-	tree = ast.parse((ROOT / "picoclock" / "device" / "player.py").read_text(encoding="utf-8"))
+	tree = ast.parse((ROOT / "synthsync" / "device" / "player.py").read_text(encoding="utf-8"))
 	player = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Player")
 	status = next(node for node in player.body if isinstance(node, ast.FunctionDef) and node.name == "status")
 	given = next(node.value for node in ast.walk(status) if isinstance(node, ast.Return) and isinstance(node.value, ast.Dict))
@@ -223,18 +223,18 @@ def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
 
 	"""With the right password it finds the network and switches to it, with the wrong one or an unknown name it says why and keeps the network that worked, and a reset goes back."""
 
-	engine = picoclock.sim.engine.Engine(2)
-	clock = picoclock.core.clock.Clock(picoclock.core.settings.Settings(2), engine)
-	network = picoclock.sim.network.make(clock)
+	engine = synthsync.sim.engine.Engine(2)
+	clock = synthsync.core.clock.Clock(synthsync.core.settings.Settings(2), engine)
+	network = synthsync.sim.network.make(clock)
 
 	def spend (milliseconds: int) -> None:
 
 		"""Let time pass, with a look as often as the stand-in looks."""
 
-		for _ in range(milliseconds // picoclock.sim.network.LOOK_EVERY):
-			network.look(picoclock.sim.network.LOOK_EVERY)
+		for _ in range(milliseconds // synthsync.sim.network.LOOK_EVERY):
+			network.look(synthsync.sim.network.LOOK_EVERY)
 
-	assert network.status() == {"mode": "own", "name": picoclock.sim.network.OWN_NAME, "address": "localhost", "problem": "", "own": picoclock.sim.network.OWN_NAME, "found_at": ""}
+	assert network.status() == {"mode": "own", "name": synthsync.sim.network.OWN_NAME, "address": "localhost", "problem": "", "own": synthsync.sim.network.OWN_NAME, "found_at": ""}
 	assert [found["name"] for found in network.scan()] == ["Studio", "Upstairs", "Cafe"]
 	assert [found["secure"] for found in network.scan()] == [True, True, False]
 
@@ -279,7 +279,7 @@ def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
 	assert network.status()["mode"] == "found"
 
 	# Left alone, it switches by itself, five seconds on here where a Pico waits two minutes.
-	spend(picoclock.sim.network.STAY_FOR)
+	spend(synthsync.sim.network.STAY_FOR)
 
 	assert network.status()["mode"] == "joined"
 
@@ -299,7 +299,7 @@ def test_the_page_is_driven_over_real_sockets () -> None:
 		"""The test itself, which needs an event loop to run in."""
 
 		port = free_port()
-		stand = picoclock.sim.__main__.Stand()
+		stand = synthsync.sim.__main__.Stand()
 		serving = asyncio.create_task(stand.serve("127.0.0.1", port))
 
 		await wait_until_served(port)
@@ -377,14 +377,14 @@ def test_a_page_that_stops_answering_is_sent_little_more_and_then_let_go (monkey
 	"""Over real sockets, a page that stops saying what it has heard is sent two batches more and no others, and its socket is closed without a word."""
 
 	# The few seconds a page is given are cut short, so the test needn't wait them out.
-	monkeypatch.setattr(picoclock.web.app, "DEAF_FOR", 1500)
+	monkeypatch.setattr(synthsync.web.app, "DEAF_FOR", 1500)
 
 	async def scenario () -> None:
 
 		"""The test itself, which needs an event loop to run in."""
 
 		port = free_port()
-		stand = picoclock.sim.__main__.Stand()
+		stand = synthsync.sim.__main__.Stand()
 		serving = asyncio.create_task(stand.serve("127.0.0.1", port))
 
 		await wait_until_served(port)
@@ -411,14 +411,14 @@ def test_a_page_that_stops_answering_is_sent_little_more_and_then_let_go (monkey
 
 		heard = [message["tempo"] for message in await silent.hear_for(0.4) if message["type"] == "tempo"]
 
-		assert silent.batch == before + picoclock.web.app.AHEAD
-		assert len(heard) == picoclock.web.app.AHEAD
+		assert silent.batch == before + synthsync.web.app.AHEAD
+		assert len(heard) == synthsync.web.app.AHEAD
 		assert 10500 not in heard
 
 		status, health = await tools.page.fetch("127.0.0.1", port, "/api/health")
 
 		assert status == 200
-		assert sorted(health) == sorted(picoclock.web.app.HEALTH)
+		assert sorted(health) == sorted(synthsync.web.app.HEALTH)
 		assert health["pages"] == 2 and health["given_up"] == 0 and health["waiting"] > 0
 
 		# Its socket is closed with nothing more sent over it, not even a goodbye.
@@ -456,11 +456,11 @@ def test_a_page_that_stops_answering_is_sent_little_more_and_then_let_go (monkey
 
 def test_the_stand_in_starts_from_the_command_line () -> None:
 
-	"""`python -m picoclock.sim` says where it is and answers there."""
+	"""`python -m synthsync.sim` says where it is and answers there."""
 
 	port = free_port()
 	process = subprocess.Popen(
-		[sys.executable, "-B", "-m", "picoclock.sim", "--port", str(port)],
+		[sys.executable, "-B", "-m", "synthsync.sim", "--port", str(port)],
 		cwd = ROOT,
 		stdout = subprocess.PIPE,
 		stderr = subprocess.STDOUT,
@@ -473,7 +473,7 @@ def test_the_stand_in_starts_from_the_command_line () -> None:
 
 		line = process.stdout.readline()
 
-		assert line.strip() == "PicoClock's stand-in is at http://localhost:%d" % port
+		assert line.strip() == "SynthSync's stand-in is at http://localhost:%d" % port
 
 		async def ask () -> tuple[int, object]:
 
@@ -498,4 +498,4 @@ def test_the_stand_in_refuses_a_number_of_outputs_it_cannot_have () -> None:
 	"""Asking for nine outputs is turned down before anything starts."""
 
 	with pytest.raises(SystemExit):
-		picoclock.sim.__main__.main(["--outputs", "9"])
+		synthsync.sim.__main__.main(["--outputs", "9"])

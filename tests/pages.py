@@ -8,7 +8,7 @@ if typing.TYPE_CHECKING:
 	import playwright.sync_api
 
 # Where the page's own files are.
-STATIC = pathlib.Path(__file__).parent.parent / "picoclock" / "web" / "static"
+STATIC = pathlib.Path(__file__).parent.parent / "synthsync" / "web" / "static"
 
 # A phone held upright: the size the page is laid out for.
 PHONE = {"width": 390, "height": 844}

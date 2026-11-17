@@ -13,7 +13,7 @@ clock, which is kept right from the network. A straight line through the
 reports gives how much faster or slower the Pico counts, in parts per million.
 The delay over USB is the same for every report, so it drops out.
 
-An hour gives the answer to about one part per million. It stops PicoClock
+An hour gives the answer to about one part per million. It stops SynthSync
 while it runs, since it needs the Pico's prompt, and restarts the Pico at the
 end. It needs a Pico running MicroPython on a USB port, and this computer's
 clock set from the network.
@@ -133,7 +133,7 @@ def main (arguments: list[str] | None = None) -> int:
 
 	device = options.device or found[0]
 
-	print("Measuring the clock of the Pico on %s for %g minutes. PicoClock is stopped meanwhile." % (device, options.minutes), flush=True)
+	print("Measuring the clock of the Pico on %s for %g minutes. SynthSync is stopped meanwhile." % (device, options.minutes), flush=True)
 
 	reports = listen(device, options.minutes)
 

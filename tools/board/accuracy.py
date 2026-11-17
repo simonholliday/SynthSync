@@ -1,7 +1,7 @@
-"""The Pico's half of measuring PicoClock's accuracy: play output 1 through a list of tempos, and time every one of its pulses at the pin.
+"""The Pico's half of measuring SynthSync's accuracy: play output 1 through a list of tempos, and time every one of its pulses at the pin.
 
-`tools/accuracy.py` sends this to a Pico with PicoClock installed and runs it,
-leaving nothing behind. It plays with PicoClock's own player, from the Pico's
+`tools/accuracy.py` sends this to a Pico with SynthSync installed and runs it,
+leaving nothing behind. It plays with SynthSync's own player, from the Pico's
 own copy, but starts nothing else: the network and the page have no part in
 the timing, which runs on the second core whatever the first is doing.
 
@@ -28,8 +28,8 @@ import rp2
 import time
 import uctypes
 
-import picoclock.device.board
-import picoclock.device.player
+import synthsync.device.board
+import synthsync.device.player
 
 # The system clock, which the gaps are timed in, and how many of its cycles
 # make one of the scheduler's ticks of a microsecond.
@@ -139,7 +139,7 @@ def gap_lengths (tempo: int, pulses: int, beats: int) -> tuple:
 	"""Give the lengths, in cycles, an output's gaps take at a steady tempo, from wherever they are watched: the exact gap in ticks, rounded down and up.
 
 	It is the scheduler's `gap_ticks`, worked out here so that this runs
-	against an installed PicoClock older than that. A test holds the two to
+	against an installed SynthSync older than that. A test holds the two to
 	the same answers.
 	"""
 
@@ -209,10 +209,10 @@ def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: 
 	ratios of their own.
 	"""
 
-	first_pin = picoclock.device.board.FIRST_OUTPUT_PIN
-	outputs = picoclock.device.board.OUTPUTS
+	first_pin = synthsync.device.board.FIRST_OUTPUT_PIN
+	outputs = synthsync.device.board.OUTPUTS
 	ring = Ring(first_pin)
-	player = picoclock.device.player.Player(first_pin, outputs)
+	player = synthsync.device.player.Player(first_pin, outputs)
 
 	player.set_tempo(tempos[0])
 	player.set_ratio(0, pulses, beats)

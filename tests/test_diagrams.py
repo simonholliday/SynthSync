@@ -6,8 +6,8 @@ import xml.dom.minidom
 
 import pytest
 
-import picoclock.core.timeline
-import picoclock.device.board
+import synthsync.core.timeline
+import synthsync.device.board
 import tools.diagrams
 
 # About how wide a letter is, as a part of the height of the writing, for each kind of writing. Bold is wider.
@@ -16,9 +16,9 @@ LETTER = {"label": (14, 0.5), "name": (14, 0.58), "title": (17, 0.58), "note": (
 
 def test_the_diagrams_show_the_pins_the_board_uses () -> None:
 
-	"""A pin drawn in the README is the pin PicoClock drives or reads, and every output it can have has a place on the header."""
+	"""A pin drawn in the README is the pin SynthSync drives or reads, and every output it can have has a place on the header."""
 
-	board = picoclock.device.board
+	board = synthsync.device.board
 
 	assert tools.diagrams.FIRST_OUTPUT == board.FIRST_OUTPUT_PIN
 	assert tools.diagrams.PLAY_PAUSE == board.PLAY_PAUSE_PIN
@@ -26,10 +26,10 @@ def test_the_diagrams_show_the_pins_the_board_uses () -> None:
 	assert tools.diagrams.TEMPO_LED == board.LED_PIN
 
 	# The player lights the tempo LED from the bit after the eighth output's, and MIDI out is to have the one after that.
-	assert board.LED_PIN == board.FIRST_OUTPUT_PIN + picoclock.core.timeline.MOST_OUTPUTS
+	assert board.LED_PIN == board.FIRST_OUTPUT_PIN + synthsync.core.timeline.MOST_OUTPUTS
 	assert board.MIDI_PIN == board.LED_PIN + 1
-	assert board.MOST_OUTPUTS == picoclock.core.timeline.MOST_OUTPUTS
-	assert board.MIDI_PIN - board.FIRST_OUTPUT_PIN < picoclock.core.timeline.PIN_BITS
+	assert board.MOST_OUTPUTS == synthsync.core.timeline.MOST_OUTPUTS
+	assert board.MIDI_PIN - board.FIRST_OUTPUT_PIN < synthsync.core.timeline.PIN_BITS
 
 	for pin in range(board.FIRST_OUTPUT_PIN, board.FIRST_OUTPUT_PIN + board.MOST_OUTPUTS):
 		assert pin in tools.diagrams.HEADER_PIN, pin

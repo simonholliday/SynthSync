@@ -1,10 +1,10 @@
 """Time real pulses on a Pico and say pass or fail.
 
-Every timing claim PicoClock makes rests on this. It copies PicoClock and the
+Every timing claim SynthSync makes rests on this. It copies SynthSync and the
 rig's board half to a temporary folder, lets the Pico run them from there, and
 reads back one result line for each test. Tests that save write files of their
 own, named from `/_rig`, and remove them. `powerup` and `air` write over
-PicoClock's own settings, keeping a copy aside meanwhile, and put them back
+SynthSync's own settings, keeping a copy aside meanwhile, and put them back
 whatever happens. The next test puts back a copy one cut short left.
 
     python -m tools.rig freerun
@@ -34,7 +34,7 @@ passes when the player's counts of an empty queue and of writes that outlast
 their cover notice it: it is the one test where a timing fault is wanted, so
 it isn't in the usual list.
 
-Only `air` goes over the air. It runs the whole of PicoClock on the WiFi
+Only `air` goes over the air. It runs the whole of SynthSync on the WiFi
 network the Pico has saved, and for as long as it runs this computer uses the
 page hard over that network, with `tools/hammer.py`, while a fast output is
 timed. It needs `--address`, which is where the Pico is on that network, and
@@ -89,16 +89,16 @@ def find_mpremote () -> str:
 
 def stage (folder: pathlib.Path, compiler: str) -> None:
 
-	"""Lay out what the Pico needs in a folder on local disk: PicoClock, Microdot, the page and the rig's board half.
+	"""Lay out what the Pico needs in a folder on local disk: SynthSync, Microdot, the page and the rig's board half.
 
-	Everything is compiled, as it is when PicoClock is installed for real,
+	Everything is compiled, as it is when SynthSync is installed for real,
 	with the scheduler as native code for the Pico 2's processor. Left as
 	source, the Pico would have to compile it all as it loads, which leaves
 	its memory too broken up for the larger tests. Microdot's test client
 	goes too: the `page` test makes its requests with it.
 	"""
 
-	tools.stage.copy_picoclock(folder)
+	tools.stage.copy_synthsync(folder)
 	tools.stage.copy_microdot(folder, test_client=True)
 	tools.stage.pack_page(folder)
 	shutil.copy(ROOT / "tools" / "board" / "rig.py", folder / "rig.py")
@@ -194,7 +194,7 @@ def main (arguments: list[str] | None = None) -> int:
 
 	failed = False
 
-	with tempfile.TemporaryDirectory(prefix="picoclock-rig-") as scratch:
+	with tempfile.TemporaryDirectory(prefix="synthsync-rig-") as scratch:
 
 		folder = pathlib.Path(scratch)
 		stage(folder, compiler)

@@ -23,10 +23,10 @@ import sys
 # Where the README looks for its pictures.
 IMAGES = pathlib.Path(__file__).parent.parent / "docs" / "images"
 
-# The Pico's header pin for each GPIO that PicoClock uses, as the official pinout numbers them.
+# The Pico's header pin for each GPIO that SynthSync uses, as the official pinout numbers them.
 HEADER_PIN = {2: 4, 3: 5, 4: 6, 5: 7, 6: 9, 7: 10, 8: 11, 9: 12, 10: 14, 21: 27, 22: 29}
 
-# Where each thing is wired, which must match `picoclock/device/board.py`.
+# Where each thing is wired, which must match `synthsync/device/board.py`.
 FIRST_OUTPUT = 2
 PLAY_PAUSE = 21
 STOP = 22
@@ -427,7 +427,7 @@ def direct () -> Sheet:
 
 def example () -> Sheet:
 
-	"""Draw a whole PicoClock: the main clock, two multividers and both buttons."""
+	"""Draw a whole SynthSync: the main clock, two multividers and both buttons."""
 
 	sheet = Sheet(720, 1290, "An example: a main clock, two multividers and both buttons", "A Pico 2 W with three clock outputs on GP2, GP3 and GP4, each as the clock output circuit, a play/pause button on GP21, a stop button on GP22, 5 volts taken from VSYS and ground from a GND pin.")
 

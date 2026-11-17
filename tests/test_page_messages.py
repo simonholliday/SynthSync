@@ -7,9 +7,9 @@ own files and holds them to those lists, so neither can change alone.
 import pathlib
 import re
 
-import picoclock.web.app
+import synthsync.web.app
 
-STATIC = pathlib.Path(__file__).parent.parent / "picoclock" / "web" / "static"
+STATIC = pathlib.Path(__file__).parent.parent / "synthsync" / "web" / "static"
 
 
 def scripts () -> str:
@@ -49,10 +49,10 @@ def test_the_page_sends_only_what_the_api_takes_and_all_of_it () -> None:
 
 	found = sent()
 
-	assert sorted(found) == sorted(picoclock.web.app.FROM_PAGE)
+	assert sorted(found) == sorted(synthsync.web.app.FROM_PAGE)
 
 	for do, carried in found.items():
-		assert carried <= set(picoclock.web.app.FROM_PAGE[do]), (do, carried)
+		assert carried <= set(synthsync.web.app.FROM_PAGE[do]), (do, carried)
 
 
 def test_the_page_takes_every_kind_of_message_the_api_sends () -> None:
@@ -61,7 +61,7 @@ def test_the_page_takes_every_kind_of_message_the_api_sends () -> None:
 
 	looked_for = set(re.findall(r'\.type === "(\w+)"', scripts()))
 
-	assert looked_for == set(picoclock.web.app.TO_PAGE)
+	assert looked_for == set(synthsync.web.app.TO_PAGE)
 
 
 def test_the_page_reads_only_what_the_api_puts_in_each_message () -> None:
@@ -70,7 +70,7 @@ def test_the_page_reads_only_what_the_api_puts_in_each_message () -> None:
 
 	carried = {"type"}
 
-	for names in picoclock.web.app.TO_PAGE.values():
+	for names in synthsync.web.app.TO_PAGE.values():
 		carried.update(names)
 
 	read = set(re.findall(r"\bmessage\.(\w+)", scripts()))
@@ -80,7 +80,7 @@ def test_the_page_reads_only_what_the_api_puts_in_each_message () -> None:
 	# And what it reads off the things that never change is in that list too.
 	fixed = set(re.findall(r"\bfixed\.(\w+)", scripts()))
 
-	assert fixed <= set(picoclock.web.app.FIXED), fixed - set(picoclock.web.app.FIXED)
+	assert fixed <= set(synthsync.web.app.FIXED), fixed - set(synthsync.web.app.FIXED)
 
 
 def test_the_page_takes_messages_in_batches_and_answers_each_with_its_number () -> None:
@@ -89,7 +89,7 @@ def test_the_page_takes_messages_in_batches_and_answers_each_with_its_number () 
 
 	read = set(re.findall(r"\bbatch\.(\w+)", scripts()))
 
-	assert read == set(picoclock.web.app.BATCH)
+	assert read == set(synthsync.web.app.BATCH)
 
 	# The answer carries the number the batch came with.
 	assert re.search(r'\{do: "heard", batch: batch\.batch\}', scripts())
@@ -99,9 +99,9 @@ def test_every_file_the_page_asks_for_is_one_the_app_sends () -> None:
 
 	"""The page's files are exactly the ones the app is willing to send."""
 
-	assert sorted(path.name for path in STATIC.iterdir() if path.is_file()) == sorted(picoclock.web.app.PAGE_FILES)
+	assert sorted(path.name for path in STATIC.iterdir() if path.is_file()) == sorted(synthsync.web.app.PAGE_FILES)
 
 	index = (STATIC / "index.html").read_text()
 	asked = set(re.findall(r'(?:href|src)="([\w.]+)"', index)) | set(re.findall(r'from "\./([\w.]+)"', scripts()))
 
-	assert asked <= set(picoclock.web.app.PAGE_FILES), asked
+	assert asked <= set(synthsync.web.app.PAGE_FILES), asked

@@ -1,12 +1,12 @@
-"""Soak PicoClock for hours over WiFi, with its page in use throughout, and time a steady output to the cycle all the while.
+"""Soak SynthSync for hours over WiFi, with its page in use throughout, and time a steady output to the cycle all the while.
 
     python -m tools.soak 192.168.1.23 --hours 12 --log soak.log
 
-It runs the whole of PicoClock from the timing rig, on the WiFi network the
+It runs the whole of SynthSync from the timing rig, on the WiFi network the
 Pico has saved, as the rig's `air` test does, but for hours. The Pico times
 output 2 in windows of a minute, holding every gap to the cycle against the
 tempo and ratio output 2 had when the window began, and prints a line for
-each. The clock runs at 4 PPQN, as PicoClock starts and as most people will
+each. The clock runs at 4 PPQN, as SynthSync starts and as most people will
 run it. Meanwhile this computer uses the page as people would, and harder:
 
 - a page stays open throughout, as a phone left on the page does;
@@ -16,7 +16,7 @@ run it. Meanwhile this computer uses the page as people would, and harder:
 - after most windows, output 2, the tempo or the transport is changed: a new
   tempo or ratio, a pause, a stop, a mute, a new pulse length, or snap
   turned off for a free ratio and on again;
-- every minute, PicoClock is asked how it has kept up.
+- every minute, SynthSync is asked how it has kept up.
 
 A window that one of those changes lands in is not judged, and the next one
 begins once things have been left alone for a few seconds.
@@ -24,14 +24,14 @@ begins once things have been left alone for a few seconds.
 Everything goes to the log as it happens, with the time, so a soak cut short
 still says how far it got. It is meant to be left alone: start it so that it
 outlives the terminal it was started from. When it ends, the Pico is
-restarted, so PicoClock comes back as installed. Stopped early by Ctrl-C or
+restarted, so SynthSync comes back as installed. Stopped early by Ctrl-C or
 a kill, it interrupts the Pico's half, which puts the settings back, and
 restarts the Pico too.
 
 It exits with 0 when the Pico's half passed: every window exact, none short,
 nothing broken, and the clock's own counts clean. How often the page's side
 was held up is in the log and the summary, for the question of whether
-PicoClock needs a MicroPython of its own.
+SynthSync needs a MicroPython of its own.
 """
 
 import argparse
@@ -48,7 +48,7 @@ import time
 import types
 import typing
 
-import picoclock.core.ratio
+import synthsync.core.ratio
 import tools.hammer
 import tools.install
 import tools.page
@@ -59,15 +59,15 @@ import tools.stage
 # five seconds long, each time.
 HAMMER_EVERY = 30.0
 
-# How often PicoClock is asked how it has kept up, in seconds.
+# How often SynthSync is asked how it has kept up, in seconds.
 HEALTH_EVERY = 60.0
 
 # The chance that a window is followed by a change to the tempo, the transport or output 2.
 CHANGE_CHANCE = 0.7
 
 # The clock's PPQN while the soak runs, which the Pico's half sets: the one
-# PicoClock starts at.
-PPQN = picoclock.core.ratio.DEFAULT_PPQN
+# SynthSync starts at.
+PPQN = synthsync.core.ratio.DEFAULT_PPQN
 
 # What those changes choose from. Any of these tempos with any of these ratios
 # keeps output 2 between 1 and 120 pulses a second, which is what the Pico's
@@ -150,7 +150,7 @@ class Soak:
 
 	def __init__ (self, address: str, port: int, log: Log, seed: int) -> None:
 
-		"""Get ready to soak the PicoClock at this address."""
+		"""Get ready to soak the SynthSync at this address."""
 
 		self.address = address
 		self.port = port
@@ -193,7 +193,7 @@ class Soak:
 
 		self.log.write("pico", line)
 
-		if line.startswith("PICOCLOCK NETWORK") and "mode=joined" in line:
+		if line.startswith("SYNTHSYNC NETWORK") and "mode=joined" in line:
 			self.joined.set()
 
 		if line.startswith("RIG soak "):
@@ -224,7 +224,7 @@ class Soak:
 
 	async def send (self, change: Change) -> bool:
 
-		"""Make one change as a page without a socket does, and say whether PicoClock took it."""
+		"""Make one change as a page without a socket does, and say whether SynthSync took it."""
 
 		try:
 			status, answer = await asyncio.wait_for(tools.page.fetch(self.address, self.port, "/api/change", change, {"Origin": self.origin()}), tools.hammer.PATIENCE)
@@ -352,7 +352,7 @@ async def changing (soak: Soak) -> None:
 
 async def phone (soak: Soak) -> None:
 
-	"""Keep a page open throughout, as a phone left on the page does, hearing everything PicoClock sends it."""
+	"""Keep a page open throughout, as a phone left on the page does, hearing everything SynthSync sends it."""
 
 	while not soak.over.is_set():
 
@@ -416,7 +416,7 @@ async def hammering (soak: Soak) -> None:
 
 async def asking (soak: Soak) -> None:
 
-	"""Every minute, ask PicoClock how its side has kept up, and log what it says."""
+	"""Every minute, ask SynthSync how its side has kept up, and log what it says."""
 
 	while not soak.over.is_set():
 
@@ -425,7 +425,7 @@ async def asking (soak: Soak) -> None:
 
 		if answer is None:
 			soak.counts["not_told"] += 1
-			soak.log.write("health", "PicoClock didn't say how it has kept up")
+			soak.log.write("health", "SynthSync didn't say how it has kept up")
 
 		else:
 			soak.first_health = soak.first_health or answer
@@ -509,7 +509,7 @@ def stop_early (soak: Soak) -> None:
 
 def restart (device: str, log: Log) -> None:
 
-	"""Restart the Pico, which interrupts anything still running there first, so PicoClock starts again as installed."""
+	"""Restart the Pico, which interrupts anything still running there first, so SynthSync starts again as installed."""
 
 	worked, said = tools.install.ask([tools.rig.find_mpremote(), "connect", device, "reset"], None, 60)
 
@@ -518,9 +518,9 @@ def restart (device: str, log: Log) -> None:
 
 def main (arguments: list[str] | None = None) -> int:
 
-	"""Soak PicoClock for as long as asked, and say how it went."""
+	"""Soak SynthSync for as long as asked, and say how it went."""
 
-	parser = argparse.ArgumentParser(description="Soak PicoClock for hours over WiFi with its page in use, timing a steady output to the cycle throughout.")
+	parser = argparse.ArgumentParser(description="Soak SynthSync for hours over WiFi with its page in use, timing a steady output to the cycle throughout.")
 	parser.add_argument("address", help="where the Pico is on the WiFi network it has saved")
 	parser.add_argument("--hours", type=float, default=12.0, help="how long to soak it for")
 	parser.add_argument("--log", required=True, help="the file to log to, on local disk, which is added to")
@@ -556,12 +556,12 @@ def main (arguments: list[str] | None = None) -> int:
 
 	log.write("note", "a soak of %d minutes begins, with seed %d" % (minutes, seed))
 
-	with tempfile.TemporaryDirectory(prefix="picoclock-soak-") as scratch:
+	with tempfile.TemporaryDirectory(prefix="synthsync-soak-") as scratch:
 
 		folder = pathlib.Path(scratch)
 		tools.rig.stage(folder, compiler)
 
-		# The installed PicoClock is stopped first, with the install tool's patience for a Pico busy starting its radio.
+		# The installed SynthSync is stopped first, with the install tool's patience for a Pico busy starting its radio.
 		tools.install.on_pico(device, ["exec", "pass"], None, 60)
 
 		board = threading.Thread(target=run_board, args=(soak, device, folder, minutes))

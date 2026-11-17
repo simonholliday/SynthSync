@@ -1,6 +1,6 @@
 """The page works in a real browser at a phone's size, against the laptop stand-in.
 
-Every test opens the real page from a stand-in PicoClock running as its own
+Every test opens the real page from a stand-in SynthSync running as its own
 program, and checks what the page did by asking the stand-in, not the page.
 """
 
@@ -11,7 +11,7 @@ import urllib.request
 
 import pytest
 
-import picoclock.core.ratio
+import synthsync.core.ratio
 
 import tests.pages
 import tests.stand
@@ -47,7 +47,7 @@ WATCH_LIGHT = """([row, milliseconds]) => new Promise((done) => {
 @pytest.fixture(scope="module", params=("six files", "one file"))
 def stand (request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> typing.Iterator[tests.stand.Stand]:
 
-	"""One stand-in PicoClock for all of these tests, serving the page's own six files, and then the page packed into one as the Pico holds it."""
+	"""One stand-in SynthSync for all of these tests, serving the page's own six files, and then the page packed into one as the Pico holds it."""
 
 	stand = tests.stand.Stand(static=tests.stand.packed(tmp_path_factory.mktemp("packed")) if request.param == "one file" else None)
 
@@ -142,7 +142,7 @@ def test_the_page_opens_showing_how_things_stand (phone: "playwright.sync_api.Pa
 
 	"""A page that has just opened shows the tempo, what the clock is doing, and a row for every output."""
 
-	assert phone.title() == "PicoClock"
+	assert phone.title() == "SynthSync"
 	assert phone.input_value("#tempo-text") == "120"
 	assert phone.inner_text("#link") == ""
 	assert phone.get_attribute("#tempo-knob", "aria-valuetext") == "120 BPM"
@@ -569,7 +569,7 @@ def test_typing_a_ratio_sets_it_and_a_bad_one_is_explained (phone: "playwright.s
 		assert tests.pages.eventually(lambda: text.input_value() == label), typed
 
 	try:
-		picoclock.core.ratio.parse("1000", picoclock.core.ratio.DEFAULT_PPQN)
+		synthsync.core.ratio.parse("1000", synthsync.core.ratio.DEFAULT_PPQN)
 		words = ""
 	except ValueError as error:
 		words = str(error)

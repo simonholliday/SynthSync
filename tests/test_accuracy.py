@@ -17,7 +17,7 @@ import threading
 
 import pytest
 
-import picoclock.core.timeline
+import synthsync.core.timeline
 import tools.accuracy
 import tools.stage
 
@@ -419,7 +419,7 @@ def test_every_tempo_gets_at_least_two_stretches (seconds: int, expected: int) -
 
 def test_the_picos_half_is_sent_with_the_run_asked_for () -> None:
 
-	"""The Pico's half ends by measuring at the tempos and lengths asked for, at PicoClock's own PPQN."""
+	"""The Pico's half ends by measuring at the tempos and lengths asked for, at SynthSync's own PPQN."""
 
 	script = tools.accuracy.board_script((3000, 12000), 600, 7200)
 
@@ -442,7 +442,7 @@ def test_the_picos_half_compiles_for_micropython (tmp_path: pathlib.Path) -> Non
 
 def test_the_tool_needs_nothing_but_python_and_mpremote () -> None:
 
-	"""Anyone measuring their own board has Python and mpremote, and nothing of PicoClock's development, so the tool imports only the standard library."""
+	"""Anyone measuring their own board has Python and mpremote, and nothing of SynthSync's development, so the tool imports only the standard library."""
 
 	tree = ast.parse((ROOT / "tools" / "accuracy.py").read_text(encoding="utf-8"))
 	imported: set[str] = set()
@@ -520,7 +520,7 @@ def refuse_to_go_on (monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize("typed", ["0", "400", "19.99", "120.001", "fast", ""])
-def test_a_tempo_picoclock_cant_play_is_refused_before_anything_starts (typed: str, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_tempo_synthsync_cant_play_is_refused_before_anything_starts (typed: str, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
 
 	"""A tempo out of range, too finely given, or not a number stops the tool before it touches the Pico."""
 
@@ -693,7 +693,7 @@ def test_the_picos_half_works_out_gaps_as_the_scheduler_does () -> None:
 
 	for tempo in (2000, 3000, 10001, 12000, 17400, 29999, 30000):
 		for pulses, beats in ((4, 1), (96, 1), (1, 128), (3, 2), (7, 12)):
-			assert gap_lengths(tempo, pulses, beats) == tuple(150 * ticks for ticks in picoclock.core.timeline.gap_ticks(tempo, pulses, beats)), (tempo, pulses, beats)  # type: ignore[operator]
+			assert gap_lengths(tempo, pulses, beats) == tuple(150 * ticks for ticks in synthsync.core.timeline.gap_ticks(tempo, pulses, beats)), (tempo, pulses, beats)  # type: ignore[operator]
 
 
 def test_a_pico_that_goes_quiet_ends_the_run_and_a_spoiled_byte_does_not (tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:

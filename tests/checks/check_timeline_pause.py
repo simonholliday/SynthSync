@@ -3,7 +3,7 @@
 import gc
 import sys
 
-import picoclock.core.timeline
+import synthsync.core.timeline
 
 import tests.checks.check_timeline
 
@@ -67,7 +67,7 @@ def check_a_pulse_already_begun_finishes_and_no_new_one_begins () -> None:
 	held.play_until(502500)
 
 	assert held.tick == 502500
-	assert held.pins == 0b1011 | picoclock.core.timeline.LED_BIT
+	assert held.pins == 0b1011 | synthsync.core.timeline.LED_BIT
 
 	paused_at = held.tick
 	begun = [len(held.rises[output]) for output in range(len(RATIOS))]
@@ -79,7 +79,7 @@ def check_a_pulse_already_begun_finishes_and_no_new_one_begins () -> None:
 	# The pulses end within 10 ms, and the tempo LED's flash, lit for a quarter of a beat up to 100 ms, after them.
 	held.play_for(40000)
 
-	assert held.pins == picoclock.core.timeline.LED_BIT
+	assert held.pins == synthsync.core.timeline.LED_BIT
 
 	# Nothing is left to play only once the flash is over, or the player would stop with the LED lit.
 	assert not held.timeline.quiet()
@@ -104,7 +104,7 @@ def check_run_outputs_drop_for_a_pause_and_lead_the_clocks_back () -> None:
 	"""A run output goes low the moment the clock pauses, and high again 10 ms before the clocks carry on."""
 
 	timeline = tests.checks.check_timeline.make([(2, 1), (1, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
 	player = tests.checks.check_timeline.Player(timeline)
 
 	assert timeline.start() == 10000
@@ -186,7 +186,7 @@ def check_a_role_changed_during_a_pause_waits_for_the_clock () -> None:
 	timeline.pause()
 	player.play_for(20000)
 
-	timeline.set_role(1, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
 	player.play_for(20000)
 
 	assert (player.pins >> 1) & 1 == 0
@@ -209,7 +209,7 @@ def check_a_lead_is_plain_time_whatever_changes_during_it () -> None:
 	"""A tempo or ratio changed during the 10 ms lead doesn't move the first beat."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1), (1, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
 	player = tests.checks.check_timeline.Player(timeline)
 
 	assert timeline.start() == 10000
@@ -233,7 +233,7 @@ def check_a_lead_after_a_pause_is_plain_time_too () -> None:
 
 	ratios = [(1, 1), (1, 1), (3, 1)]
 	timeline = tests.checks.check_timeline.make(ratios, 12000)
-	timeline.set_role(1, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
 	player = tests.checks.check_timeline.Player(timeline)
 	follower = tests.checks.check_timeline.Follower(timeline, player, ratios)
 	follower.ignore(1)
@@ -279,7 +279,7 @@ def check_a_lead_cut_short_by_a_pause_is_waited_out_afterwards () -> None:
 	"""If the clock is paused during the lead after a start pulse, what's left of the lead is kept."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
+	timeline.set_role(1, synthsync.core.timeline.START_PULSE)
 	player = tests.checks.check_timeline.Player(timeline)
 
 	assert timeline.start() == 10000
@@ -306,7 +306,7 @@ def check_position_holds_through_a_pause_and_stands_still_through_a_lead () -> N
 	"""Where the clock says it is doesn't move while it is paused, or while clocks wait for a run output."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.RUN)
+	timeline.set_role(1, synthsync.core.timeline.RUN)
 	player = tests.checks.check_timeline.Player(timeline)
 
 	assert timeline.start() == 10000
@@ -423,7 +423,7 @@ def check_stopping_or_starting_ends_a_pause () -> None:
 	"""A paused clock that is stopped is simply stopped, and one that is started begins again at zero."""
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1)], 12000)
-	timeline.set_role(1, picoclock.core.timeline.STOP_PULSE)
+	timeline.set_role(1, synthsync.core.timeline.STOP_PULSE)
 	player = tests.checks.check_timeline.Player(timeline)
 
 	timeline.start()
@@ -465,7 +465,7 @@ def check_pausing_asks_for_no_memory () -> None:
 	used = getattr(gc, "mem_alloc")
 
 	timeline = tests.checks.check_timeline.make([(1, 1), (24, 1), (4, 3), (2, 1)], 12000)
-	timeline.set_role(3, picoclock.core.timeline.RUN)
+	timeline.set_role(3, synthsync.core.timeline.RUN)
 	next_word = timeline.next_word
 
 	timeline.start()

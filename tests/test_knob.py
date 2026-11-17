@@ -4,7 +4,7 @@ import typing
 
 import pytest
 
-import picoclock.core.ratio
+import synthsync.core.ratio
 
 import tests.pages
 
@@ -51,7 +51,7 @@ HARNESS = """<!doctype html>
 </script>
 """
 
-SNAPS = [picoclock.core.ratio.to_text(snap) for snap in picoclock.core.ratio.SNAPS]
+SNAPS = [synthsync.core.ratio.to_text(snap) for snap in synthsync.core.ratio.SNAPS]
 
 
 def open_harness (page: "playwright.sync_api.Page") -> None:
@@ -291,10 +291,10 @@ def test_stepping_through_the_musical_values_matches_the_pico (laptop: "playwrig
 
 	for text in tried:
 
-		ratio = picoclock.core.ratio.parse(text)
+		ratio = synthsync.core.ratio.parse(text)
 
-		assert step(text, 1) == picoclock.core.ratio.to_text(picoclock.core.ratio.next_snap(ratio)), text
-		assert step(text, -1) == picoclock.core.ratio.to_text(picoclock.core.ratio.previous_snap(ratio)), text
+		assert step(text, 1) == synthsync.core.ratio.to_text(synthsync.core.ratio.next_snap(ratio)), text
+		assert step(text, -1) == synthsync.core.ratio.to_text(synthsync.core.ratio.previous_snap(ratio)), text
 
 	assert step("1", 3) == "2"
 	assert step("1", -2) == "1/2"
@@ -315,7 +315,7 @@ def test_the_page_labels_a_ratio_exactly_as_the_pico_does (laptop: "playwright.s
 	labels = laptop.evaluate("(texts) => texts.map(window.ratio.label)", texts)
 
 	for text, shown in zip(texts, labels):
-		assert shown == picoclock.core.ratio.label(picoclock.core.ratio.parse(text)), text
+		assert shown == synthsync.core.ratio.label(synthsync.core.ratio.parse(text)), text
 
 
 def test_stepping_freely_moves_evenly_and_always_moves (laptop: "playwright.sync_api.Page") -> None:
@@ -346,10 +346,10 @@ def test_stepping_freely_moves_evenly_and_always_moves (laptop: "playwright.sync
 	while text != "96":
 
 		after = step(text, 1)
-		parsed = picoclock.core.ratio.parse(after)
+		parsed = synthsync.core.ratio.parse(after)
 
-		assert picoclock.core.ratio.compare(parsed, picoclock.core.ratio.parse(text)) > 0, (text, after)
-		assert picoclock.core.ratio.compare(parsed, picoclock.core.ratio.fastest(1)) <= 0
+		assert synthsync.core.ratio.compare(parsed, synthsync.core.ratio.parse(text)) > 0, (text, after)
+		assert synthsync.core.ratio.compare(parsed, synthsync.core.ratio.fastest(1)) <= 0
 
 		text = after
 		seen += 1
@@ -374,12 +374,12 @@ def test_the_page_turns_the_musical_values_into_ratios_of_the_clock_as_the_pico_
 
 	"""Divided by each PPQN and trimmed to what the clock can play, the page's list is the Pico's own, value for value."""
 
-	beat_snaps = [picoclock.core.ratio.to_text(snap) for snap in picoclock.core.ratio.SNAPS]
-	slowest = picoclock.core.ratio.to_text(picoclock.core.ratio.SLOWEST)
+	beat_snaps = [synthsync.core.ratio.to_text(snap) for snap in synthsync.core.ratio.SNAPS]
+	slowest = synthsync.core.ratio.to_text(synthsync.core.ratio.SLOWEST)
 
-	for ppqn in picoclock.core.ratio.PPQNS:
+	for ppqn in synthsync.core.ratio.PPQNS:
 
-		fastest = picoclock.core.ratio.to_text(picoclock.core.ratio.fastest(ppqn))
+		fastest = synthsync.core.ratio.to_text(synthsync.core.ratio.fastest(ppqn))
 		page = laptop.evaluate("([snaps, ppqn, slowest, fastest]) => window.ratio.ofClock(snaps, ppqn, slowest, fastest)", [beat_snaps, ppqn, slowest, fastest])
 
-		assert page == [picoclock.core.ratio.to_text(snap) for snap in picoclock.core.ratio.snaps(ppqn)], ppqn
+		assert page == [synthsync.core.ratio.to_text(snap) for snap in synthsync.core.ratio.snaps(ppqn)], ppqn

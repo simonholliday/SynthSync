@@ -3,10 +3,10 @@
 import asyncio
 import sys
 
-import picoclock.core.clock
-import picoclock.core.ratio
-import picoclock.core.settings
-import picoclock.core.transport
+import synthsync.core.clock
+import synthsync.core.ratio
+import synthsync.core.settings
+import synthsync.core.transport
 
 # mypy treats this name as true, and nothing else does, so `typing` is never
 # imported where MicroPython would have to find it.
@@ -133,7 +133,7 @@ class Watcher:
 
 	"""Notes what a clock tells whoever is watching."""
 
-	def __init__ (self, clock: picoclock.core.clock.Clock) -> None:
+	def __init__ (self, clock: synthsync.core.clock.Clock) -> None:
 
 		"""Begin watching a clock."""
 
@@ -148,7 +148,7 @@ class Watcher:
 		self.told.append((what, by))
 
 
-def make (outputs: int = 4, ppqn: int = 1) -> "tuple[picoclock.core.clock.Clock, Engine, Storage]":
+def make (outputs: int = 4, ppqn: int = 1) -> "tuple[synthsync.core.clock.Clock, Engine, Storage]":
 
 	"""Make a clock on a stand-in engine, with stand-in storage.
 
@@ -159,9 +159,9 @@ def make (outputs: int = 4, ppqn: int = 1) -> "tuple[picoclock.core.clock.Clock,
 
 	engine = Engine()
 	storage = Storage()
-	settings = picoclock.core.settings.Settings(outputs)
+	settings = synthsync.core.settings.Settings(outputs)
 	settings.set_ppqn(ppqn)
-	clock = picoclock.core.clock.Clock(settings, engine, storage)
+	clock = synthsync.core.clock.Clock(settings, engine, storage)
 
 	return clock, engine, storage
 
@@ -217,7 +217,7 @@ def check_a_change_is_checked_saved_told_and_then_given_to_the_engine () -> None
 
 	assert clock.settings.tempo == 13000
 	assert storage.changes == 1
-	assert watcher.told == [(picoclock.core.clock.TEMPO, None)]
+	assert watcher.told == [(synthsync.core.clock.TEMPO, None)]
 	assert engine.calls == []
 
 	clock.flush()
@@ -250,7 +250,7 @@ def check_an_output_that_is_off_can_still_be_changed () -> None:
 	assert not clock.settings.outputs[1].snap
 	assert ("set_ratio", 1, 3, 2) in engine.calls
 	assert ("set_width", 1, 20000) in engine.calls
-	assert ("set_role", 1, picoclock.core.settings.ROLES.index("run")) in engine.calls
+	assert ("set_role", 1, synthsync.core.settings.ROLES.index("run")) in engine.calls
 	assert engine.named("set_mute") == []
 
 
@@ -409,7 +409,7 @@ def check_a_bad_value_changes_nothing_and_tells_nobody () -> None:
 	clock.flush()
 
 	# As `make` left them: the defaults, at one pulse a beat.
-	untouched = picoclock.core.settings.Settings(4)
+	untouched = synthsync.core.settings.Settings(4)
 	untouched.set_ppqn(1)
 
 	assert clock.settings.to_dict() == untouched.to_dict()
@@ -425,19 +425,19 @@ def check_every_press_reaches_the_engine_and_those_that_change_something_are_tol
 	clock, engine, storage = make()
 	watcher = Watcher(clock)
 
-	assert clock.press("pause") == picoclock.core.transport.NOTHING
-	assert clock.press("stop") == picoclock.core.transport.NOTHING
+	assert clock.press("pause") == synthsync.core.transport.NOTHING
+	assert clock.press("stop") == synthsync.core.transport.NOTHING
 	assert watcher.told == []
 
-	assert clock.press("start") == picoclock.core.transport.BEGIN
-	assert clock.press("start") == picoclock.core.transport.NOTHING
-	assert clock.press("pause") == picoclock.core.transport.FREEZE
-	assert clock.press("start") == picoclock.core.transport.CARRY_ON
-	assert clock.press("stop") == picoclock.core.transport.END
+	assert clock.press("start") == synthsync.core.transport.BEGIN
+	assert clock.press("start") == synthsync.core.transport.NOTHING
+	assert clock.press("pause") == synthsync.core.transport.FREEZE
+	assert clock.press("start") == synthsync.core.transport.CARRY_ON
+	assert clock.press("stop") == synthsync.core.transport.END
 
 	assert engine.calls == [("press", command) for command in ("pause", "stop", "start", "start", "pause", "start", "stop")]
-	assert watcher.told == [(picoclock.core.clock.TRANSPORT, None)] * 4
-	assert clock.transport.state == picoclock.core.transport.STOPPED
+	assert watcher.told == [(synthsync.core.clock.TRANSPORT, None)] * 4
+	assert clock.transport.state == synthsync.core.transport.STOPPED
 
 	# Whether the clock is running is never saved: it always starts at power-up.
 	assert storage.changes == 0
@@ -480,11 +480,11 @@ def check_a_reset_brings_back_the_defaults_and_forgets_what_was_saved () -> None
 
 	clock.reset("someone")
 
-	assert clock.settings.to_dict() == picoclock.core.settings.Settings(2).to_dict()
+	assert clock.settings.to_dict() == synthsync.core.settings.Settings(2).to_dict()
 	assert storage.forgets == 1
 	assert storage.changes == changes
-	assert watcher.told == [(picoclock.core.clock.EVERYTHING, "someone")]
-	assert clock.transport.state == picoclock.core.transport.RUNNING
+	assert watcher.told == [(synthsync.core.clock.EVERYTHING, "someone")]
+	assert clock.transport.state == synthsync.core.transport.RUNNING
 
 	clock.flush()
 
@@ -525,7 +525,7 @@ def check_network_settings_are_saved_and_told () -> None:
 	assert clock.settings.network_password == "a password"
 	assert clock.joins == 1
 
-	assert watcher.told == [(picoclock.core.clock.NETWORK, by) for by in (1, 2, 3, 4, 5)]
+	assert watcher.told == [(synthsync.core.clock.NETWORK, by) for by in (1, 2, 3, 4, 5)]
 	assert storage.changes == 5
 
 	clock.flush()
@@ -546,7 +546,7 @@ def check_whoever_made_a_change_is_passed_to_the_watchers_untouched () -> None:
 	clock.set_output(2, "muted", True, who)
 	clock.press("start", who)
 
-	assert first.told == [(picoclock.core.clock.TEMPO, who), (2, who), (picoclock.core.clock.TRANSPORT, who)]
+	assert first.told == [(synthsync.core.clock.TEMPO, who), (2, who), (synthsync.core.clock.TRANSPORT, who)]
 	assert second.told == first.told
 	assert first.told[0][1] is who
 
@@ -620,7 +620,7 @@ def check_the_clock_catches_up_with_a_button_pressed_on_the_pico () -> None:
 
 	"""A button on the Pico changes what the clock is doing where it is played, and the clock hears of it afterwards, once."""
 
-	transport = picoclock.core.transport
+	transport = synthsync.core.transport
 	clock, engine, storage = make()
 	watcher = Watcher(clock)
 
@@ -639,7 +639,7 @@ def check_the_clock_catches_up_with_a_button_pressed_on_the_pico () -> None:
 	clock.catch_up()
 
 	assert clock.transport.state == transport.STOPPED
-	assert watcher.told == [(picoclock.core.clock.TRANSPORT, None)]
+	assert watcher.told == [(synthsync.core.clock.TRANSPORT, None)]
 
 	# The engine agreeing tells nobody anything.
 	clock.catch_up()
@@ -654,7 +654,7 @@ def check_the_clock_catches_up_with_a_button_pressed_on_the_pico () -> None:
 	watcher.told.clear()
 
 	assert clock.press("start", "page") == transport.BEGIN
-	assert watcher.told == [(picoclock.core.clock.TRANSPORT, None), (picoclock.core.clock.TRANSPORT, "page")]
+	assert watcher.told == [(synthsync.core.clock.TRANSPORT, None), (synthsync.core.clock.TRANSPORT, "page")]
 
 	# Whether the clock is running is never saved, however it changed.
 	assert storage.changes == 0
@@ -672,19 +672,19 @@ def check_running_the_clock_catches_up_with_the_buttons_by_itself () -> None:
 		watcher = Watcher(clock)
 		task = asyncio.create_task(clock.run())
 
-		engine.state = picoclock.core.transport.RUNNING
+		engine.state = synthsync.core.transport.RUNNING
 		await asyncio.sleep(0.1)
 
-		assert clock.transport.state == picoclock.core.transport.RUNNING
-		assert watcher.told == [(picoclock.core.clock.TRANSPORT, None)]
+		assert clock.transport.state == synthsync.core.transport.RUNNING
+		assert watcher.told == [(synthsync.core.clock.TRANSPORT, None)]
 
 		# A busy engine still lets the buttons through.
 		engine.refuse = 5
-		engine.state = picoclock.core.transport.PAUSED
+		engine.state = synthsync.core.transport.PAUSED
 		clock.set_tempo(9800)
 		await asyncio.sleep(0.1)
 
-		assert clock.transport.state == picoclock.core.transport.PAUSED
+		assert clock.transport.state == synthsync.core.transport.PAUSED
 
 		task.cancel()
 		await asyncio.sleep(0)
@@ -696,7 +696,7 @@ def check_the_engine_is_given_what_each_output_sends_a_beat () -> None:
 
 	"""At the default of four pulses a beat, output 1 sends four a beat, and a ratio of ÷2 sends two."""
 
-	clock, engine, storage = make(2, picoclock.core.ratio.DEFAULT_PPQN)
+	clock, engine, storage = make(2, synthsync.core.ratio.DEFAULT_PPQN)
 
 	clock.set_output(1, "ratio", "1/2")
 	clock.load()
@@ -723,7 +723,7 @@ def check_a_change_of_ppqn_reaches_every_output_and_moves_one_that_would_be_too_
 	assert clock.settings.ppqn == 24
 	assert clock.settings.outputs[1].ratio == (4, 1)
 	assert clock.settings.outputs[2].ratio == (1, 4)
-	assert watcher.told[-2:] == [(picoclock.core.clock.PPQN, "someone"), (1, "someone")]
+	assert watcher.told[-2:] == [(synthsync.core.clock.PPQN, "someone"), (1, "someone")]
 	assert storage.changes == changes + 1
 
 	clock.flush()
