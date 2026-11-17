@@ -656,6 +656,17 @@ def test_an_hour_with_too_few_answers_keeps_the_others_in_their_places (tmp_path
 	assert "too few answers" in tools.accuracy.describe(result)
 
 
+def test_a_run_too_short_for_any_one_server_says_so_rather_than_naming_none (tmp_path: pathlib.Path) -> None:
+
+	"""Six minutes leaves no server with answers enough for a fit of its own, and the summary says that in words."""
+
+	path = make_run(tmp_path / "run.log", 3.0, -2.4)
+	result = tools.accuracy.analyse(tools.accuracy.read_log(path.read_text(encoding="utf-8").splitlines()))
+	said = tools.accuracy.describe(dict(result, servers={}))
+
+	assert "Against each time server: too few answers from any one of them" in said
+
+
 def test_a_short_stretch_settles_for_a_quarter_of_its_length (tmp_path: pathlib.Path) -> None:
 
 	"""A stretch of two minutes counts from 30 s in, so a short run has settled moments in every stretch, where a minute's settling would leave only one."""

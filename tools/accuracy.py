@@ -770,7 +770,9 @@ def describe (result: dict[str, typing.Any]) -> str:
 	lines.append("The tempo ran %s by %.2f parts per million, give or take %.2f, %s times (from %d answers)." % ("fast" if ppm >= 0 else "slow", abs(ppm), result["give_or_take_ppm"], result["give_or_take_is"], result["answers"]))
 	lines.append("At 120 BPM that is %.5f BPM: %.1f ms in an hour, or %.2f s in a day." % (result["bpm_at_120"], abs(result["seconds_an_hour"]) * 1000, abs(result["seconds_a_day"])))
 	lines.append("")
-	lines.append("Against each time server: " + "; ".join("%s %+.2f give or take %.2f" % (name, fitted["ppm"], fitted["error"]) for name, fitted in result["servers"].items()))
+	# A short run can leave no one server with enough answers to say anything by itself.
+	servers = "; ".join("%s %+.2f give or take %.2f" % (name, fitted["ppm"], fitted["error"]) for name, fitted in result["servers"].items())
+	lines.append("Against each time server: " + (servers or "too few answers from any one of them"))
 	lines.append("Hour by hour: " + ", ".join("too few answers" if hour["ppm"] is None else "%+.2f" % hour["ppm"] for hour in result["hour_by_hour"]))
 
 	if player:
