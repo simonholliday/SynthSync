@@ -35,12 +35,18 @@ or while nothing plays. Looking every millisecond regardless ran the player
 dry with the outputs at their busiest. A press is told from a knock by the
 same rule as everywhere else, and carried out by the scheduler as one from the
 page is. The first core finds out afterwards, from `transport`, and tells the
-pages.
+pages. While the second core waits for a backlog to play out or a flash write
+to end, it still looks every millisecond, and keeps a press it sees to carry
+out once the wait is over, so a quick tap is late rather than lost.
 
 One thing stops both cores: writing to the Pico's flash, which a save does. It
-lasts about 40 ms, far longer than eight words. So before a write the second
-core works out a third of a second of words in advance and hands them to DMA,
-which is hardware too, and feeds the player by itself while the cores are held.
+lasts about 40 ms, far longer than eight words. So before a write made while
+the clock plays, the second core works out a third of a second of words in
+advance and hands them to DMA, which is hardware too, and feeds the player by
+itself while the cores are held. With the clock stopped or paused and every
+pin low, nothing needs playing, so the write goes ahead at once. The second
+core then starts nothing until the write is over, because a start made while
+the write held it would leave the player only its eight words.
 
 Commands get the same treatment on a smaller scale. A tempo change keeps the
 second core busy for a millisecond or two, and a power-up or a reset sends a
@@ -123,6 +129,12 @@ _BUTTON = _COMMANDS
 # can't pass for a press: a press has to be seen on four looks or more.
 _LOOK_AFTER = 256
 _LOOK_MOST = 5
+
+# How many presses of the buttons can be kept, waiting to be carried out, at
+# once. They pile up only while the second core waits for a backlog or a flash
+# write. A press takes twenty milliseconds to be believed and a wait lasts a
+# third of a second at most, so a hand can't make more.
+_KEPT_MOST = 4
 
 # How many commands can wait at once. It must be a power of two.
 _WAITING = 32
@@ -227,7 +239,9 @@ class Player:
 		# The longest flash write in milliseconds, and how many writes made while
 		# the clock played were still going when their backlog had run out, which
 		# leaves the player only its eight words to last until the write ends.
-		self._writes = array.array("i", [0, 0])
+		# Then how many writes have ended, which the second core waits for while
+		# nothing plays.
+		self._writes = array.array("i", [0, 0, 0])
 
 		# How much playing to put by for each command, by its number.
 		self._cover = array.array("i", [0] * _COMMANDS)
@@ -253,6 +267,10 @@ class Player:
 		# out, and the time in milliseconds when it carried out the last.
 		self._state = array.array("i", [0])
 		self._pressed = array.array("i", [0, 0])
+
+		# Presses of the buttons seen and not yet carried out: how many, and then
+		# each one's press, oldest first.
+		self._kept = array.array("i", [0] * (1 + _KEPT_MOST))
 
 		# Words worked out ahead of a flash write, and the DMA channel that plays them.
 		self._backlog = array.array("I", [0] * _BACKLOG_WORDS)
@@ -295,6 +313,7 @@ class Player:
 		marks = self._marks
 		counts = self._counts
 		lows = self._lows
+		kept = self._kept
 		registers = machine.mem32
 		ticks_ms = time.ticks_ms
 		ticks_diff = time.ticks_diff
@@ -311,16 +330,20 @@ class Player:
 				now = ticks_ms()
 
 				if now != looked:
-					self._look(min(ticks_diff(now, looked), _LOOK_MOST), playing)
+					self._look(min(ticks_diff(now, looked), _LOOK_MOST))
 					looked = now
 					since = 0
+
+			# A press just seen, or one seen while the second core waited.
+			if kept[0]:
+				self._carry_out(playing)
 
 			if marks[0] != marks[1]:
 
 				if playing:
 					self._take_under_cover()
 				else:
-					self._take()
+					self._take(False)
 
 			if playing:
 
@@ -400,7 +423,7 @@ class Player:
 			count += 1
 
 		if count == 0:
-			self._take()
+			self._take(True)
 			return
 
 		self._build(ticks)
@@ -412,7 +435,7 @@ class Player:
 		while count:
 
 			began = ticks_us()
-			self._take()
+			self._take(True)
 			took = ticks_diff(ticks_us(), began)
 
 			# Kept so that a command held up by something unforeseen shows, even when the words put by covered for it.
@@ -424,9 +447,13 @@ class Player:
 		self._play_out()
 
 	@micropython.native
-	def _take (self) -> None:
+	def _take (self, playing: bool) -> None:
 
-		"""Carry out the oldest waiting command. Runs on the second core."""
+		"""Carry out the oldest waiting command. Runs on the second core.
+
+		`playing` is whether the player is being fed, which decides how a flash
+		write is made way for.
+		"""
 
 		marks = self._marks
 		queue = self._queue
@@ -458,7 +485,12 @@ class Player:
 			elif what == _STOP:
 				timeline.stop()
 			elif what == _BACKLOG:
-				self._ahead(first)
+
+				if playing:
+					self._ahead(first)
+				else:
+					self._let_write(first)
+
 			elif what == _PRESS:
 				timeline.press(first)
 
@@ -482,18 +514,22 @@ class Player:
 		self._state[0] = (1 if timeline.running else 0) + (2 if timeline.paused else 0)
 
 	@micropython.native
-	def _look (self, elapsed: int, playing: bool) -> None:
+	def _look (self, elapsed: int) -> None:
 
-		"""Read the buttons, and carry out any press that has just begun. Runs on the second core.
+		"""Read the buttons, and keep any press that has just begun, for `_carry_out` to carry out. Runs on the second core.
 
-		`elapsed` is how long since the last look, in milliseconds, and
-		`playing` whether the player is being fed.
+		`elapsed` is how long since the last look, in milliseconds. A press is
+		only ever kept here, never carried out, so the second core can look
+		while it waits for a backlog or a flash write that a press mustn't cut
+		into, and a press seen in the middle of carrying out another can't
+		break into it.
 		"""
 
 		pins = self._button_pins
 		levels = self._button_levels
 		presses = self._button_presses
 		buttons = self._buttons
+		kept = self._kept
 		read = _levels()
 
 		for index in range(len(buttons)):
@@ -503,8 +539,58 @@ class Player:
 			if pin < 0:
 				continue
 
-			if buttons[index].look(((read >> pin) & 1) == levels[index], 0, elapsed):
-				self._act(presses[index], playing)
+			if not buttons[index].look(((read >> pin) & 1) == levels[index], 0, elapsed):
+				continue
+
+			count = kept[0]
+
+			# A hand can't press this often, so a press past the last place is lost
+			# rather than kept by asking for memory.
+			if count < _KEPT_MOST:
+				kept[1 + count] = presses[index]
+				kept[0] = count + 1
+
+	@micropython.native
+	def _glance (self, looked: int) -> int:
+
+		"""Look at the buttons if a millisecond has passed since `looked`, and give when they were last looked at. Runs on the second core.
+
+		This is for while the second core waits for a backlog to play out or a
+		flash write to end. A press seen meanwhile is kept for afterwards.
+		"""
+
+		now = time.ticks_ms()
+
+		if now == looked:
+			return looked
+
+		self._look(min(time.ticks_diff(now, looked), _LOOK_MOST))
+
+		return now
+
+	@micropython.native
+	def _carry_out (self, playing: bool) -> None:
+
+		"""Carry out the presses of the buttons that have been kept, oldest first. Runs on the second core.
+
+		`playing` is whether the player is being fed. One carried out while
+		the clock plays waits for a backlog of its own, and a press seen
+		meanwhile is carried out here too, after it.
+		"""
+
+		kept = self._kept
+
+		while kept[0] > 0:
+
+			press = kept[1]
+			count = kept[0] - 1
+
+			for place in range(1, 1 + count):
+				kept[place] = kept[place + 1]
+
+			kept[0] = count
+
+			self._act(press, playing)
 
 	@micropython.native
 	def _act (self, press: int, playing: bool) -> None:
@@ -531,8 +617,8 @@ class Player:
 
 		"""Work out this many ticks of words in advance and let DMA play them all. Runs on the second core.
 
-		This is what a flash write waits for: the first core may write as soon
-		as the backlog has begun to play.
+		This is what a flash write made while the clock plays waits for: the
+		first core may write as soon as the backlog has begun to play.
 		"""
 
 		self._build(ticks)
@@ -541,6 +627,34 @@ class Player:
 		self._counts[3] = (self._counts[3] + 1) & _WRAP
 
 		self._play_out()
+
+	@micropython.native
+	def _let_write (self, ticks: int) -> None:
+
+		"""Let a flash write go ahead while nothing plays, and wait until it has ended. Runs on the second core.
+
+		Every pin is low and stays low by itself, so no backlog is needed, and
+		a press of play needn't wait for a third of a second of silence to play
+		out. But nothing may start until the write is over: begun while the
+		write held this core, the player would have only its eight words. So
+		nothing more is taken until the first core says the write has ended, or
+		for as long as a backlog of this many ticks would have lasted, if it
+		never says. A press of a button meanwhile is kept for afterwards.
+		"""
+
+		writes = self._writes
+		ended = writes[2]
+		longest = ticks // 1000
+		ticks_ms = time.ticks_ms
+		ticks_diff = time.ticks_diff
+		began = ticks_ms()
+		looked = began
+
+		# The first core is waiting for this count to move.
+		self._counts[3] = (self._counts[3] + 1) & _WRAP
+
+		while writes[2] == ended and ticks_diff(ticks_ms(), began) < longest:
+			looked = self._glance(looked)
 
 	@micropython.native
 	def _build (self, ticks: int) -> None:
@@ -616,12 +730,13 @@ class Player:
 	@micropython.native
 	def _play_out (self) -> None:
 
-		"""Wait until DMA has given the player the whole backlog. Runs on the second core."""
+		"""Wait until DMA has given the player the whole backlog, keeping any press of a button meanwhile for afterwards. Runs on the second core."""
 
 		dma = self._dma
+		looked = time.ticks_ms()
 
 		while dma.count > 0:
-			pass
+			looked = self._glance(looked)
 
 		self._lows[5] = 1
 
@@ -758,7 +873,9 @@ class Player:
 		`write` is called once the player has a backlog to live on. It should
 		finish well inside the backlog's length: a write measured here takes
 		about 45 ms, and up to twice that when the filesystem has more to do.
-		Changes made meanwhile wait until the backlog has played out.
+		Changes made meanwhile wait until the backlog has played out. With the
+		clock stopped or paused there is no backlog, and they wait only until
+		the write has ended.
 		"""
 
 		# Wait for a backlog made for this write to begin playing. One still
@@ -779,11 +896,17 @@ class Player:
 			time.sleep_ms(1)
 
 		playing = self._state[0] == 1
-		began = time.ticks_ms()
-		answer = write()
-		took = time.ticks_diff(time.ticks_ms(), began)
-
 		writes = self._writes
+		began = time.ticks_ms()
+
+		try:
+			answer = write()
+
+		finally:
+			# With nothing playing, the second core waits for this before it starts anything.
+			writes[2] = (writes[2] + 1) & _WRAP
+
+		took = time.ticks_diff(time.ticks_ms(), began)
 
 		if took > writes[0]:
 			writes[0] = took

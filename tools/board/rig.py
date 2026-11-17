@@ -788,6 +788,170 @@ def test_saved (load: str = "idle") -> None:
 	report("saved", passed, "found=%s host_name=%s problems=%d leftovers=%d" % (found, name, len(problems), len(leftovers)))
 
 
+# Where `stopsave` keeps its settings, and removes them again.
+_STOPSAVE_PATH = "/_rig_stopsave.json"
+
+# The longest a start sent as a save ends may take to reach the pins, in
+# microseconds. With nothing to wait for, it is the second core's next turn.
+_START_AFTER_SAVE = 5000
+
+# How long a tap of play/pause lasts, and how long the stand-in for a write
+# lasts around it, in milliseconds: long enough to be believed, and over well
+# before the write is.
+_TAP = 30
+_TAP_WRITE = 80
+
+
+def test_stopsave (load: str = "idle") -> None:
+
+	"""Save with the clock stopped and paused, and tap play/pause during saves, stopped and playing: no start may wait and no tap may be lost.
+
+	With every pin low, a save needs no backlog. So the queue must never be
+	found empty while the clock is stopped or paused, and a start sent the
+	moment a save made while stopped has ended must reach the pins at once,
+	not after a third of a second of silence. A tap of play/pause through the
+	jumper that comes and goes while a write is under way must be carried out
+	once the write is over, whether the clock was stopped or playing.
+	"""
+
+	transport = picoclock.core.transport
+	first = picoclock.device.board.FIRST_OUTPUT_PIN
+	player = make_player(((4, 1), (4, 1), (4, 1), (4, 1)), 12000)
+	settings = picoclock.core.settings.Settings(4)
+	storage = picoclock.device.storage.Storage(settings, player, _STOPSAVE_PATH)
+	finger = Finger(True)
+	never = Never()
+
+	player.listen(transport.PLAY_PAUSE, _INPUT_PIN, True)
+
+	# The slowest start after a save made while stopped, in microseconds, how
+	# many such starts there were, how many saves were made while paused, and
+	# whether each tap was carried out: stopped, then playing.
+	results = {"slowest_start": 0, "starts": 0, "paused_saves": 0, "tap_stopped": False, "tap_playing": False}
+
+	def doing () -> str:
+
+		"""Say what the player is doing, once it has taken everything it was told."""
+
+		player.settle()
+		status = player.status()
+
+		if not status["running"]:
+			return transport.STOPPED
+
+		return transport.PAUSED if status["paused"] else transport.RUNNING
+
+	def save () -> None:
+
+		"""Change a setting the clock doesn't play, and save it."""
+
+		settings.set_host_name("rig-%d" % time.ticks_ms())
+		storage.save_now()
+
+	def first_edge_us () -> int:
+
+		"""Say how long output 1's pin takes to go high from now, in microseconds, giving up after a second."""
+
+		began = time.ticks_us()
+
+		while not (machine.mem32[_GPIO_IN] >> first) & 1:
+
+			if time.ticks_diff(time.ticks_us(), began) > 1000000:
+				break
+
+		return time.ticks_diff(time.ticks_us(), began)
+
+	def tapped_write () -> None:
+
+		"""Stand in for a write that lasts a while, with a tap of play/pause coming and going in the middle of it."""
+
+		finger.press(_TAP)
+		time.sleep_ms(_TAP_WRITE)
+
+	def script ():
+
+		"""Work through every step, giving back how long to wait before the next."""
+
+		# Saves with the clock stopped, each followed at once by a start.
+		for _ in range(10):
+
+			save()
+			player.start()
+			took = first_edge_us()
+
+			results["starts"] += 1
+			results["slowest_start"] = max(results["slowest_start"], took)
+
+			yield 150
+			player.stop()
+			yield 150
+
+		# Saves with the clock paused, once its last pulses have played out.
+		for _ in range(5):
+
+			player.start()
+			yield 300
+			player.pause()
+			yield 300
+
+			save()
+			results["paused_saves"] += 1
+
+			player.resume()
+			yield 200
+			player.stop()
+			yield 150
+
+		# A tap while a write holds the second core, with the clock stopped: it must start.
+		player.protect(tapped_write)
+		yield 100
+		results["tap_stopped"] = doing() == transport.RUNNING
+
+		# And with the clock playing: it must pause, once the write's backlog has played out.
+		yield 300
+		player.protect(tapped_write)
+		yield 500
+		results["tap_playing"] = doing() == transport.PAUSED
+
+		player.stop()
+		yield 150
+
+	steps = script()
+	due = [time.ticks_ms()]
+
+	def meanwhile () -> None:
+
+		"""Take the next step when it is due."""
+
+		if never.over or time.ticks_diff(time.ticks_ms(), due[0]) < 0:
+			return
+
+		try:
+			due[0] = time.ticks_add(time.ticks_ms(), next(steps))
+		except StopIteration:
+			never.over = True
+
+	described = run_load(load, never, 60, meanwhile)
+	status = player.status()
+
+	storage.forget()
+
+	try:
+		os.stat(_STOPSAVE_PATH)
+		left = True
+	except OSError:
+		left = False
+
+	finger.close()
+	player.close()
+	machine.Pin(_INPUT_PIN, machine.Pin.IN, None)
+
+	quiet = status["empty"] == 0 and status["one_left"] == 0
+	passed = never.over and results["starts"] == 10 and results["slowest_start"] <= _START_AFTER_SAVE and results["paused_saves"] == 5 and results["tap_stopped"] and results["tap_playing"] and quiet and not left and sound(status)
+
+	report("stopsave", passed, "starts=%d slowest_start_us=%d paused_saves=%d tap_stopped=%s tap_playing=%s saves=%d left=%s %s load=%s" % (results["starts"], results["slowest_start"], results["paused_saves"], results["tap_stopped"], results["tap_playing"], storage.saves, left, describe(status), described))
+
+
 # Where `shortfall` writes, and removes again within the same write.
 _SHORTFALL_PATH = "/_rig_shortfall.bin"
 
@@ -3129,6 +3293,7 @@ TESTS = {
 	"powerup": test_powerup,
 	"save": test_save,
 	"saved": test_saved,
+	"stopsave": test_stopsave,
 	"sweep": test_sweep,
 	"pause": test_pause,
 	"startstop": test_startstop,

@@ -23,7 +23,9 @@ brings the Pico's own WiFi network up, changes its password and looks for
 other networks, `page` asks for the page and its API over and over, and `save`
 saves the settings about a hundred times while the clock runs. `save` leaves its file
 on the Pico for `saved` to read back after a reset and remove, so run the two
-together. `shortfall` gives one flash write far too little cover on purpose, and
+together. `stopsave` saves with the clock stopped and paused, starts it the
+moment a save ends, and taps play/pause through the jumper while a save is
+being made, stopped and playing: no start may wait and no tap may be lost. `shortfall` gives one flash write far too little cover on purpose, and
 passes when the player's counts of an empty queue and of writes that outlast
 their cover notice it: it is the one test where a timing fault is wanted, so
 it isn't in the usual list.
@@ -56,7 +58,7 @@ import tools.stage
 
 ROOT = pathlib.Path(__file__).parent.parent
 
-TESTS = ("freerun", "player", "cluster", "sweep", "burst", "collect", "pause", "startstop", "position", "inputs", "led", "powerup", "network", "page", "air", "save", "saved", "shortfall")
+TESTS = ("freerun", "player", "cluster", "sweep", "burst", "collect", "pause", "startstop", "position", "inputs", "led", "powerup", "network", "page", "air", "save", "saved", "stopsave", "shortfall")
 
 # The test that needs the Pico's address on a network, and how long to give a round of
 # requests that failed to be seen as the end of the test, in seconds.
