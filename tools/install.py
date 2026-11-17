@@ -36,6 +36,7 @@ import sys
 import tempfile
 import time
 
+import synthsync
 import synthsync.core.config
 import synthsync.core.wifi
 import tools.stage
@@ -262,7 +263,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 
 		count, total = size(folder)
 
-		print("Laid out %d files, %d KB in all." % (count, total // 1024))
+		print("Laid out SynthSync %s: %d files, %d KB in all." % (synthsync.__version__, count, total // 1024))
 
 		# The old copy goes first, so that nothing it had and this one hasn't is left behind.
 		if not remove(device, [] if wipe else top + [JOIN_FILE] + OLD_NAMES):

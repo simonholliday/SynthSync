@@ -16,6 +16,7 @@ import sys
 
 import microdot
 
+import synthsync
 import synthsync.web.app
 
 ROOT = pathlib.Path(__file__).parent.parent
@@ -50,6 +51,9 @@ MAIN = "main.py"
 # is the musician's to change, so it is never copied over one already there.
 CONFIG = "config.txt"
 
+# The line of SynthSync's `__init__.py` that a Pico's copy has its version written into.
+UNSTAMPED = 'LAID_OUT = ""'
+
 
 def find_tool (name: str) -> str | None:
 
@@ -65,9 +69,21 @@ def find_tool (name: str) -> str | None:
 
 def copy_synthsync (folder: pathlib.Path) -> None:
 
-	"""Copy SynthSync's own code into a folder, without what only a laptop uses."""
+	"""Copy SynthSync's own code into a folder, without what only a laptop uses, and write its version in.
+
+	A Pico can't ask which version is installed, as a laptop does, so its copy
+	is told: the one installed here, which the build took from the git tag.
+	"""
 
 	shutil.copytree(ROOT / "synthsync", folder / "synthsync", ignore=shutil.ignore_patterns(*NOT_FOR_THE_PICO))
+
+	path = folder / "synthsync" / "__init__.py"
+	text = path.read_text()
+
+	if text.count(UNSTAMPED) != 1:
+		raise ValueError("synthsync/__init__.py has to say %s once, for the version to be written there." % UNSTAMPED)
+
+	path.write_text(text.replace(UNSTAMPED, "LAID_OUT = %r" % synthsync.__version__))
 
 
 def copy_microdot (folder: pathlib.Path, test_client: bool = False) -> None:

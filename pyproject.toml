@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -49,9 +49,13 @@ dev = [
 ]
 
 [tool.hatch.version]
-# One place says which version this is, and the Pico reads the same place for
-# the page's About view.
-path = "synthsync/__init__.py"
+# From the git tag, never written here: `v1.2.0` builds 1.2.0, and any commit
+# after it builds a `.devN+g<commit>` version. `synthsync.__version__` reads it
+# back from the installed package, and a Pico's copy has it written in as it is
+# laid out (`tools/stage.py`), since MicroPython can't ask. So the venv says the
+# version it was last installed at: after tagging, install it again. A clone
+# without its tags gets a `0.1.devN` version, and one without git can't build.
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["synthsync"]

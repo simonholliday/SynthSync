@@ -1,17 +1,23 @@
 """The package imports on the Pico's Python as well as a laptop's."""
 
+import sys
+
 import synthsync
 import synthsync.core
 import synthsync.web
 
 
-def check_version_reads_as_three_numbers () -> None:
+def check_version_is_known_where_it_can_be () -> None:
 
-	"""The version is three numbers with dots between, on either Python."""
+	"""On a laptop the version is the installed package's, which starts with a number. MicroPython, running the tree as it stands, has no package to ask and says so.
 
-	parts = synthsync.__version__.split(".")
+	A Pico's copy has the version written in, which `tests/test_package.py` checks.
+	"""
 
-	assert len(parts) == 3
+	assert synthsync.LAID_OUT == ""
 
-	for part in parts:
-		assert part.isdigit()
+	if sys.implementation.name == "micropython":
+		assert synthsync.__version__ == "unknown"
+	else:
+		assert synthsync.__version__[0].isdigit()
+		assert " " not in synthsync.__version__

@@ -463,6 +463,7 @@ SynthSync is written in MicroPython, with tests that run on an ordinary computer
 
 - **The page runs with no Pico:** `python -m synthsync.sim` serves it from a laptop, on the same code that keeps time on the board.
 - **The tests:** `pip install -e '.[dev]'`, then `pytest` and `mypy`.
+- **The version** is the git tag's: tagging `v1.2.0` makes it 1.2.0, which the page's About shows. A Pico is given the version installed on the computer that copies SynthSync to it, so run `pip install -e '.[dev]'` again after tagging.
 - **Copying it to a Pico from the command line:** `python -m tools.install`, which needs `mpy-cross` for the same version of MicroPython.
 - **The wiring diagrams** in this README are drawn by `python -m tools.diagrams`, which needs nothing installed. Change a pin or a value there, never in the pictures.
 
