@@ -204,7 +204,7 @@ def test_the_stand_in_reports_in_the_players_terms () -> None:
 
 def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
 
-	"""With the right password it finds the network and switches to it, with the wrong one or an unknown name it says why and forgets it, and a reset goes back."""
+	"""With the right password it finds the network and switches to it, with the wrong one or an unknown name it says why and keeps the network that worked, and a reset goes back."""
 
 	engine = picoclock.sim.engine.Engine(2)
 	clock = picoclock.core.clock.Clock(picoclock.core.settings.Settings(2), engine)
@@ -239,7 +239,10 @@ def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
 
 	assert network.status()["mode"] == "own"
 	assert network.status()["problem"] == "Studio didn't accept that password"
-	assert clock.settings.network_name == ""
+
+	# The password that worked is kept, not the one that didn't.
+	assert clock.settings.network_name == "Studio"
+	assert clock.settings.network_password == "studio wifi"
 
 	# A network that isn't there is given up within two seconds here, where a Pico takes twenty.
 	clock.set_network("Garden", "garden wifi")
@@ -251,6 +254,7 @@ def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
 
 	assert network.status()["mode"] == "own"
 	assert network.status()["problem"] == "There was no network called Garden in range"
+	assert clock.settings.network_name == "Studio"
 
 	clock.set_network("Cafe", "")
 	spend(700)

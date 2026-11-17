@@ -171,6 +171,17 @@ def spend (wifi: picoclock.core.wifi.Wifi, milliseconds: int, step: int = 100) -
 		wifi.look(step)
 
 
+def saves (clock: picoclock.core.clock.Clock) -> int:
+
+	"""Say how many times the clock has asked for its settings to be saved."""
+
+	storage = clock.storage
+
+	assert isinstance(storage, tests.checks.check_clock.Storage)
+
+	return storage.changes
+
+
 def joined (network: str = "Studio", password: str = "studio wifi") -> "tuple[picoclock.core.wifi.Wifi, Radio, picoclock.core.clock.Clock]":
 
 	"""Make a PicoClock that has joined a network from the page, switching to it once the trial worked, and forget what the radio was asked on the way."""
@@ -795,6 +806,7 @@ def check_asking_again_for_the_saved_network_tries_it_again () -> None:
 def check_a_network_lost_for_a_minute_brings_the_own_network_back_and_is_kept () -> None:
 
 	wifi, radio, clock = joined()
+	saved = saves(clock)
 
 	del radio.networks["Studio"]
 	radio.lose()
@@ -812,6 +824,9 @@ def check_a_network_lost_for_a_minute_brings_the_own_network_back_and_is_kept ()
 	assert radio.calls[-2:] == [("leave",), ("own_up", OWN_NAME, "picoclock", "picoclock")]
 	assert clock.settings.network_name == "Studio"
 	assert not radio.together
+
+	# What was saved already holds it, so nothing is written to flash again.
+	assert saves(clock) == saved
 
 
 def check_a_network_that_comes_back_within_the_minute_is_carried_on_with () -> None:
@@ -1069,9 +1084,12 @@ def check_joining_another_network_leaves_the_first () -> None:
 	assert not radio.together
 
 
-def check_a_change_of_network_that_fails_leaves_nothing_saved () -> None:
+def check_a_change_of_network_that_fails_keeps_the_network_saved_before_and_goes_back_to_it () -> None:
+
+	"""Asked from the page for a network that isn't there, PicoClock forgets that one, saves again the network it was on, and goes back to it as after losing it."""
 
 	wifi, radio, clock = joined()
+	saved = saves(clock)
 
 	clock.set_network("Garden", "garden wifi")
 	spend(wifi, 21000)
@@ -1079,9 +1097,80 @@ def check_a_change_of_network_that_fails_leaves_nothing_saved () -> None:
 	assert wifi.status()["mode"] == "own"
 	assert wifi.status()["problem"] == "There was no network called Garden in range"
 
-	# The first network was given up when the second was asked for, and the second never worked.
-	assert clock.settings.network_name == ""
+	# Garden never worked. Studio did, so it is saved again, and that is saved to flash.
+	assert clock.settings.network_name == "Studio"
+	assert clock.settings.network_password == "studio wifi"
+	assert saves(clock) == saved + 2
+
+	# Putting it back is no request to join, so nothing is tried until the minute's listening hears it.
+	asked = len(radio.named("join"))
+	spend(wifi, 59000)
+
+	assert len(radio.named("join")) == asked
+	assert wifi.mode == picoclock.core.wifi.OWN
+
+	spend(wifi, 1100)
+
+	assert wifi.status() == {"mode": "joined", "name": "Studio", "address": JOINED_ADDRESS, "problem": "", "own": OWN_NAME, "found_at": ""}
 	assert not radio.together
+
+
+def check_a_mistyped_password_for_the_saved_network_keeps_the_password_that_worked () -> None:
+
+	"""The same network asked for again with a wrong password is refused, and the password it was saved with is kept."""
+
+	wifi, radio, clock = make(("Studio", "studio wifi"))
+
+	wifi.look(0)
+	spend(wifi, 1000)
+
+	assert wifi.mode == picoclock.core.wifi.JOINED
+
+	clock.set_network("Studio", "studio wify")
+	spend(wifi, 4000)
+
+	assert wifi.reason == picoclock.core.wifi.WRONG_PASSWORD
+	assert clock.settings.network_name == "Studio"
+	assert clock.settings.network_password == "studio wifi"
+
+	# A restart, as after a power cut, joins it with the password that works.
+	wifi.close()
+	radio.calls = []
+	wifi.look(0)
+	spend(wifi, 1000)
+
+	assert radio.named("join") == [("join", "Studio", "studio wifi", "picoclock")]
+	assert wifi.mode == picoclock.core.wifi.JOINED
+
+
+def check_a_failed_join_with_nothing_saved_before_leaves_nothing_saved () -> None:
+
+	"""A PicoClock that had no network saved has none after a join of one that fails."""
+
+	wifi, radio, clock = make()
+
+	wifi.look(0)
+	clock.set_network("Garden", "garden wifi")
+	spend(wifi, 21000)
+
+	assert wifi.mode == picoclock.core.wifi.OWN
+	assert clock.settings.network_name == ""
+	assert clock.settings.network_password == ""
+
+
+def check_a_forgotten_network_isnt_put_back_after_a_failed_join () -> None:
+
+	"""Forgetting a network on the page means it: a failed join after that leaves nothing saved."""
+
+	wifi, radio, clock = joined()
+
+	clock.forget_network()
+	spend(wifi, 1000)
+	clock.set_network("Garden", "garden wifi")
+	spend(wifi, 21000)
+
+	assert wifi.mode == picoclock.core.wifi.OWN
+	assert clock.settings.network_name == ""
 
 
 def check_asking_for_the_network_it_is_already_on_does_nothing () -> None:
@@ -1154,7 +1243,8 @@ def check_a_radio_that_cant_do_as_asked_is_started_afresh_from_the_settings () -
 	radio.broken = False
 	wifi.look(100)
 
-	assert radio.calls == [("own_up", OWN_NAME, "picoclock", "picoclock")]
+	# Whatever the failure left up is switched off first, so the two networks are never up together.
+	assert radio.calls == [("own_down",), ("leave",), ("own_up", OWN_NAME, "picoclock", "picoclock")]
 	assert wifi.status()["mode"] == "own"
 
 	# A failure half way through a change is recovered from the same way.
@@ -1173,7 +1263,40 @@ def check_a_radio_that_cant_do_as_asked_is_started_afresh_from_the_settings () -
 	radio.calls = []
 	wifi.look(100)
 
-	assert radio.calls == [("join", "Studio", "studio wifi", "picoclock")]
+	assert radio.calls == [("own_down",), ("leave",), ("join", "Studio", "studio wifi", "picoclock")]
+
+	# It was asked for from the page, so it is still a trial, and the page learns where PicoClock will be.
+	spend(wifi, 1000)
+
+	assert wifi.status()["mode"] == "found"
+	assert wifi.status()["found_at"] == JOINED_ADDRESS
+	assert not radio.together
+
+
+def check_a_radio_that_fails_as_a_join_is_asked_still_puts_back_the_network_saved_before () -> None:
+
+	"""The radio failing just as the page's join begins doesn't make the join one for good, and when it fails the network that worked is still saved again."""
+
+	wifi, radio, clock = joined()
+
+	clock.set_network("Garden", "garden wifi")
+	wifi.look(100)
+	radio.broken = True
+
+	try:
+		spend(wifi, 1000)
+		assert False, "the radio's failure went unsaid"
+
+	except OSError:
+		pass
+
+	radio.broken = False
+	spend(wifi, 22000)
+
+	assert wifi.status()["mode"] == "own"
+	assert wifi.status()["problem"] == "There was no network called Garden in range"
+	assert clock.settings.network_name == "Studio"
+	assert clock.settings.network_password == "studio wifi"
 
 
 def check_a_radio_that_fails_during_a_first_join_doesnt_make_the_network_count_as_having_worked () -> None:

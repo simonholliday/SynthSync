@@ -37,6 +37,12 @@ import time
 import picoclock.core.wifi
 import tools.stage
 
+# The file the join tool puts on the Pico for a moment, with a network's name
+# and password in it. The Pico removes it as it reads it, and so does the join
+# tool afterwards. An install, or taking PicoClock off, removes it too, in case
+# anything ever left it behind.
+JOIN_FILE = "_join.txt"
+
 # Run on the Pico to take files and folders off it. Given no names, it takes
 # off everything there is.
 REMOVE = """
@@ -211,7 +217,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 		print("Laid out %d files, %d KB in all." % (count, total // 1024))
 
 		# The old copy goes first, so that nothing it had and this one hasn't is left behind.
-		if not remove(device, [] if wipe else top):
+		if not remove(device, [] if wipe else top + [JOIN_FILE]):
 			return False
 
 		print("Emptied the Pico's storage." if wipe else "Took off any copy that was there.")
@@ -318,7 +324,7 @@ def main (arguments: list[str] | None = None) -> int:
 
 		print("Taking %s off %s" % ("everything" if options.wipe else "PicoClock", device))
 
-		if not remove(device, [] if options.wipe else ["picoclock", "microdot", tools.stage.MAIN]):
+		if not remove(device, [] if options.wipe else ["picoclock", "microdot", tools.stage.MAIN, JOIN_FILE]):
 			return 1
 
 		print("Done. The Pico's storage is empty." if options.wipe else "Done. Any settings the Pico had saved are still there.")

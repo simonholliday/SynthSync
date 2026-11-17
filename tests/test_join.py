@@ -42,6 +42,9 @@ class Pico:
 		if arguments[0] == "exec" and "FORGOTTEN" in arguments[1]:
 			return True, "FORGOTTEN\n"
 
+		if arguments[0] == "exec" and "REMOVED" in arguments[1]:
+			return True, "REMOVED\n"
+
 		if arguments[0] == "exec":
 			return True, self.says
 
@@ -80,17 +83,18 @@ def never_shown (pico: Pico, said: str, file: pathlib.Path) -> None:
 
 def test_a_network_is_copied_tried_and_the_pico_restarted (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], network: pathlib.Path) -> None:
 
-	"""The file goes to the Pico by itself, the Pico is asked to try it, and then it is restarted."""
+	"""The file goes to the Pico by itself, the Pico is asked to try it, the file is removed, and then the Pico is restarted."""
 
 	pico = Pico()
 	use(monkeypatch, pico)
 
 	assert tools.join.main([str(network)]) == 0
 
-	copying, trying, restarting = pico.asked
+	copying, trying, removing, restarting = pico.asked
 
 	assert copying == ["fs", "cp", str(network), ":/_join.txt"]
 	assert trying[0] == "exec" and "/_join.txt" in trying[1]
+	assert removing[0] == "exec" and "['_join.txt']" in removing[1] and "REMOVED" in removing[1]
 	assert restarting == ["reset"]
 
 	said = capsys.readouterr().out
@@ -206,14 +210,44 @@ def test_a_pico_without_picoclock_is_told_apart (monkeypatch: pytest.MonkeyPatch
 
 def test_a_file_that_cannot_be_copied_stops_there_and_the_pico_is_restarted (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], network: pathlib.Path) -> None:
 
-	"""Nothing is tried without the file, and the Pico isn't left stopped."""
+	"""Nothing is tried without the file, whatever of it did get across is removed, and the Pico isn't left stopped."""
 
 	pico = Pico(fail="fs cp")
 	use(monkeypatch, pico)
 
 	assert tools.join.main([str(network)]) == 1
-	assert [asked[0] for asked in pico.asked] == ["fs", "reset"]
+	assert [asked[0] for asked in pico.asked] == ["fs", "exec", "reset"]
+	assert "['_join.txt']" in pico.asked[1][1]
 	never_shown(pico, capsys.readouterr().out, network)
+
+
+@pytest.mark.parametrize("says", ["JOINED 192.168.1.23 picoclock 4200\n", "FAILED not_found 20600\n", "REFUSED A network's name has between 1 and 32 characters\n", "Traceback (most recent call last):\nImportError: no module named 'picoclock'\n", ""])
+def test_the_file_is_removed_from_the_pico_however_the_join_went (monkeypatch: pytest.MonkeyPatch, network: pathlib.Path, says: str) -> None:
+
+	"""The Pico removes the file as it reads it, but it may never have run: so the file is removed again before every restart."""
+
+	pico = Pico(says=says)
+	use(monkeypatch, pico)
+
+	tools.join.main([str(network)])
+
+	assert [asked[0] for asked in pico.asked] == ["fs", "exec", "exec", "reset"]
+	assert "['_join.txt']" in pico.asked[2][1]
+
+
+def test_a_file_that_cannot_be_removed_is_said_to_be_there_still (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], network: pathlib.Path) -> None:
+
+	"""A Pico that won't remove the file is a Pico with a password on it in plain text, and the tool says how to remove it, without showing what the Pico said."""
+
+	pico = Pico(fail="REMOVED")
+	use(monkeypatch, pico)
+
+	tools.join.main([str(network)])
+	said = capsys.readouterr().out
+
+	assert "may still be on the Pico" in said and "Installing PicoClock again removes it" in said
+	assert "boom" not in said
+	assert pico.asked[-1] == ["reset"]
 
 
 def test_a_file_with_no_name_in_it_never_reaches_the_pico (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: pathlib.Path) -> None:
@@ -308,3 +342,20 @@ def test_what_runs_on_the_pico_is_python_that_prints_nothing_from_the_file () ->
 
 	assert len(removing) == 1
 	assert "open(" in ast.unparse(removing[0].body[0])
+
+	# And before anything else is done, so that nothing failing first, such as PicoClock not being there to import, can leave it behind.
+	assert ast.unparse(tree.body[0]) == "import os"
+	assert tree.body[1] is removing[0]
+
+
+def test_the_pico_saves_its_settings_only_when_the_network_was_joined () -> None:
+
+	"""A join that fails leaves what the Pico had saved exactly as it was, the network it was on among it."""
+
+	tree = ast.parse(tools.join.JOIN % (tools.join.HANDOVER, tools.join.HANDOVER, False))
+	saving = [node for node in ast.walk(tree) if isinstance(node, ast.If) and any("save_now" in ast.unparse(each) for each in node.body)]
+
+	assert "save_now" in tools.join.JOIN
+	assert len(saving) == 1 and ast.unparse(saving[0].test) == "joined"
+	assert tools.join.JOIN.count("save_now") == 1
+	assert "joined = wifi.mode == picoclock.core.wifi.FOUND" in tools.join.JOIN

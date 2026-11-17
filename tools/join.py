@@ -7,15 +7,15 @@
 The file holds the network's name on its first line and its password on its
 second. An open network has no second line. The file is copied to the Pico,
 which reads it, removes it and tries to join, just as it does when asked from
-the page: for up to twenty seconds, keeping the network only if it gets in.
+the page: for up to twenty seconds, saving the network only if it gets in.
 The Pico is then restarted. If it joined, it joins again as it starts, and
 this says where its page is. If it didn't, this says why, and the Pico comes
-back up on its own network.
+back up as it was before: on the network it had saved, or on its own.
 
 `--forget` has the Pico forget the network it has saved and go back to its
 own. `--wrong-password` is for testing: it tries the file's network with a
-password that isn't its own, to see PicoClock refused and back on its own
-network, and it succeeds when that is what happens.
+password that isn't its own, to see PicoClock refused with nothing saved, and
+it succeeds when that is what happens.
 
 Nothing in the file is printed, here or by the Pico, and nothing in it is
 ever put on a command line. This is for setting a PicoClock up over USB when
@@ -33,12 +33,23 @@ import sys
 import tools.install
 
 # Where the file is put on the Pico, for as long as it takes to read it.
-HANDOVER = "/_join.txt"
+HANDOVER = "/" + tools.install.JOIN_FILE
 
 # Run on the Pico to read the file, remove it, and try the network as a join
 # from the page is tried. It says how that went and never what was in the file.
+# The file is read and removed before anything else, so that nothing failing
+# later, not even PicoClock missing from the Pico, can leave it behind. The
+# settings are saved only when the network was joined, so a join that fails
+# leaves what the Pico had saved as it was.
 JOIN = """
 import os
+
+try:
+	with open(%r) as handle:
+		lines = handle.read().split("\\n")
+finally:
+	os.remove(%r)
+
 import time
 
 import picoclock.core.clock
@@ -52,50 +63,50 @@ settings = picoclock.core.settings.Settings(picoclock.device.board.OUTPUTS)
 storage = picoclock.device.storage.Storage(settings)
 storage.load()
 
-try:
-	with open(%r) as handle:
-		lines = handle.read().split("\\n")
-finally:
-	os.remove(%r)
-
 clock = picoclock.core.clock.Clock(settings, None, storage)
 wifi = picoclock.device.radio.make(clock)
-wifi.look(0)
-
-password = lines[1].strip("\\r") if len(lines) > 1 else ""
-
-if %r:
-	password = "wrong-on-purpose"
-
-began = time.ticks_ms()
+joined = False
 
 try:
-	clock.set_network(lines[0].strip("\\r"), password)
+	wifi.look(0)
 
-except ValueError as problem:
-	print("REFUSED", problem)
+	password = lines[1].strip("\\r") if len(lines) > 1 else ""
 
-else:
+	if %r:
+		password = "wrong-on-purpose"
 
-	waited = 0
+	began = time.ticks_ms()
 
-	# A join from the page is a trial, which ends with the Pico back on its own network and the address known.
-	# The settings then hold the network, so the restart that follows joins it for good.
-	while waited < 30000 and wifi.mode != picoclock.core.wifi.FOUND and not wifi.reason:
-		time.sleep_ms(100)
-		wifi.look(100)
-		waited += 100
+	try:
+		clock.set_network(lines[0].strip("\\r"), password)
 
-	took = time.ticks_diff(time.ticks_ms(), began)
+	except ValueError as problem:
+		print("REFUSED", problem)
 
-	if wifi.mode == picoclock.core.wifi.FOUND:
-		print("JOINED", wifi.status()["found_at"], settings.host_name, took)
 	else:
-		print("FAILED", wifi.reason or picoclock.core.wifi.TRYING, took)
+
+		waited = 0
+
+		# A join from the page is a trial, which ends with the Pico back on its own network and the address known.
+		# The settings then hold the network, so the restart that follows joins it for good.
+		while waited < 30000 and wifi.mode != picoclock.core.wifi.FOUND and not wifi.reason:
+			time.sleep_ms(100)
+			wifi.look(100)
+			waited += 100
+
+		took = time.ticks_diff(time.ticks_ms(), began)
+		joined = wifi.mode == picoclock.core.wifi.FOUND
+
+		if joined:
+			print("JOINED", wifi.status()["found_at"], settings.host_name, took)
+		else:
+			print("FAILED", wifi.reason or picoclock.core.wifi.TRYING, took)
 
 finally:
 	wifi.close()
-	storage.save_now()
+
+	if joined:
+		storage.save_now()
 """
 
 # Run on the Pico to forget the network it has saved.
@@ -132,6 +143,20 @@ def said (output: str, word: str) -> list[str] | None:
 			return line.split()[1:]
 
 	return None
+
+
+def take_off (device: str) -> bool:
+
+	"""Remove the file from the Pico, if it is there, and say whether that worked. What the Pico says is never shown: it could hold what was in the file."""
+
+	worked, output = tools.install.on_pico(device, ["exec", tools.install.REMOVE % ([tools.install.JOIN_FILE],)])
+
+	if worked and "REMOVED" in output:
+		return True
+
+	print("The file may still be on the Pico, with the network's name and password in it. Installing PicoClock again removes it.")
+
+	return False
 
 
 def restart (device: str) -> bool:
@@ -189,6 +214,7 @@ def join (device: str, file: pathlib.Path, wrong: bool = False) -> bool:
 
 	if not worked:
 		print("The file couldn't be copied to the Pico.")
+		take_off(device)
 		restart(device)
 		return False
 
@@ -202,6 +228,9 @@ def join (device: str, file: pathlib.Path, wrong: bool = False) -> bool:
 	failed = said(output, "FAILED")
 	refused = said(output, "REFUSED")
 
+	# The Pico removes the file as it reads it, but nothing is left to chance: it may never have been read.
+	take_off(device)
+
 	if not restart(device):
 		return False
 
@@ -209,7 +238,7 @@ def join (device: str, file: pathlib.Path, wrong: bool = False) -> bool:
 
 		if failed is not None and failed[:1] == ["wrong_password"]:
 			print("The network refused the password after %s seconds, as it should, and nothing was saved." % seconds(failed[-1]))
-			print("Restarted the Pico, which comes up on its own network.")
+			print("Restarted the Pico, which comes up as it was before.")
 			return True
 
 		if joined is not None:

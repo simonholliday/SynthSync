@@ -19,7 +19,9 @@ nobody would know its address there.
   looked for again, and a password refused twice ends the trying early.
 - **A join that fails brings the Pico's own network back,** with the reason
   for the page to show. A network that has never worked is forgotten, so it
-  isn't tried again at every power-up. One that has worked before is kept.
+  isn't tried again at every power-up, and the network saved before it is
+  saved again: a mistyped password never costs the network that worked. One
+  that has worked before is kept.
 - **At power-up the saved network is joined,** in the same way, but with no
   trial: it has worked before.
 - **A network that is lost for a minute** counts as a join that failed.
@@ -255,6 +257,10 @@ class Wifi:
 		# after the radio has failed isn't a power-up, and proves nothing.
 		self._begun = False
 
+		# Whether the radio failed part way through something, so that either
+		# network may still be up, and both are to be switched off before starting afresh.
+		self._unsure = False
+
 		# The password the Pico's own network is running with, or None while it is down.
 		self._own_password: "str | None" = None
 
@@ -336,6 +342,11 @@ class Wifi:
 
 		"""Switch off whatever is up and begin joining a network, as a trial if asked."""
 
+		# Noted before the radio is touched, so that a radio that fails part way
+		# is started afresh with the same join, still a trial if this was one.
+		self._target = (name, password)
+		self._trial = trial
+
 		if self._own_is_up():
 			self.radio.own_down()
 			self._own_password = None
@@ -343,8 +354,6 @@ class Wifi:
 		elif self.mode:
 			self.radio.leave()
 
-		self._target = (name, password)
-		self._trial = trial
 		self._found = ""
 		self._waited = 0
 		self._refused = 0
@@ -372,7 +381,11 @@ class Wifi:
 
 	def _give_up (self, reason: str) -> None:
 
-		"""Go back to the Pico's own network, saying why, and forget the network unless it has worked before."""
+		"""Go back to the Pico's own network, saying why, and forget the network unless it has worked before.
+
+		The network that worked before is saved again in its place, if there
+		was one, and is listened for once a minute, as after losing it.
+		"""
 
 		assert self._target is not None
 
@@ -388,17 +401,26 @@ class Wifi:
 		self._quiet = True
 
 		try:
-			self.clock.forget_network()
+
+			if self._proven is None:
+				self.clock.forget_network()
+			else:
+				self.clock.put_back_network(self._proven[0], self._proven[1])
 
 		finally:
 			self._quiet = False
 
 	def _begin (self) -> None:
 
-		"""Start as the settings say, as at power-up: join the saved network, or run the Pico's own."""
+		"""Start as the settings say, as at power-up: join the saved network, or run the Pico's own.
+
+		After the radio has failed, a trial join it was in the middle of is
+		begun again as a trial, so the page still learns where PicoClock will be.
+		"""
 
 		name = self.settings.network_name
 		password = self.settings.network_password
+		trial = self._begun and self._trial and self._target == (name, password)
 
 		self._joins = self.clock.joins
 		self._switches = self.clock.switches
@@ -409,8 +431,14 @@ class Wifi:
 			self._begun = True
 			self._proven = (name, password) if name else None
 
+		# Whatever the radio failed at may have left a network up, and the two are never up together.
+		if self._unsure:
+			self.radio.own_down()
+			self.radio.leave()
+			self._unsure = False
+
 		if name:
-			self._join(name, password)
+			self._join(name, password, trial)
 		else:
 			self._own("", "")
 
@@ -646,6 +674,7 @@ class Wifi:
 			# Nothing is known to be up any more.
 			self.mode = ""
 			self._own_password = None
+			self._unsure = True
 
 			raise
 
@@ -696,12 +725,13 @@ class Wifi:
 
 		"""Switch everything off. A look after this starts afresh from the settings."""
 
-		if self.mode == JOINING or self.mode == JOINED:
+		if self.mode == JOINING or self.mode == JOINED or self._unsure:
 			self.radio.leave()
 
 		self.radio.own_down()
 
 		self.mode = ""
+		self._unsure = False
 		self._own_password = None
 		self._target = None
 		self._found = ""

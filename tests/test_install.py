@@ -451,7 +451,8 @@ def test_an_install_takes_the_old_copy_off_copies_the_new_tries_it_and_only_then
 
 	removing, copying, loading, trying, starting, restarting = pico.asked
 
-	assert removing[0] == "exec" and "['picoclock', 'microdot', 'main.py']" in removing[1]
+	# The join tool's file goes too, in case anything ever left it behind with a network's password in it.
+	assert removing[0] == "exec" and "['picoclock', 'microdot', 'main.py', '_join.txt']" in removing[1]
 	assert copying[:3] == ["fs", "cp", "-r"] and copying[-1] == ":"
 	assert sorted(copying[3:-1]) == ["microdot", "picoclock"]
 	assert "picoclock.core.timeline" in loading[1] and "picoclock.device.start" in loading[1]
@@ -551,7 +552,7 @@ def test_wiping_empties_the_pico_first (monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_removing_takes_picoclock_off_and_copies_nothing (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
 
-	"""`--remove` takes off PicoClock's own files and stops there."""
+	"""`--remove` takes off PicoClock's own files, and any file the join tool left, and stops there."""
 
 	pico = Pico()
 
@@ -560,7 +561,7 @@ def test_removing_takes_picoclock_off_and_copies_nothing (monkeypatch: pytest.Mo
 
 	assert tools.install.main(["--remove"]) == 0
 	assert len(pico.asked) == 1
-	assert "['picoclock', 'microdot', 'main.py']" in pico.asked[0][1]
+	assert "['picoclock', 'microdot', 'main.py', '_join.txt']" in pico.asked[0][1]
 	assert "settings" in capsys.readouterr().out
 
 

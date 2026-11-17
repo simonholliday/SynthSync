@@ -518,8 +518,15 @@ def check_network_settings_are_saved_and_told () -> None:
 	assert clock.settings.network_name == ""
 	assert clock.settings.network_password == ""
 
-	assert watcher.told == [(picoclock.core.clock.NETWORK, by) for by in (1, 2, 3, 4)]
-	assert storage.changes == 4
+	# Putting back the network saved before a failed join saves it too, but isn't a request to join it.
+	clock.put_back_network("Studio", "a password", 5)
+
+	assert clock.settings.network_name == "Studio"
+	assert clock.settings.network_password == "a password"
+	assert clock.joins == 1
+
+	assert watcher.told == [(picoclock.core.clock.NETWORK, by) for by in (1, 2, 3, 4, 5)]
+	assert storage.changes == 5
 
 	clock.flush()
 

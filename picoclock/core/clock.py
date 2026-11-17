@@ -321,6 +321,19 @@ class Clock:
 		self._keep()
 		self._tell(NETWORK, by)
 
+	def put_back_network (self, name: str, password: str, by: object = None) -> None:
+
+		"""Remember again the WiFi network that was saved before a join of another one failed.
+
+		It isn't counted as a request to join, so whatever works the radio goes
+		back to it as it would after losing it.
+		"""
+
+		self.settings.set_network(name, password)
+
+		self._keep()
+		self._tell(NETWORK, by)
+
 	def switch_network (self, by: object = None) -> None:
 
 		"""Have the Pico join for good, without waiting, the network a trial join found. Nothing is saved: the settings already hold it."""
