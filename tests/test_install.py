@@ -10,6 +10,7 @@ import pathlib
 import re
 import subprocess
 import time
+import typing
 
 import pytest
 
@@ -246,6 +247,74 @@ def test_nothing_the_second_core_runs_takes_a_method_out_under_a_name () -> None
 	found = methods_taken_out("import time\n\nclass Player:\n\n\tdef _take (self):\n\t\tpass\n\n\tdef _build (self, timeline):\n\t\tput = self.machine.put\n\t\tnext_word = timeline.next_word\n\t\ttake = self._take\n\t\tkept = self._put\n\t\tticks = time.ticks_us\n\t\tcount = self.machine.count\n\t\tput(next_word())\n\t\ttake()\n\t\tkept(ticks())\n")
 
 	assert found == ["_build: put = self.machine.put", "_build: next_word = timeline.next_word", "_build: take = self._take"]
+
+
+def own_nodes (function: ast.FunctionDef | ast.AsyncFunctionDef) -> typing.Iterator[ast.AST]:
+
+	"""Give every node of a function's own body, leaving out the functions, classes and lambdas inside it, which have names of their own."""
+
+	nested = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+	waiting: list[ast.AST] = [node for node in function.body if not isinstance(node, nested)]
+
+	while waiting:
+
+		node = waiting.pop()
+
+		yield node
+
+		waiting.extend(child for child in ast.iter_child_nodes(node) if not isinstance(child, nested))
+
+
+def used_before_imported (source: str) -> list[str]:
+
+	"""Say where a function uses a name before importing it there.
+
+	An import inside a function makes the name the function's own from its
+	first line, so a use above the import fails, on either Python, and only
+	when that function runs.
+	"""
+
+	found = []
+
+	for function in ast.walk(ast.parse(source)):
+
+		if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+			continue
+
+		imported: dict[str, int] = {}
+		used: dict[str, int] = {}
+
+		for node in own_nodes(function):
+
+			if isinstance(node, (ast.Import, ast.ImportFrom)):
+
+				for alias in node.names:
+					name = alias.asname or alias.name.split(".")[0]
+					imported[name] = min(imported.get(name, node.lineno), node.lineno)
+
+			elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+				used[node.id] = min(used.get(node.id, node.lineno), node.lineno)
+
+		for name, line in imported.items():
+			if name in used and used[name] < line:
+				found.append("%s uses %s on line %d and imports it on line %d" % (function.name, name, used[name], line))
+
+	return found
+
+
+def test_no_function_uses_a_name_before_importing_it_there () -> None:
+
+	"""Nothing uses a package and then imports part of it further down the same function, which fails only when the function runs: on the board, that may be hours into a run."""
+
+	assert used_before_imported("def measure ():\n\tpin = synthsync.board.PIN\n\timport synthsync.config\n") == ["measure uses synthsync on line 2 and imports it on line 3"]
+	assert used_before_imported("def measure ():\n\timport synthsync.config\n\tpin = synthsync.board.PIN\n") == []
+
+	found = []
+
+	for path in sorted([ROOT / "main.py"] + list((ROOT / "synthsync").rglob("*.py")) + list((ROOT / "tools").rglob("*.py"))):
+		found += ["%s: %s" % (path.relative_to(ROOT), place) for place in used_before_imported(path.read_text())]
+
+	assert found == []
 
 
 def test_everything_asked_of_the_radio_chip_goes_through_the_guard () -> None:

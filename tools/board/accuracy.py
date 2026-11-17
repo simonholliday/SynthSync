@@ -31,6 +31,15 @@ import uctypes
 import synthsync.device.board
 import synthsync.device.player
 
+# As many outputs play as config.txt says are wired. An install from before
+# config.txt said so in its own code.
+try:
+	import synthsync.core.config
+	_OUTPUTS = synthsync.core.config.read(synthsync.device.board.CONFIG).outputs
+
+except ImportError:
+	_OUTPUTS = synthsync.device.board.OUTPUTS
+
 # The system clock, which the gaps are timed in, and how many of its cycles
 # make one of the scheduler's ticks of a microsecond.
 _HZ = machine.freq()
@@ -210,15 +219,7 @@ def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: 
 	"""
 
 	first_pin = synthsync.device.board.FIRST_OUTPUT_PIN
-
-	# As many outputs play as config.txt says are wired. An install from before
-	# config.txt said so in its own code.
-	try:
-		import synthsync.core.config
-		outputs = synthsync.core.config.read(synthsync.device.board.CONFIG).outputs
-
-	except ImportError:
-		outputs = synthsync.device.board.OUTPUTS
+	outputs = _OUTPUTS
 	ring = Ring(first_pin)
 	player = synthsync.device.player.Player(first_pin, outputs)
 
