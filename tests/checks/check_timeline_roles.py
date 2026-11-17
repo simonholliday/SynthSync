@@ -215,6 +215,24 @@ def check_clocks_start_at_once_when_there_is_nothing_to_follow () -> None:
 	assert player.rises[2] == []
 
 
+def check_a_start_with_nothing_to_follow_keeps_no_lead_from_the_start_before () -> None:
+
+	"""Started again within a lead's ten milliseconds, with the start pulse muted meanwhile, the clocks begin at once, and a change of tempo straight after puts the next beat where the new tempo says."""
+
+	timeline = tests.checks.check_timeline.make([(1, 1), (1, 1)], 12000)
+	timeline.set_role(1, picoclock.core.timeline.START_PULSE)
+	timeline.start()
+	timeline.set_mute(1, True)
+
+	assert timeline.start() == 0
+
+	timeline.set_tempo(6000)
+	player = tests.checks.check_timeline.Player(timeline)
+	player.play(1000)
+
+	assert player.rises[0][:2] == [0, 1000000]
+
+
 def check_a_stop_pulse_fires_when_the_clock_stops () -> None:
 
 	"""Stopping sets everything low except a stop pulse, which fires once and then goes quiet."""

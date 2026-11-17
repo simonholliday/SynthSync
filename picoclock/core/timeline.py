@@ -33,8 +33,9 @@ SLOWEST_TEMPO = 2000
 FASTEST_TEMPO = 30000
 
 # The longest a single word may hold the pins, in ticks. The player is always
-# given eight words ahead, so this bounds how long a change takes to be heard:
-# 20 ms at most, and less when the outputs are busy.
+# eight words ahead and playing a ninth, and a change waits too for the few
+# words put by to cover it, so this bounds how long a change takes to be
+# heard: about 25 ms at most, and less when the outputs are busy.
 HOLD_LIMIT = 2500
 
 # The most outputs a timeline drives. A word's low bits carry their pins first,
@@ -87,6 +88,23 @@ _CHANGES_WRAP = 0xFFFFFF
 _LARGEST_PART = 9600
 _SLOWEST_BEATS = 128
 _FASTEST_PULSES = 96
+
+
+def gap_ticks (tempo: int, pulses: int, beats: int) -> "tuple[int, int]":
+
+	"""Give the two lengths, in ticks, the gaps of a steady output can take: its exact gap rounded down, and rounded up.
+
+	An output playing `pulses` to `beats` beats at `tempo` hundredths of a BPM
+	pulses every beats x 6,000,000,000 / (pulses x tempo) ticks, and each pulse
+	is on the tick at or just before its exact time. So from whatever moment it
+	is watched, each gap is the exact one rounded down or up, the two being the
+	same when it is whole. This is for the tools that time the pins: the
+	player never calls it.
+	"""
+
+	whole, part = divmod(beats * _BEAT_FACTOR * _MILLION, pulses * tempo)
+
+	return (whole, whole + 1 if part else whole)
 
 
 class Timeline:
@@ -565,8 +583,8 @@ class Timeline:
 
 		self.owed = 0
 
-		if lead:
-			self.fall[self.master] = lead
+		# Set even when there is no lead, so none is left from a start just before.
+		self.fall[self.master] = lead if lead else -1
 
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 

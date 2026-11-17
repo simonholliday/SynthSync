@@ -82,7 +82,11 @@ class Storage:
 
 	def save_now (self) -> bool:
 
-		"""Save the settings at once if they differ from what's on flash, and say whether a save was made."""
+		"""Save the settings at once if they differ from what's on flash, and say whether a save was made.
+
+		A save that fails is due again once things have been quiet for as long
+		again, and what went wrong is passed on, to be printed.
+		"""
 
 		self._due = None
 		text = self.settings.to_text()
@@ -90,10 +94,16 @@ class Storage:
 		if text == self._saved:
 			return False
 
-		if self.player is None:
-			self._write(text)
-		else:
-			self.player.protect(lambda: self._write(text))
+		try:
+
+			if self.player is None:
+				self._write(text)
+			else:
+				self.player.protect(lambda: self._write(text))
+
+		except Exception:
+			self.changed()
+			raise
 
 		self._saved = text
 		self.saves += 1

@@ -81,7 +81,11 @@ _TXF0 = 0x50200000 + 0x010
 # How many words the player's queue holds.
 _DEPTH = 8
 
-# How many words a backlog can hold, and how long one lasts unless asked otherwise, in ticks.
+# How many words a backlog can hold, and how long one lasts unless asked
+# otherwise, in ticks. At the busiest the outputs can be, eight of them at 96
+# pulses a beat on unrelated ratios at 300 BPM, the words run out after about
+# 266 ms rather than 300: still nearly twice the longest flash write measured,
+# 143 ms.
 _BACKLOG_WORDS = 2048
 _BACKLOG_TICKS = 300000
 
@@ -334,11 +338,14 @@ class Player:
 					looked = now
 					since = 0
 
-			# A press just seen, or one seen while the second core waited.
+			# A press just seen, or one seen while the second core waited. A start
+			# made here must be fed before any command is taken, or a save waiting
+			# in the queue would be made as if nothing played, so commands wait
+			# for the next pass.
 			if kept[0]:
 				self._carry_out(playing)
 
-			if marks[0] != marks[1]:
+			elif marks[0] != marks[1]:
 
 				if playing:
 					self._take_under_cover()
@@ -640,6 +647,12 @@ class Player:
 		nothing more is taken until the first core says the write has ended, or
 		for as long as a backlog of this many ticks would have lasted, if it
 		never says. A press of a button meanwhile is kept for afterwards.
+
+		This is only once the clock has gone quiet. Just after a pause, while a
+		pulse begun before it or the tempo LED's flash is still finishing, a pin
+		is high and has to fall on time, so a write takes a backlog as usual,
+		and a press waits for it: a third of a second at most. With half-gap
+		pulses at the slowest ratios, a pulse can take minutes to finish.
 		"""
 
 		writes = self._writes

@@ -172,7 +172,9 @@ class Settings:
 		Every output's ratio is a ratio of the clock, so each one keeps its
 		ratio and changes speed with the clock. One that would then pass the
 		most pulses a beat any output may send is moved to the fastest ratio
-		there is at the new PPQN, which is a snap value.
+		there is at the new PPQN, which is a snap value. One too fine to play
+		exactly at the new PPQN is moved to its nearest snap value, as turning
+		snap on would.
 		"""
 
 		if isinstance(ppqn, bool) or not isinstance(ppqn, int) or ppqn not in picoclock.core.ratio.PPQNS:
@@ -188,6 +190,13 @@ class Settings:
 
 			if picoclock.core.ratio.compare(output.ratio, top) > 0:
 				output.ratio = top
+				moved.append(index)
+
+			# What an output sends a beat is its ratio times the PPQN, so a
+			# fraction fine enough at a low PPQN can have too large a numerator
+			# for the scheduler at a higher one.
+			elif picoclock.core.ratio.effective(output.ratio, ppqn)[0] > picoclock.core.ratio.LARGEST_PART:
+				output.ratio = picoclock.core.ratio.nearest_snap(output.ratio, ppqn)
 				moved.append(index)
 
 		self.ppqn = ppqn

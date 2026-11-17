@@ -2,6 +2,7 @@
 
 import json
 
+import picoclock.core.ratio
 import picoclock.core.settings
 import picoclock.core.timeline
 
@@ -492,6 +493,58 @@ def check_a_change_of_ppqn_moves_only_the_outputs_that_would_be_too_fast () -> N
 		assert refusal_of_ppqn(settings, wrong) == "The clock sends 1, 2, 4, 8, 12, 16, 24 or 48 pulses a beat", wrong
 
 	assert settings.ppqn == 1
+
+
+def check_a_ratio_too_fine_for_a_higher_ppqn_takes_its_nearest_snap_value () -> None:
+
+	"""A fraction fine enough to type at a low PPQN, whose pulses a beat would then need numbers too large to play exactly, moves as turning snap on would."""
+
+	settings = picoclock.core.settings.Settings(4)
+	settings.set_ppqn(1)
+
+	for index in (1, 2):
+		settings.set_output(index, "snap", False)
+
+	settings.set_output(1, "ratio", "9599/9598")
+	settings.set_output(2, "ratio", "3/2")
+
+	assert settings.set_ppqn(48) == [1]
+	assert settings.outputs[1].ratio == picoclock.core.ratio.nearest_snap((9599, 9598), 48)
+	assert settings.outputs[2].ratio == (3, 2)
+
+	settings.set_ppqn(4)
+	settings.set_output(3, "snap", False)
+	settings.set_output(3, "ratio", "2399/4799")
+
+	assert settings.set_ppqn(8) == [3]
+	assert settings.outputs[3].ratio == picoclock.core.ratio.nearest_snap((2399, 4799), 8)
+
+
+def check_every_ratio_held_after_any_change_of_ppqn_is_one_the_scheduler_takes () -> None:
+
+	"""Whatever ratio the settings took at one PPQN, every PPQN after it leaves something the scheduler will play."""
+
+	fine = ("9599/9598", "9600/9599", "4799/4800", "2399/4799", "1199/2399", "599/1199", "75/9599", "96", "1/128", "95.99", "0.01", "47.99")
+	timeline = picoclock.core.timeline.Timeline(2)
+
+	for first in picoclock.core.ratio.PPQNS:
+
+		for typed in fine:
+
+			settings = picoclock.core.settings.Settings(2)
+			settings.set_ppqn(first)
+			settings.set_output(1, "snap", False)
+
+			if refusal(settings, "output", 1, "ratio", typed):
+				continue
+
+			for then in picoclock.core.ratio.PPQNS:
+
+				settings.set_ppqn(then)
+				pulses, beats = picoclock.core.ratio.effective(settings.outputs[1].ratio, then)
+
+				# The scheduler refuses by raising, so taking it is all there is to see.
+				timeline.set_ratio(1, pulses, beats)
 
 
 def refusal_of_ppqn (settings: picoclock.core.settings.Settings, ppqn: object) -> str:

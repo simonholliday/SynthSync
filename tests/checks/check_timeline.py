@@ -639,3 +639,40 @@ def check_the_tempo_leds_flash_is_a_quarter_of_a_beat_at_every_tempo_but_never_m
 		before = width
 
 	assert picoclock.core.timeline.LED_LONGEST == 100000
+
+
+def gaps_of (rises: list[int]) -> list[int]:
+
+	"""Give the gaps between one output's rises, in ticks."""
+
+	return [rises[index] - rises[index - 1] for index in range(1, len(rises))]
+
+
+def check_every_gap_is_its_exact_length_rounded_down_or_up_from_any_phase () -> None:
+
+	"""At 100.01 BPM, whose gap is a hair over whole ticks, every gap is one of the two lengths `gap_ticks` gives and both turn up, and so it is again from the new phase after a change of tempo."""
+
+	timeline = make([(4, 1)], 10001)
+	player = Player(timeline)
+	timeline.start()
+
+	while len(player.rises[0]) < 800:
+		player.play(100)
+
+	before = gaps_of(player.rises[0])
+	lengths = picoclock.core.timeline.gap_ticks(10001, 4, 1)
+
+	assert lengths == (149985, 149986)
+	assert set(before) == set(lengths)
+
+	timeline.set_tempo(17400)
+	changed = len(player.rises[0])
+
+	while len(player.rises[0]) < changed + 60:
+		player.play(100)
+
+	# The gap the change came in, and the one after it, are neither tempo's.
+	after = gaps_of(player.rises[0][changed + 1:])
+
+	assert set(after) == set(picoclock.core.timeline.gap_ticks(17400, 4, 1)) == {86206, 86207}
+	assert picoclock.core.timeline.gap_ticks(12000, 4, 1) == (125000, 125000)
