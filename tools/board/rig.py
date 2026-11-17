@@ -30,6 +30,7 @@ import picoclock.core.clock
 import picoclock.core.ratio
 import picoclock.core.settings
 import picoclock.core.transport
+import picoclock.core.timeline
 import picoclock.device.board
 import picoclock.device.chip
 import picoclock.device.led
@@ -47,7 +48,6 @@ _UNITS = 6000 * 1000000
 # PIO block 0 and the registers used here. The radio owns a state machine in
 # block 2, so block 0 is clear.
 _PIO0 = 0x50200000
-_FDEBUG = _PIO0 + 0x008
 _RXF0 = _PIO0 + 0x020
 
 # The capture runs on state machine 1 of block 0, and the thing under test on 0.
@@ -56,6 +56,11 @@ _CAPTURE_REQUEST = 4 + _CAPTURE_MACHINE
 
 # The first counts are part-intervals from before the capture settled.
 _SKIP = 2
+
+# The furthest consecutive gaps together may come from as many exact gaps, in
+# cycles: the tick every pulse is rounded to, the two cycles the capture sees
+# an edge to, and the rounding down of the sum.
+_DRIFT_MOST = SYSTEM_HZ // 1000000 + 4
 
 
 @rp2.asm_pio()
@@ -191,19 +196,54 @@ class Capture:
 
 		return max(taken - skip, 0), worst
 
+	def drift (self, tempo: int, pulses: int, beats: int, skip: int = _SKIP) -> int:
 
-def clear_fault () -> None:
+		"""Say how far the gaps captured after the first `skip`, all together, came from as many exact gaps, in cycles: what `drift` says of a list."""
 
-	"""Forget any earlier report that state machine 0 ran out of words."""
+		total = 0
 
-	machine.mem32[_FDEBUG] = 1 << 24
+		for index in range(skip, self.taken()):
+			total += 2 * self.counts[index] + 4
+
+		return drift_cycles(total, max(self.taken() - skip, 0), tempo, pulses, beats)
 
 
-def fault () -> int:
+def drift_cycles (total: int, gaps: int, tempo: int, pulses: int, beats: int) -> int:
 
-	"""Say whether state machine 0 has run out of words since the last clear."""
+	"""Say how far `gaps` consecutive gaps adding up to `total` cycles came from as many exact gaps at this tempo and ratio, in cycles, rounded down.
 
-	return (machine.mem32[_FDEBUG] >> 24) & 1
+	Each gap alone may be a tick short or long, so judging gaps one at a time
+	can't see a scheduler that loses the fraction it carries, which drifts:
+	every gap rounded down passes. Consecutive gaps together run from one
+	pulse to another, each on the tick at or just before its exact time, so
+	they come within a tick of as many exact gaps, give or take the two
+	cycles the timing sees an edge to: `_DRIFT_MOST`.
+	"""
+
+	scale = pulses * tempo
+
+	return (total * scale - gaps * beats * _UNITS * (SYSTEM_HZ // 1000000)) // scale
+
+
+def drift (gaps: list, tempo: int, pulses: int, beats: int) -> int:
+
+	"""Say how far a list of consecutive gaps, in cycles, together came from as many exact gaps."""
+
+	return drift_cycles(sum(gaps), len(gaps), tempo, pulses, beats)
+
+
+def kept_going (taken: int, milliseconds: int, tempo: int, pulses: int, beats: int) -> bool:
+
+	"""Say whether an output played for this long gave close to as many pulses as it should have, so that it didn't stop part way.
+
+	A gap that never ends is never captured, so an output that dies looks
+	only like fewer pulses. The capture starts a little before the output and
+	the first gaps aren't counted, so a fiftieth and a few are allowed for.
+	"""
+
+	expected = milliseconds * tempo * pulses // (6000000 * beats)
+
+	return taken >= expected - expected // 50 - 5
 
 
 # ---------------------------------------------------------------------------
@@ -417,9 +457,9 @@ def worst_error (gaps: list[int], allowed: set[int]) -> int:
 
 	"""Give the furthest any gap is from the nearest length it is allowed to be, in cycles.
 
-	A steady output's gaps come in at most two lengths, one cycle or one tick
-	apart, because the exact gap is rarely a whole number. Those are the
-	allowed lengths, worked out from the tempo and the ratio.
+	A steady output's gaps come in at most two lengths, a tick apart, because
+	the exact gap is rarely a whole number of ticks. Those are the allowed
+	lengths, worked out from the tempo and the ratio.
 	"""
 
 	worst = 0
@@ -441,13 +481,71 @@ def report (name: str, passed: bool, details: str) -> None:
 	print("RIG %s %s %s" % (name, "PASS" if passed else "FAIL", details))
 
 
+# Where the board's own settings are kept while a test writes over them, so
+# that a test cut short leaves them to be put back. It holds nothing when there
+# were none.
+_KEPT = "/_rig_kept_settings.json"
+
+
+def keep_settings () -> "str | None":
+
+	"""Read the board's own settings, and keep a copy of them aside while a test writes over them, giving back what they were, or None for none."""
+
+	try:
+		with open(picoclock.device.storage.PATH) as handle:
+			kept = handle.read()
+
+	except OSError:
+		kept = None
+
+	with open(_KEPT, "w") as handle:
+		handle.write(kept or "")
+
+	return kept
+
+
+def put_back_settings (kept: "str | None") -> None:
+
+	"""Put the board's own settings back as they were before a test, or take away a test's own when there were none, and forget the copy."""
+
+	path = picoclock.device.storage.PATH
+
+	try:
+		os.remove(path)
+	except OSError:
+		pass
+
+	if kept:
+		with open(path, "w") as handle:
+			handle.write(kept)
+
+	try:
+		os.remove(_KEPT)
+	except OSError:
+		pass
+
+
+def put_back_left_over () -> None:
+
+	"""Put back the settings a test cut short left in keeping, if one did."""
+
+	try:
+		with open(_KEPT) as handle:
+			kept = handle.read()
+
+	except OSError:
+		return
+
+	put_back_settings(kept)
+
+
 # ---------------------------------------------------------------------------
 # Tests.
 
 
 def test_freerun (load: str = "idle", hz: int = 200, count: int = 2000) -> None:
 
-	"""Time the rig's own reference: a pulse made by PIO alone should show no error at all.
+	"""Time the rig's own reference: a pulse made by PIO alone, which should be within the two cycles the capture sees an edge to.
 
 	This proves the rig rather than PicoClock. If it fails, nothing else the
 	rig says can be trusted.
@@ -483,20 +581,13 @@ def gap_lengths (tempo: int, pulses: int, beats: int) -> set:
 	"""Give the lengths, in cycles, the gaps between an output's pulses take at a steady tempo.
 
 	The exact gap is rarely a whole number of ticks, so the gaps come in two
-	lengths a tick apart. They are worked out here the way the scheduler
-	promises them: pulse number n is on tick n x beats x 6,000,000,000 /
-	(pulses x tempo), rounded down.
+	lengths a tick apart, the exact gap rounded down and up, from wherever in
+	the pattern they are watched: the scheduler's own `gap_ticks`.
 	"""
 
-	lengths = set()
-	previous = 0
+	per_tick = SYSTEM_HZ // 1000000
 
-	for number in range(1, 600):
-		tick = (number * beats * _UNITS) // (pulses * tempo)
-		lengths.add((tick - previous) * (SYSTEM_HZ // 1000000))
-		previous = tick
-
-	return lengths
+	return {ticks * per_tick for ticks in picoclock.core.timeline.gap_ticks(tempo, pulses, beats)}
 
 
 def listen_to_buttons (player) -> None:
@@ -530,6 +621,20 @@ def make_player (ratios, tempo: int):
 # microseconds. A tempo change with four outputs takes about 2,000.
 _SLOWEST_COMMAND = 6000
 
+# How long after it is sent a change can take effect on the pins while the
+# clock plays, in microseconds, before the words put by to cover the change
+# itself. The player is eight words ahead and is playing another, each of them
+# up to HOLD_LIMIT ticks; the words put by for a change can run one word past
+# what was asked; and the second core may be busy with another command first.
+# A change is heard up to about 25 ms after it is sent, by design: the words
+# ahead are what keep the player from ever running dry.
+_HEARD_WITHIN = (picoclock.device.player._DEPTH + 2) * picoclock.core.timeline.HOLD_LIMIT + _SLOWEST_COMMAND
+
+# How far the rig's own clock and the capture can disagree about when a gap
+# was, in microseconds: the gaps are placed from the start's pulse, which comes
+# a little after the start was sent.
+_PLACING = 3000
+
 
 def sound (status: dict) -> bool:
 
@@ -538,10 +643,13 @@ def sound (status: dict) -> bool:
 	It never ran dry, the scheduler refused nothing, and no command was held
 	up. A command that waited for the first core to collect its garbage takes
 	ten times the limit. The words put by can cover for one, so that it makes
-	no fault, which is why it is looked for by itself.
+	no fault, which is why it is looked for by itself. Nor was its queue ever
+	found empty, or down to one word, while the clock played, nor did a flash
+	write outlast the words put by for it: near misses that come before a
+	fault. `shortfall`, which wants all of those, doesn't ask this.
 	"""
 
-	return status["faults"] == 0 and status["refused"] == 0 and status["slowest_command"] <= _SLOWEST_COMMAND
+	return status["faults"] == 0 and status["refused"] == 0 and status["slowest_command"] <= _SLOWEST_COMMAND and status["empty"] == 0 and status["one_left"] == 0 and status["writes_past_backlog"] == 0
 
 
 def describe (status: dict) -> str:
@@ -569,9 +677,10 @@ def test_player (load: str = "idle") -> None:
 	capture.close()
 
 	worst = worst_error(gaps, gap_lengths(30000, _DENSE[0][0], _DENSE[0][1]))
-	passed = len(gaps) >= count - _SKIP and worst <= 2 and sound(status)
+	drifted = drift(gaps, 30000, _DENSE[0][0], _DENSE[0][1])
+	passed = len(gaps) >= count - _SKIP and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status)
 
-	report("player", passed, "pulses=%d worst_cycles=%d %s load=%s" % (len(gaps), worst, describe(status), described))
+	report("player", passed, "pulses=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (len(gaps), worst, drifted, describe(status), described))
 
 
 def test_sweep (load: str = "idle") -> None:
@@ -581,76 +690,189 @@ def test_sweep (load: str = "idle") -> None:
 	count = 2000
 	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_player(_DENSE, 12000)
-	state = [0, time.ticks_ms()]
+	state = [0, time.ticks_ms(), time.ticks_us()]
+
+	# Each change of tempo, as when it was sent in microseconds after the start, and the tempo.
+	changes = []
 
 	def meanwhile () -> None:
 
-		"""Set another tempo, at most fifty times a second."""
+		"""Set another tempo, at most fifty times a second, and note when."""
 
 		if time.ticks_diff(time.ticks_ms(), state[1]) >= 20:
 			state[0] += 1
 			state[1] = time.ticks_ms()
-			player.set_tempo(6000 + (state[0] * 977) % 24001)
+			tempo = 6000 + (state[0] * 977) % 24001
+			player.set_tempo(tempo)
+			changes.append((time.ticks_diff(time.ticks_us(), state[2]), tempo))
 
 	player.start()
+	state[2] = time.ticks_us()
 
 	described = run_load(load, capture, 60, meanwhile)
 	status = player.status()
 	gaps = capture.gaps()
+	before = 2 * capture.counts[_SKIP - 1] + 4
 
 	player.close()
 	capture.close()
 
-	# Whatever the tempo does, a gap is never shorter than at 300 BPM nor longer than at 60.
-	shortest = min(gap_lengths(30000, _DENSE[0][0], _DENSE[0][1]))
-	longest = max(gap_lengths(6000, _DENSE[0][0], _DENSE[0][1]))
-	in_range = len(gaps) > 0 and min(gaps) >= shortest - 2 and max(gaps) <= longest + 2
-	passed = len(gaps) >= count - _SKIP and in_range and sound(status)
+	# A tempo change is covered by words for each output.
+	late = _HEARD_WITHIN + picoclock.device.player._COVER_TEMPO + picoclock.device.player._COVER_TEMPO_EACH * len(_DENSE)
+	outside = sweep_outside(gaps, before, changes, late, 12000, _DENSE[0][0], _DENSE[0][1])
+	passed = len(gaps) >= count - _SKIP and outside == 0 and sound(status)
 
-	report("sweep", passed, "pulses=%d tempo_changes=%d %s load=%s" % (len(gaps), state[0], describe(status), described))
+	report("sweep", passed, "pulses=%d tempo_changes=%d gaps_outside_their_tempos=%d %s load=%s" % (len(gaps), state[0], outside, describe(status), described))
+
+
+def sweep_outside (gaps: list, before: int, changes: list, late: int, tempo: int, pulses: int, beats: int) -> int:
+
+	"""Count the gaps that aren't as long as some tempo that may have been in force while they lasted gives.
+
+	A gap that spans changes of tempo lasts between what the slowest and the
+	fastest of them give, since the scheduler keeps the place a pulse has
+	reached through a change. A pulse lost or doubled comes out of that
+	range. A change takes effect up to `late` microseconds after it was
+	sent, so one sent that long before a gap began may still have been in
+	force during it. `before` is the first gap, which places the rest in
+	time: together they run from the start's pulse, when the first change
+	was timed from.
+	"""
+
+	per_us = SYSTEM_HZ // 1000000
+	outside = 0
+	later = 0
+	current = tempo
+	began = before
+
+	for cycles in gaps:
+
+		start = began // per_us - late - _PLACING
+		end = (began + cycles) // per_us + _PLACING
+
+		while later < len(changes) and changes[later][0] < start:
+			current = changes[later][1]
+			later += 1
+
+		shortest = picoclock.core.timeline.gap_ticks(current, pulses, beats)[0]
+		longest = picoclock.core.timeline.gap_ticks(current, pulses, beats)[1]
+		look = later
+
+		while look < len(changes) and changes[look][0] <= end:
+			shortest = min(shortest, picoclock.core.timeline.gap_ticks(changes[look][1], pulses, beats)[0])
+			longest = max(longest, picoclock.core.timeline.gap_ticks(changes[look][1], pulses, beats)[1])
+			look += 1
+
+		if cycles < shortest * per_us - 2 or cycles > longest * per_us + 2:
+			outside += 1
+
+		began += cycles
+
+	return outside
+
+
+# The state machine that times how long the pause test's run output stays low:
+# the first of block 1, which nothing else uses meanwhile.
+_LOW_TIMER = 4
+
+
+def _low_program (watched: int):
+
+	"""Build a program that times each stretch a pin spends low, from its fall to its next rise, two cycles to a count. The pin is the jump pin too."""
+
+	def lows ():
+
+		wrap_target()
+		wait(1, gpio, watched)
+		wait(0, gpio, watched)
+		mov(x, invert(null))
+		label("low")
+		jmp(pin, "risen")
+		jmp(x_dec, "low")
+		label("risen")
+		mov(isr, invert(x))
+		push(noblock)
+		wrap()
+
+	return rp2.asm_pio(fifo_join=rp2.PIO.JOIN_RX)(lows)
 
 
 def test_pause (load: str = "idle") -> None:
 
-	"""Pause and carry on a dozen times: no pulse may go missing or appear, and the rest stay exact."""
+	"""Pause and carry on a dozen times: no pulse may go missing or appear, every output must keep its place to the tick, and the rest stay exact.
+
+	Output 4 is a run output, low exactly while the clock is paused, so how
+	long each pause really lasted is timed on its pin. A pause is heard up to
+	25 ms after it is sent, while the words ahead play out, so the times the
+	commands were sent can't say that closely.
+	"""
 
 	count = 600
+	first = picoclock.device.board.FIRST_OUTPUT_PIN
 	ratios = ((24, 1), (1, 1), (2, 1), (3, 1))
-	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
+	capture = Capture(first, count)
 	player = make_player(ratios, 12500)
 
-	# How many pauses have been made, when the last change was, and whether the clock is paused.
-	state = [0, time.ticks_ms(), False]
+	player.set_role(3, picoclock.core.timeline.RUN)
+	player.settle()
+
+	# The run output's pin is only named here, not set up, so the player keeps it.
+	timer = rp2.StateMachine(_LOW_TIMER, _low_program(first + 3), freq=SYSTEM_HZ, jmp_pin=machine.Pin(first + 3))
+	lows = []
+
+	# How many pauses have been made, when the last change was, whether the
+	# clock is paused, and when the pause began, in microseconds. Then how
+	# long each pause lasted as its commands were sent.
+	state = [0, time.ticks_ms(), False, 0]
+	paused = []
+
+	def taken () -> None:
+
+		"""Take how long the run output was low for each pause it has carried on from."""
+
+		# Each count is two cycles, and two more pass between the fall and the first count.
+		while timer.rx_fifo():
+			lows.append(2 * timer.get() + 2)
 
 	def meanwhile () -> None:
 
-		"""Pause once a second for 150 ms, and stop pausing in time for the last one to finish."""
+		"""Pause once a second for 150 ms, and stop pausing in time for the last one to finish, noting how long each pause lasted."""
 
 		since = time.ticks_diff(time.ticks_ms(), state[1])
 
 		if state[2] and since >= 150:
 			player.resume()
+			paused.append(time.ticks_diff(time.ticks_us(), state[3]))
 			state[2] = False
 			state[1] = time.ticks_ms()
 
 		elif not state[2] and since >= 1000 and state[0] < 12 and capture.taken() < count - 120:
+			taken()
 			player.pause()
+			state[3] = time.ticks_us()
 			state[0] += 1
 			state[2] = True
 			state[1] = time.ticks_ms()
 
+	timer.active(1)
 	player.start()
 
 	described = run_load(load, capture, 60, meanwhile)
 
 	if state[2]:
 		player.resume()
+		paused.append(time.ticks_diff(time.ticks_us(), state[3]))
+
+	# The last carrying on is heard a little after it was sent.
+	time.sleep_ms(_HEARD_WITHIN // 1000 + 10)
+	taken()
 
 	status = player.status()
 	gaps = capture.gaps()
 
 	player.close()
 	capture.close()
+	timer.active(0)
 
 	# 24 pulses a beat at 125 BPM are 20 ms apart. A gap much longer than that
 	# is one that spans a pause, and there must be exactly one for each pause.
@@ -659,66 +881,115 @@ def test_pause (load: str = "idle") -> None:
 	spans = [cycles for cycles in gaps if cycles > long_enough]
 	steady = [cycles for cycles in gaps if cycles <= long_enough]
 	worst = worst_error(steady, allowed)
-	passed = len(gaps) >= count - _SKIP and len(spans) == state[0] and state[0] > 0 and worst <= 2 and sound(status)
 
-	report("pause", passed, "pulses=%d pauses=%d long_gaps=%d worst_cycles=%d %s load=%s" % (len(gaps), state[0], len(spans), worst, describe(status), described))
+	# Every output keeps its place through a pause to the tick, so the gap a
+	# pause falls in is one gap, the pause, and the lead the run output's rise
+	# gives the clocks as they carry on.
+	per_us = SYSTEM_HZ // 1000000
+	lead = picoclock.core.timeline.LEAD_TICKS * per_us
+	span_error = max([abs(span - max(allowed) - lows[index] - lead) for index, span in enumerate(spans) if index < len(lows)] or [0])
+
+	# And each pause was heard when it should have been.
+	late = _HEARD_WITHIN + picoclock.device.player._COVER_TRANSPORT
+	worst_late = max([abs(lows[index] // per_us - paused[index]) for index in range(min(len(lows), len(paused)))] or [0])
+	passed = len(gaps) >= count - _SKIP and len(spans) == state[0] == len(paused) == len(lows) and state[0] > 0 and worst <= 2 and span_error <= _DRIFT_MOST and worst_late <= late and sound(status)
+
+	report("pause", passed, "pulses=%d pauses=%d long_gaps=%d timed_pauses=%d worst_cycles=%d worst_span_cycles=%d most_heard_late_us=%d %s load=%s" % (len(gaps), state[0], len(spans), len(lows), worst, span_error, worst_late, describe(status), described))
 
 
 def test_startstop (load: str = "idle") -> None:
 
-	"""Start and stop over and over: every start must pulse, and every stop must leave all pins low."""
+	"""Start and stop over and over: every start must pulse once, and every stop must take every pin low once it is heard, the tempo LED's among them.
+
+	A stop is heard up to about 30 ms after it is sent, while the words ahead
+	play out. The pulses last half their gap, 125 ms, and the LED's flash
+	100 ms, so all are still high when each stop comes, 40 ms after its
+	start, and a stop that left any of them high is still seen once it should
+	have been heard. A run the main loop comes back to late may pulse again
+	before its stop, and is allowed that.
+	"""
 
 	first = picoclock.device.board.FIRST_OUTPUT_PIN
 	ratios = ((4, 1), (4, 1), (4, 1), (4, 1))
+	tempo = 6000
 	capture = Capture(first, 4000)
-	player = make_player(ratios, 12000)
-	pins = [machine.Pin(first + output) for output in range(len(ratios))]
+	player = make_player(ratios, tempo)
+	pins = [first + output for output in range(len(ratios))] + [picoclock.device.board.LED_PIN]
+	gap_ms = 6000000 // (tempo * ratios[0][0])
 
-	# How many starts, how many stops that left a pin high, when the last change was, and whether it's running.
-	state = [0, 0, time.ticks_ms(), False]
+	# How long after a stop the pins are looked at, in milliseconds.
+	look_ms = (_HEARD_WITHIN + picoclock.device.player._COVER_TRANSPORT) // 1000 + 3
+
+	for output in range(len(ratios)):
+		player.set_width(output, 0)
+
+	player.settle()
+
+	# How many starts, how many stops left a pin high, when the last step was,
+	# the step due next, and the most edges the runs so far may have made.
+	state = [0, 0, time.ticks_ms(), "start", 0]
+
+	def high () -> bool:
+
+		"""Say whether any output's pin, or the tempo LED's, is high."""
+
+		levels = machine.mem32[_GPIO_IN]
+
+		return any((levels >> pin) & 1 for pin in pins)
 
 	def meanwhile () -> None:
 
-		"""Start, run for 60 ms, stop, wait 60 ms, and look at the pins before starting again."""
+		"""Start, stop 40 ms later, look at the pins once the stop should have been heard, and start again 55 ms on."""
 
-		if time.ticks_diff(time.ticks_ms(), state[2]) < 60:
-			return
+		since = time.ticks_diff(time.ticks_ms(), state[2])
 
-		if state[3]:
-			player.stop()
-			state[3] = False
-
-		else:
-
-			if state[0] and any(pin.value() for pin in pins):
-				state[1] += 1
-
+		if state[3] == "start" and since >= 55:
 			player.start()
 			state[0] += 1
-			state[3] = True
+			state[3] = "stop"
+
+		elif state[3] == "stop" and since >= 40:
+			player.stop()
+			state[4] += 1 + (since + look_ms) // gap_ms
+			state[3] = "look"
+
+		elif state[3] == "look" and since >= look_ms:
+
+			if high():
+				state[1] += 1
+
+			state[3] = "start"
+
+		else:
+			return
 
 		state[2] = time.ticks_ms()
 
 	described = run_load(load, capture, 8, meanwhile)
 
-	player.stop()
-	time.sleep_ms(60)
+	if state[3] == "stop":
+		player.stop()
+		state[4] += 1 + (time.ticks_diff(time.ticks_ms(), state[2]) + look_ms) // gap_ms
 
-	left_high = state[1] + (1 if any(pin.value() for pin in pins) else 0)
+	time.sleep_ms(look_ms)
+
+	left_high = state[1] + (1 if high() else 0)
 	status = player.status()
 	edges = capture.taken()
 
 	player.close()
 	capture.close()
 
-	# Each start pulses at once, so there is at least one edge for every start.
-	passed = state[0] > 0 and edges >= state[0] and left_high == 0 and sound(status)
+	# Each start pulses at once, and once more for every gap a run outlasted.
+	passed = state[0] > 0 and state[0] <= edges <= state[4] and left_high == 0 and sound(status)
 
-	report("startstop", passed, "starts=%d edges=%d stops_left_high=%d %s load=%s" % (state[0], edges, left_high, describe(status), described))
+	report("startstop", passed, "starts=%d edges=%d most_edges=%d stops_left_high=%d %s load=%s" % (state[0], edges, state[4], left_high, describe(status), described))
 
 
-# Where the save tests keep their settings, apart from PicoClock's own file.
+# Where the save tests keep their settings, apart from PicoClock's own file, and
+# a path in a folder that isn't there, for a save that must fail.
 _SAVE_PATH = "/_rig_settings.json"
+_SAVE_NOWHERE = "/_rig_no_such_folder/settings.json"
 
 
 def test_save (load: str = "idle") -> None:
@@ -752,6 +1023,18 @@ def test_save (load: str = "idle") -> None:
 	status = player.status()
 	gaps = capture.gaps()
 
+	# A save that fails, here into a folder that isn't there, is due again.
+	broken = picoclock.device.storage.Storage(settings, player, _SAVE_NOWHERE)
+	settings.set_host_name("rig-nowhere")
+
+	try:
+		broken.save_now()
+		again = False
+	except OSError:
+		again = broken._due is not None
+
+	settings.set_host_name("rig-%d" % state[0])
+
 	player.close()
 	capture.close()
 
@@ -759,9 +1042,10 @@ def test_save (load: str = "idle") -> None:
 		kept = handle.read() == settings.to_text()
 
 	worst = worst_error(gaps, gap_lengths(30000, _DENSE[0][0], _DENSE[0][1]))
-	passed = len(gaps) >= count - _SKIP and worst <= 2 and sound(status) and storage.saves > 20 and kept
+	drifted = drift(gaps, 30000, _DENSE[0][0], _DENSE[0][1])
+	passed = len(gaps) >= count - _SKIP and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status) and storage.saves > 20 and kept and again
 
-	report("save", passed, "pulses=%d saves=%d worst_cycles=%d kept=%s %s load=%s" % (len(gaps), storage.saves, worst, kept, describe(status), described))
+	report("save", passed, "pulses=%d saves=%d worst_cycles=%d drift_cycles=%d kept=%s failed_save_due_again=%s %s load=%s" % (len(gaps), storage.saves, worst, drifted, kept, again, describe(status), described))
 
 
 def test_saved (load: str = "idle") -> None:
@@ -1052,18 +1336,23 @@ def test_cluster (load: str = "idle") -> None:
 	machine.Pin(_INPUT_PIN, machine.Pin.IN, None)
 
 	worst = worst_error(gaps, gap_lengths(30000, _CLUSTERED[0][0], _CLUSTERED[0][1]))
+	drifted = drift(gaps, 30000, _CLUSTERED[0][0], _CLUSTERED[0][1])
 	stopped = not after["running"] and 0 <= took <= _HELD_PRESS
-	passed = len(gaps) >= count - _SKIP and worst <= 2 and sound(status) and stopped
+	passed = len(gaps) >= count - _SKIP and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status) and stopped
 
-	report("cluster", passed, "pulses=%d worst_cycles=%d stop_ms=%d %s load=%s" % (len(gaps), worst, took, describe(status), described))
+	report("cluster", passed, "pulses=%d worst_cycles=%d drift_cycles=%d stop_ms=%d %s load=%s" % (len(gaps), worst, drifted, took, describe(status), described))
 
 
 def test_burst (load: str = "idle") -> None:
 
-	"""Send every setting at once, over and over, while four outputs' edges crowd together: the player must never run dry.
+	"""Send every setting at once, over and over, while four outputs' edges crowd together: the player must never run dry, and output 1 must keep time between bursts.
 
 	A burst is what a factory reset or a power-up sends: the tempo and every
-	part of every output, back to back.
+	part of every output, back to back. Each gap clear of every burst must be
+	exactly what the last burst's tempo and ratio give. One a burst may have
+	been heard during can be shorter, or as long as one gap of the old ratio
+	and one of the new: moving onto the new ratio's grid can bring the next
+	pulse forward or put it up to a whole new gap away.
 	"""
 
 	count = 4000
@@ -1071,20 +1360,25 @@ def test_burst (load: str = "idle") -> None:
 	capture = Capture(picoclock.device.board.FIRST_OUTPUT_PIN, count)
 	player = make_clustered_player(30000)
 
-	# How many bursts have been sent, and when the last one was.
-	state = [0, time.ticks_ms()]
+	# How many bursts have been sent, when the last one was, and when the clock
+	# was started, in microseconds. Then each burst, as when it began and ended
+	# in microseconds after the start, and the tempo and output 1's ratio it set.
+	state = [0, time.ticks_ms(), 0]
+	bursts = []
 
 	def meanwhile () -> None:
 
-		"""Send a burst ten times a second, keeping the pattern as busy as it began."""
+		"""Send a burst ten times a second, keeping the pattern as busy as it began, and note when."""
 
 		if time.ticks_diff(time.ticks_ms(), state[1]) < 100:
 			return
 
 		state[0] += 1
 		state[1] = time.ticks_ms()
+		began = time.ticks_diff(time.ticks_us(), state[2])
+		tempo = 29000 + (state[0] * 977) % 1001
 
-		player.set_tempo(29000 + (state[0] * 977) % 1001)
+		player.set_tempo(tempo)
 
 		for output in range(len(ratios)):
 			player.set_ratio(output, ratios[output][0] - state[0] % 3, 1)
@@ -1092,18 +1386,75 @@ def test_burst (load: str = "idle") -> None:
 			player.set_role(output, 0)
 			player.set_mute(output, False)
 
+		bursts.append((began, time.ticks_diff(time.ticks_us(), state[2]), tempo, ratios[0][0] - state[0] % 3))
+
 	player.start()
+	state[2] = time.ticks_us()
 
 	described = run_load(load, capture, 30, meanwhile)
 	status = player.status()
 	edges = capture.taken()
+	gaps = capture.gaps()
+	before = 2 * capture.counts[_SKIP - 1] + 4
 
 	player.close()
 	capture.close()
 
-	passed = edges >= count and state[0] >= 20 and sound(status)
+	# A burst is covered by words for the tempo with every output, then for each output's four parts.
+	cover = picoclock.device.player._COVER_TEMPO + picoclock.device.player._COVER_TEMPO_EACH * len(ratios)
+	cover += len(ratios) * (picoclock.device.player._COVER_RATIO + picoclock.device.player._COVER_ROLE + 2 * picoclock.device.player._COVER_SWITCH)
+	judged, off, too_long = burst_gaps(gaps, before, bursts, _HEARD_WITHIN + cover, 30000, ratios[0][0])
+	passed = edges >= count and state[0] >= 20 and judged >= count // 4 and off == 0 and too_long == 0 and sound(status)
 
-	report("burst", passed, "pulses=%d bursts=%d %s load=%s" % (edges, state[0], describe(status), described))
+	report("burst", passed, "pulses=%d bursts=%d judged=%d gaps_off=%d gaps_too_long=%d %s load=%s" % (edges, state[0], judged, off, too_long, describe(status), described))
+
+
+def burst_gaps (gaps: list, before: int, bursts: list, late: int, tempo: int, pulses: int) -> tuple:
+
+	"""Judge output 1's gaps through bursts of changes, and say how many were clear of every burst, how many of those were off, and how many near a burst were too long.
+
+	A burst's changes take effect up to `late` microseconds after it ended.
+	`before` is the first gap, which places the rest in time from the
+	start's pulse, as in `sweep_outside`. `tempo` and `pulses` are what
+	output 1 plays before the first burst, to one beat.
+	"""
+
+	per_us = SYSTEM_HZ // 1000000
+	judged = 0
+	off = 0
+	too_long = 0
+	heard = 0
+	began = before
+
+	# The longest gap any burst can give, at its slowest tempo and its fewest pulses.
+	longest = max(gap_lengths(29000, pulses - 2, 1))
+
+	for cycles in gaps:
+
+		start = began // per_us - _PLACING
+		end = (began + cycles) // per_us + _PLACING
+
+		# Bursts whose changes were all heard before this gap began.
+		while heard < len(bursts) and bursts[heard][1] + late < start:
+			tempo = bursts[heard][2]
+			pulses = bursts[heard][3]
+			heard += 1
+
+		if heard < len(bursts) and bursts[heard][0] <= end:
+
+			if cycles > 2 * longest + 2:
+				too_long += 1
+
+		else:
+
+			judged += 1
+
+			if worst_error([cycles], gap_lengths(tempo, pulses, 1)) > 2:
+				off += 1
+
+		began += cycles
+
+	return judged, off, too_long
 
 
 # How long the collect test makes each of the first core's collections last at
@@ -1170,14 +1521,15 @@ def test_collect (load: str = "idle") -> None:
 	described = run_load(load, capture, count // 16 + 10, meanwhile)
 	status = player.status()
 	pulses, worst = capture.judge(gap_lengths(tempo, 8, 1))
+	drifted = capture.drift(tempo, 8, 1)
 
 	player.close()
 	capture.close()
 	held = None
 
-	passed = pulses >= count - _SKIP and worst <= 2 and state[1] >= _COLLECT_LONGEST and sound(status)
+	passed = pulses >= count - _SKIP and worst <= 2 and abs(drifted) <= _DRIFT_MOST and state[1] >= _COLLECT_LONGEST and sound(status)
 
-	report("collect", passed, "pulses=%d worst_cycles=%d changes=%d longest_collect_ms=%d %s load=%s" % (pulses, worst, state[0], state[1], describe(status), described))
+	report("collect", passed, "pulses=%d worst_cycles=%d drift_cycles=%d changes=%d longest_collect_ms=%d %s load=%s" % (pulses, worst, drifted, state[0], state[1], describe(status), described))
 
 
 # Where the position test keeps its settings.
@@ -1251,14 +1603,15 @@ def test_position (load: str = "idle") -> None:
 	capture.close()
 
 	worst = worst_error(gaps, gap_lengths(tempo, ratios[0][0], ratios[0][1]))
+	drifted = drift(gaps, tempo, ratios[0][0], ratios[0][1])
 	answered = state[0] - state[1]
-	passed = len(gaps) >= count - _SKIP and worst <= 2 and sound(status)
+	passed = len(gaps) >= count - _SKIP and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status)
 	# Under the heaviest load the main loop comes up for air less often, so fewer
 	# are asked. A save every 700 ms with a backlog of 300 ms withholds close to
 	# half the answers, so a quarter answered is asked for, not a half.
 	passed = passed and state[0] >= 50 and answered >= state[0] // 4 and state[1] >= 1 and state[2] <= 100 and state[3] >= 3
 
-	report("position", passed, "asked=%d withheld=%d worst_thousandths=%d saves=%d pulses=%d worst_cycles=%d %s load=%s" % (state[0], state[1], state[2], state[3], len(gaps), worst, describe(status), described))
+	report("position", passed, "asked=%d withheld=%d worst_thousandths=%d saves=%d pulses=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (state[0], state[1], state[2], state[3], len(gaps), worst, drifted, describe(status), described))
 
 
 # Where the inputs test keeps its settings.
@@ -1935,6 +2288,19 @@ def test_led (load: str = "idle") -> None:
 
 def test_powerup (load: str = "idle") -> None:
 
+	"""Start the clock as switching on does, from missing, damaged and good settings, with the board's own settings put back whatever happens."""
+
+	kept = keep_settings()
+
+	try:
+		_powerup_cases(load)
+
+	finally:
+		put_back_settings(kept)
+
+
+def _powerup_cases (load: str) -> None:
+
 	"""Start the clock as power-up does, from no saved settings, from a damaged file and from a good one, and then everything that follows it.
 
 	Each start must leave the clock running and pulsing: at the saved tempo
@@ -1949,7 +2315,7 @@ def test_powerup (load: str = "idle") -> None:
 	real life. And if the network and the page can't be made at all, the
 	rest must carry on without them.
 
-	Whatever settings the Pico had saved are put back afterwards.
+	`test_powerup` puts back whatever settings the Pico had saved, whatever happens.
 	"""
 
 	import network
@@ -1961,12 +2327,6 @@ def test_powerup (load: str = "idle") -> None:
 	first = machine.Pin(picoclock.device.board.FIRST_OUTPUT_PIN)
 	wrong = []
 	slowest = 0
-
-	try:
-		with open(path) as handle:
-			kept = handle.read()
-	except OSError:
-		kept = None
 
 	good = picoclock.core.settings.Settings(picoclock.device.board.OUTPUTS)
 	good.set_tempo(24000)
@@ -2188,15 +2548,6 @@ def test_powerup (load: str = "idle") -> None:
 
 	parts.player.close()
 
-	try:
-		os.remove(path)
-	except OSError:
-		pass
-
-	if kept is not None:
-		with open(path, "w") as handle:
-			handle.write(kept)
-
 	report("powerup", not wrong, "cases=%d wrong=%d slowest_start_ms=%d free_kb=%d first_wrong=%s load=%s" % (len(cases), len(wrong), slowest, free // 1024, wrong[0].replace(" ", "_") if wrong else "none", load))
 
 
@@ -2217,8 +2568,10 @@ def test_network (load: str = "idle") -> None:
 	Asked to join a network that isn't there, it must switch its own network
 	off, try more than once, and bring its own back with the reason, keeping
 	nothing of the network. Started with such a network saved, it must try
-	that first, fall back the same way, and keep it. The two networks must
-	never be up together. At the end everything must be off.
+	that first, fall back the same way, and keep it. Asked then for another
+	that isn't there, it must fall back again and save the first one again.
+	The two networks must never be up together. At the end everything must
+	be off.
 
 	Joining a network that is there needs a network, and a phone joining the
 	Pico's needs a phone. Neither is something this can do: the laptop the
@@ -2246,6 +2599,7 @@ def test_network (load: str = "idle") -> None:
 	identity = machine.unique_id()
 	name = "PicoClock %02X%02X%02X" % (identity[-3], identity[-2], identity[-1])
 	missing = "no such network 4f1c"
+	also_missing = "no such network 9d2e"
 	wrong = []
 
 	# A join is tried for six seconds here, where PicoClock allows twenty, so that the test is over sooner.
@@ -2315,13 +2669,13 @@ def test_network (load: str = "idle") -> None:
 		if started[1] == before + 1 and in_force > counts[0]:
 			counts[0] = in_force
 
-	def away (what: str) -> None:
+	def away (what: str, joining: str = missing) -> None:
 
-		"""See that the own network is off and a join of the missing network is under way."""
+		"""See that the own network is off and a join of a missing network is under way."""
 
 		expect(what + ": the own network is still up", not own.active())
 		expect(what + ": the joining side isn't on", other.active())
-		expect(what + ": the radio says otherwise", wifi[0].status() == {"mode": "joining", "name": missing, "address": "", "problem": "", "own": name, "found_at": ""})
+		expect(what + ": the radio says otherwise", wifi[0].status() == {"mode": "joining", "name": joining, "address": "", "problem": "", "own": name, "found_at": ""})
 
 	def script ():
 
@@ -2409,6 +2763,18 @@ def test_network (load: str = "idle") -> None:
 		standing("a saved network", "There was no network called %s in range" % missing)
 		expect("a saved network: it was forgotten", settings.network_name == missing)
 
+		# Another network that isn't there, asked for from the page while that one is saved.
+		before = started[1]
+		tries = started[3]
+		clock.set_network(also_missing, "not a password either")
+		yield 2500
+		away("another join", also_missing)
+		yield 6500
+		expect("another join: it was tried %d times" % (started[3] - tries), started[3] - tries >= 2)
+		expect("another join: the own network started %d times" % (started[1] - before), started[1] == before + 1)
+		standing("another join", "There was no network called %s in range" % also_missing)
+		expect("another join: the network saved before it wasn't saved again", settings.network_name == missing and settings.network_password == "not a password")
+
 	steps = script()
 	due = [time.ticks_ms()]
 	looked = [time.ticks_ms()]
@@ -2434,6 +2800,7 @@ def test_network (load: str = "idle") -> None:
 			never.over = True
 
 	player.start()
+	playing_from = time.ticks_ms()
 
 	# Names of the rig's own, so that ones left over from an earlier run can't pass for PicoClock's.
 	# The radio keeps the last network name it was given until the Pico loses power.
@@ -2450,6 +2817,7 @@ def test_network (load: str = "idle") -> None:
 	described = run_load(load, never, 90, meanwhile)
 	status = player.status()
 	taken = capture.taken()
+	played_for = time.ticks_diff(time.ticks_ms(), playing_from)
 	gaps = capture.gaps()
 
 	wifi[0].close()
@@ -2474,9 +2842,14 @@ def test_network (load: str = "idle") -> None:
 	capture.close()
 
 	worst = worst_error(gaps, gap_lengths(30000, _DENSE[0][0], _DENSE[0][1]))
-	passed = never.over and not wrong and started[1] == 5 and 1000 <= taken < count and worst <= 2 and sound(status)
+	drifted = drift(gaps, 30000, _DENSE[0][0], _DENSE[0][1])
+	going = kept_going(taken, played_for, 30000, _DENSE[0][0], _DENSE[0][1]) and status["running"]
 
-	report("network", passed, "starts=%d first_start_ms=%d change_in_force_ms=%d found=%d look_ms=%d joins=%d back_after_ms=%d wrong=%d first_wrong=%s pulses=%d worst_cycles=%d %s load=%s" % (started[1], took, counts[0], counts[1], counts[2], started[3], counts[3], len(wrong), wrong[0].replace(" ", "_") if wrong else "none", len(gaps), worst, describe(status), described))
+	# The own network starts at first, for the new password, for the reset,
+	# and after each of the three joins that fail.
+	passed = never.over and not wrong and started[1] == 6 and taken < count and going and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status)
+
+	report("network", passed, "starts=%d first_start_ms=%d change_in_force_ms=%d found=%d look_ms=%d joins=%d back_after_ms=%d wrong=%d first_wrong=%s pulses=%d played_ms=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (started[1], took, counts[0], counts[1], counts[2], started[3], counts[3], len(wrong), wrong[0].replace(" ", "_") if wrong else "none", len(gaps), played_for, worst, drifted, describe(status), described))
 
 
 # Where the page test keeps its settings, and the page's files while it runs.
@@ -2843,9 +3216,10 @@ def test_page (load: str = "idle") -> None:
 	# Memory that went down by more than a few KB between the first round and the last would be a page or a request never let go of.
 	kept = counts[3] - counts[6] <= 8192
 	worst = worst_error(gaps, gap_lengths(tempo, 24, 1))
-	passed = len(gaps) >= count - _SKIP and worst <= 2 and sound(status) and not wrong and counts[1] >= 3 and heard and kept and storage.saves >= 1
+	drifted = drift(gaps, tempo, 24, 1)
+	passed = len(gaps) >= count - _SKIP and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status) and not wrong and counts[1] >= 3 and heard and kept and storage.saves >= 1
 
-	report("page", passed, "requests=%d rounds=%d slowest_ms=%d look_ms=%d found=%d told=%d/%d/%d saves=%d free_kb=%d..%d wrong=%d first_wrong=%s pulses=%d worst_cycles=%d %s load=%s" % (counts[0], counts[1], counts[2], counts[5], counts[4], told.get("hello", 0), told.get("output", 0), told.get("clock", 0), storage.saves, counts[3] // 1024, counts[6] // 1024, len(wrong), wrong[0].replace(" ", "_") if wrong else "none", len(gaps), worst, describe(status), described))
+	report("page", passed, "requests=%d rounds=%d slowest_ms=%d look_ms=%d found=%d told=%d/%d/%d saves=%d free_kb=%d..%d wrong=%d first_wrong=%s pulses=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (counts[0], counts[1], counts[2], counts[5], counts[4], told.get("hello", 0), told.get("output", 0), told.get("clock", 0), storage.saves, counts[3] // 1024, counts[6] // 1024, len(wrong), wrong[0].replace(" ", "_") if wrong else "none", len(gaps), worst, drifted, describe(status), described))
 
 
 # How long the air test runs PicoClock for, in milliseconds, and how many of
@@ -2904,10 +3278,14 @@ def test_air (load: str = "idle") -> None:
 		parts.clock.set_tempo(tempo)
 		parts.clock.set_output(1, "ratio", "24")
 
+		playing_from = time.ticks_ms()
 		asyncio.run(start.carry_on(parts, _AIR_FOR, _PAGE_FOLDER))
+		played_for = time.ticks_diff(time.ticks_ms(), playing_from)
 
 		status = parts.player.status()
 		pulses, worst = capture.judge(gap_lengths(tempo, 24, 1), _AIR_SKIP)
+		drifted = capture.drift(tempo, 24, 1, _AIR_SKIP)
+		going = kept_going(pulses + _AIR_SKIP, played_for, tempo, 24, 1) and status["running"]
 		joined = parts.wifi is not None and parts.wifi.mode == picoclock.core.wifi.JOINED
 		opened = parts.app._opened if parts.app is not None else 0
 		kept_up = parts.app.health() if parts.app is not None else {}
@@ -2936,11 +3314,19 @@ def test_air (load: str = "idle") -> None:
 			with open(path, "w") as handle:
 				handle.write(kept)
 
+		else:
+
+			# There were none to begin with, so the test's own aren't left behind.
+			try:
+				os.remove(path)
+			except OSError:
+				pass
+
 	free = int(parts.stood.split(" free=")[1].split()[0]) if " free=" in parts.stood else 0
-	passed = saved and joined and opened >= 4 and pulses >= 3000 and worst <= 2 and sound(status)
+	passed = saved and joined and opened >= 4 and going and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status)
 
 	# How often and for how long everything but the clock was held up for over a second, the longest of those, and the pages given up on.
-	report("air", passed, "saved=%d joined=%d pages_opened=%d saves=%d free_kb=%d holds=%d held_ms=%d longest_hold_ms=%d given_up=%d pulses=%d worst_cycles=%d %s" % (saved, joined, opened, saves, free // 1024, kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), pulses, worst, describe(status)))
+	report("air", passed, "saved=%d joined=%d pages_opened=%d saves=%d free_kb=%d holds=%d held_ms=%d longest_hold_ms=%d given_up=%d pulses=%d played_ms=%d worst_cycles=%d drift_cycles=%d %s" % (saved, joined, opened, saves, free // 1024, kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), pulses, played_for, worst, drifted, describe(status)))
 
 
 # ---------------------------------------------------------------------------
@@ -2972,7 +3358,7 @@ _SOAK_KEPT = "/_rig_soak_kept.json"
 
 class Settled:
 
-	"""Hears every change to the tempo, the transport or output 2, which a window timing output 2 can't span."""
+	"""Hears every change to the tempo, the PPQN, the transport or output 2, which a window timing output 2 can't span."""
 
 	def __init__ (self, clock) -> None:
 
@@ -2987,7 +3373,7 @@ class Settled:
 
 		"""Count a change, if it is one that moves output 2's pulses."""
 
-		if what == picoclock.core.clock.TEMPO or what == picoclock.core.clock.TRANSPORT or what == picoclock.core.clock.EVERYTHING or what == 1:
+		if what == picoclock.core.clock.TEMPO or what == picoclock.core.clock.PPQN or what == picoclock.core.clock.TRANSPORT or what == picoclock.core.clock.EVERYTHING or what == 1:
 			self.changes += 1
 			self.at = time.ticks_ms()
 
@@ -3000,32 +3386,28 @@ class Settled:
 
 def soak_lengths (tempo: int, pulses: int, beats: int) -> tuple:
 
-	"""Give the two lengths output 2's gaps may be, in cycles: the exact gap in ticks, rounded down and up.
+	"""Give the two lengths output 2's gaps may be, in cycles: the exact gap in ticks, rounded down and up, as `gap_lengths` gives them, shorter first."""
 
-	`gap_lengths` finds them by playing the first pulses through, which
-	misses the longer one when the exact gap is a hair over a whole number of
-	ticks. After hours of changes a window starts anywhere in the pattern, so
-	both are allowed.
-	"""
-
-	whole, part = divmod(beats * _UNITS, pulses * tempo)
 	per_tick = SYSTEM_HZ // 1000000
+	shorter, longer = picoclock.core.timeline.gap_ticks(tempo, pulses, beats)
 
-	return (whole * per_tick, (whole + (1 if part else 0)) * per_tick)
+	return (shorter * per_tick, longer * per_tick)
 
 
 async def soak_judge (capture: Capture, lengths: tuple) -> tuple:
 
-	"""Count a window's gaps after the first few and give the furthest any is from a length it may be, in cycles, giving the other jobs a turn as it goes."""
+	"""Count a window's gaps after the first few, and give the furthest any is from a length it may be and what they add up to, in cycles, giving the other jobs a turn as it goes."""
 
 	taken = capture.taken()
 	shorter, longer = lengths
 	worst = 0
+	total = 0
 
 	for index in range(_SKIP, taken):
 
 		cycles = 2 * capture.counts[index] + 4
 		error = min(abs(cycles - shorter), abs(cycles - longer))
+		total += cycles
 
 		if error > worst:
 			worst = error
@@ -3033,7 +3415,7 @@ async def soak_judge (capture: Capture, lengths: tuple) -> tuple:
 		if index % 500 == 0:
 			await asyncio.sleep_ms(0)
 
-	return max(taken - _SKIP, 0), worst
+	return max(taken - _SKIP, 0), worst, total
 
 
 def soak_playing (parts) -> bool:
@@ -3080,7 +3462,8 @@ async def soak_window (parts, capture: Capture, settled: Settled, counts: dict) 
 		print("SOAK spoiled after_ms=%d" % took)
 		return True
 
-	timed, worst = await soak_judge(capture, soak_lengths(tempo, pulses, beats))
+	timed, worst, total = await soak_judge(capture, soak_lengths(tempo, pulses, beats))
+	drifted = drift_cycles(total, timed, tempo, pulses, beats)
 	short = not capture.full()
 
 	gc.collect()
@@ -3093,11 +3476,12 @@ async def soak_window (parts, capture: Capture, settled: Settled, counts: dict) 
 	counts["pulses"] += timed
 	counts["short"] += 1 if short else 0
 	counts["worst"] = max(counts["worst"], worst)
+	counts["drift"] = max(counts["drift"], abs(drifted))
 	counts["least_free"] = min(counts["least_free"], free) if counts["least_free"] else free
 	counts["first_free"] = counts["first_free"] or free
 	counts["last_free"] = free
 
-	print("SOAK window n=%d tempo=%d ratio=%d/%d pulses=%d worst_cycles=%d short=%d took_ms=%d free=%d saves=%d mode=%s address=%s holds=%d held=%d longest_hold=%d given_up=%d pages=%d %s" % (counts["windows"], tempo, pulses, beats, timed, worst, 1 if short else 0, took, free, parts.storage.saves, network.get("mode") or "none", network.get("address") or "none", kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), kept_up.get("pages", -1), describe(status)))
+	print("SOAK window n=%d tempo=%d ratio=%d/%d pulses=%d worst_cycles=%d drift_cycles=%d short=%d took_ms=%d free=%d saves=%d mode=%s address=%s holds=%d held=%d longest_hold=%d given_up=%d pages=%d %s" % (counts["windows"], tempo, pulses, beats, timed, worst, drifted, 1 if short else 0, took, free, parts.storage.saves, network.get("mode") or "none", network.get("address") or "none", kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), kept_up.get("pages", -1), describe(status)))
 
 	return True
 
@@ -3147,6 +3531,11 @@ async def soaking (parts, capture: Capture, settled: Settled, counts: dict, minu
 		await picoclock.device.start.carry_on(parts, minutes * 60000, _PAGE_FOLDER)
 
 	finally:
+
+		# Windows timed only before something ended the job would make a soak look whole.
+		if windows.done():
+			counts["ended"] = 1
+
 		windows.cancel()
 		await asyncio.sleep_ms(50)
 
@@ -3206,7 +3595,7 @@ def soak (minutes: int) -> None:
 	parts = start.begin()
 	saved = bool(parts.clock.settings.network_name)
 	settled = Settled(parts.clock)
-	counts = {"windows": 0, "spoiled": 0, "short": 0, "pulses": 0, "worst": 0, "first_free": 0, "last_free": 0, "least_free": 0, "broke": 0}
+	counts = {"windows": 0, "spoiled": 0, "short": 0, "pulses": 0, "worst": 0, "drift": 0, "first_free": 0, "last_free": 0, "least_free": 0, "broke": 0, "ended": 0}
 
 	print("SOAK began minutes=%d saved=%d" % (minutes, saved))
 
@@ -3269,12 +3658,24 @@ def soak (minutes: int) -> None:
 
 				os.remove(_SOAK_KEPT)
 
+			else:
+
+				# There were none to begin with, so the soak's own aren't left behind.
+				try:
+					os.remove(path)
+				except OSError:
+					pass
+
 		finally:
 			picoclock.device.chip.release()
 
-	passed = saved and joined and counts["windows"] >= 1 and counts["worst"] <= 2 and counts["short"] == 0 and counts["broke"] == 0 and sound(status)
+	# Windows come about once a minute and pages about twice. Half as many, and
+	# at most a quarter of the windows spoiled, leaves room for every pause and
+	# stop the laptop half makes while still noticing a soak that went quiet.
+	enough = counts["windows"] >= minutes // 2 and counts["spoiled"] <= counts["windows"] // 4 and opened >= minutes
+	passed = saved and joined and enough and counts["ended"] == 0 and counts["worst"] <= 2 and counts["drift"] <= _DRIFT_MOST and counts["short"] == 0 and counts["broke"] == 0 and sound(status)
 
-	report("soak", passed, "windows=%d spoiled=%d short=%d broke=%d pulses=%d worst_cycles=%d free_kb=%d..%d least_free_kb=%d saves=%d joined=%d pages_opened=%d holds=%d held_ms=%d longest_hold_ms=%d given_up=%d %s" % (counts["windows"], counts["spoiled"], counts["short"], counts["broke"], counts["pulses"], counts["worst"], counts["first_free"] // 1024, counts["last_free"] // 1024, counts["least_free"] // 1024, saves, joined, opened, kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), describe(status)))
+	report("soak", passed, "windows=%d spoiled=%d short=%d broke=%d ended_early=%d pulses=%d worst_cycles=%d drift_cycles=%d free_kb=%d..%d least_free_kb=%d saves=%d joined=%d pages_opened=%d holds=%d held_ms=%d longest_hold_ms=%d given_up=%d %s" % (counts["windows"], counts["spoiled"], counts["short"], counts["broke"], counts["ended"], counts["pulses"], counts["worst"], counts["drift"], counts["first_free"] // 1024, counts["last_free"] // 1024, counts["least_free"] // 1024, saves, joined, opened, kept_up.get("holds", -1), kept_up.get("held", -1), kept_up.get("longest_hold", -1), kept_up.get("given_up", -1), describe(status)))
 
 
 TESTS = {
@@ -3302,6 +3703,7 @@ TESTS = {
 
 def run (test: str, load: str = "idle") -> None:
 
-	"""Run one test by name under one load by name."""
+	"""Run one test by name under one load by name, first putting back any settings a test cut short left in keeping."""
 
+	put_back_left_over()
 	TESTS[test](load)

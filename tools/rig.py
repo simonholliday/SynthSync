@@ -2,8 +2,10 @@
 
 Every timing claim PicoClock makes rests on this. It copies PicoClock and the
 rig's board half to a temporary folder, lets the Pico run them from there, and
-reads back one result line for each test. Nothing is written to the Pico's own
-storage, apart from a small file the flash load writes and removes.
+reads back one result line for each test. Tests that save write files of their
+own, named from `/_rig`, and remove them. `powerup` and `air` write over
+PicoClock's own settings, keeping a copy aside meanwhile, and put them back
+whatever happens. The next test puts back a copy one cut short left.
 
     python -m tools.rig freerun
     python -m tools.rig player sweep pause startstop --load all
@@ -11,10 +13,12 @@ storage, apart from a small file the flash load writes and removes.
     python -m tools.rig --list
 
 `freerun` proves the rig itself. The rest test the real player: `player` times
-its fastest output in the busiest pattern, `sweep` changes the tempo many
-times a second, `collect` changes outputs while the first core collects a
-large heap straight after each change, `pause` pauses and carries on a dozen times, `startstop`
-starts and stops over and over, `position` asks where the clock has got to
+its fastest output in the busiest pattern, `cluster` times one whose edges
+crowd together with three others', `sweep` changes the tempo many times a
+second, `burst` sends every setting at once over and over, `collect` changes
+outputs while the first core collects a large heap straight after each change,
+`pause` pauses and carries on a dozen times, `startstop` starts and stops over
+and over, `position` asks where the clock has got to
 and checks the answers against the Pico's own clock, `inputs` presses each
 button through the jumper and watches both lights, `led` times every flash of
 the tempo LED against the beat, `powerup` starts the clock
