@@ -3,11 +3,19 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-	<meta name="theme-color" content="#14161a">
+	<meta name="theme-color" content="#0f1114">
 	<title>SynthSync</title>
 
 	<!-- An empty icon, so a browser doesn't ask the Pico for one. -->
 	<link rel="icon" href="data:,">
+	<!-- This phone's choice of look, put on the page before it is first drawn, so
+	     it never shows another look on its way in. -->
+	<script>
+		try {
+			var look = localStorage.getItem("synthsync.look");
+			if (look) document.documentElement.dataset.theme = look;
+		} catch (problem) {}
+	</script>
 	<link rel="stylesheet" href="page.css">
 	<script type="module" src="page.js"></script>
 </head>
@@ -55,6 +63,12 @@
 			<p class="note" id="clock-note">How many pulses output 1 sends on each beat (PPQN). Every other output is a ratio of it. 4 suits most step sequencers: one step for each 16th note.</p>
 			<div id="rates" class="rates" role="radiogroup" aria-labelledby="clock-title" aria-describedby="clock-note"></div>
 			<p id="ppqn-problem" class="problem" role="alert"></p>
+		</section>
+
+		<section id="look" class="panel" aria-labelledby="look-title">
+			<h2 id="look-title">Look</h2>
+			<p class="note" id="look-note">How this page looks on this phone. Every phone keeps its own choice.</p>
+			<div id="looks" class="looks" role="radiogroup" aria-labelledby="look-title" aria-describedby="look-note"></div>
 		</section>
 
 		<section id="wifi" class="panel" aria-labelledby="wifi-title">

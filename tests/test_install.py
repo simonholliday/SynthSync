@@ -82,7 +82,12 @@ def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () ->
 	# Nothing left that a browser would fetch: the icon is written into the page itself.
 	assert re.findall(r'(?:src|href)="([^"#][^"]*)"', page) == ["data:,"]
 	assert "import " not in page.split("<script", 1)[1]
-	assert page.count("<script") == 1 and page.count("<style>") == 1
+	assert page.count("<style>") == 1
+
+	# Two scripts: a few lines in the head that put this phone's look on before the page is first drawn,
+	# ahead of the style sheet, and the module that is everything else.
+	assert page.count("<script") == 2 and page.count("<script>") == 1 and page.count('<script type="module">') == 1
+	assert page.index("<script>") < page.index("<style>") < page.index('<script type="module">')
 
 	# Every line of every part is there, apart from how the scripts named one another.
 	for name in ("page.css", "page.js", "settings.js", "knob.js", "ratio.js"):

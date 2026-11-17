@@ -1,7 +1,8 @@
 /*
 The page's second view, for the things that are set once: how many pulses the
-clock sends a beat, which WiFi SynthSync is on, the password of its own
-network, starting again as new, and how it is doing. At its top, and only when
+clock sends a beat, how the page looks on this phone, which WiFi SynthSync is
+on, the password of its own network, starting again as new, and how it is
+doing. At its top, and only when
 there is something to say, it says what in config.txt couldn't be used.
 
 As everywhere on the page, nothing here decides anything. It asks the Pico and
@@ -17,6 +18,20 @@ const OWN_ADDRESS = "192.168.4.1";
 
 // The note each of the clock's pulses a beat gives, where it is one a musician would name, or what uses it.
 const RATE_WORDS = {1: "quarters", 2: "8ths", 4: "16ths", 8: "32nds", 24: "DIN sync"};
+
+
+// The looks a phone can choose, each by the name page.css knows it by and the name shown, Dark first among them
+// because it is what a phone that hasn't chosen gets. A test holds this list to the looks page.css draws.
+const LOOKS = [
+	["system", "Match phone"], ["dark", "Dark"], ["light", "Light"],
+	["modular", "Modular"], ["phosphor", "Phosphor"], ["phaedra", "Phaedra"], ["constructor", "Constructor"],
+	["aluminium", "Aluminium"], ["airports", "Airports"], ["oxygene", "Oxygène"], ["workbench", "Workbench"],
+];
+
+// The look a phone has until it chooses one, and where this phone keeps its choice. index.html reads it too,
+// before the page is first drawn.
+const FIRST_LOOK = "dark";
+const LOOK_KEY = "synthsync.look";
 
 
 /* Find one of the page's elements by its id. */
@@ -68,6 +83,8 @@ export class Settings {
 		// going and coming back, which a trial from SynthSync's own network may or may not take with it.
 		this.trying = false;
 
+		this.showLooks();
+
 		find("scan").addEventListener("click", () => this.scan());
 		find("join-cancel").addEventListener("click", () => this.pick(null));
 		find("join-show").addEventListener("change", (event) => showAs(find("join-password"), event.target.checked));
@@ -101,6 +118,53 @@ export class Settings {
 			this.confirmReset(false);
 			this.ask("reset", {do: "reset"});
 		});
+	}
+
+	/* Offer every look, with this phone's choice ticked, and wear it. Nothing about it is sent to the Pico. */
+	showLooks () {
+
+		let chosen = FIRST_LOOK;
+
+		// A browser that won't keep anything still shows every look; it just forgets the choice.
+		try {
+			chosen = localStorage.getItem(LOOK_KEY) || FIRST_LOOK;
+		} catch (problem) {}
+
+		find("looks").replaceChildren(...LOOKS.map(([key, name]) => {
+
+			const choice = document.createElement("label");
+			const box = document.createElement("input");
+			const swatch = document.createElement("i");
+
+			box.type = "radio";
+			box.name = "look";
+			box.value = key;
+			box.checked = key === chosen;
+			swatch.dataset.theme = key;
+
+			box.addEventListener("change", () => {
+
+				try {
+					localStorage.setItem(LOOK_KEY, key);
+				} catch (problem) {}
+
+				this.wear(key);
+			});
+
+			choice.className = "look";
+			choice.append(box, swatch, name);
+
+			return choice;
+		}));
+
+		this.wear(chosen);
+	}
+
+	/* Put a look on the page, and colour the phone's own bar to match it. */
+	wear (key) {
+
+		document.documentElement.dataset.theme = key;
+		document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.documentElement).getPropertyValue("--ground").trim();
 	}
 
 	/* Ask the Pico for something, remembering what, so its answer can be told from other news. */

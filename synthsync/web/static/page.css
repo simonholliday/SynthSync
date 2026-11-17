@@ -1,21 +1,227 @@
 /*
 How the page looks. It is laid out for a phone held upright, and one column
-the same width sits in the middle of anything wider. It is dark, for a stage
-or a studio at night, with one bright colour for what is on.
+the same width sits in the middle of anything wider. It is dark unless a phone
+chooses another look in Settings, for a stage or a studio at night, with one
+bright colour for what is on.
 */
 
-:root {
+/*
+Every colour on the page is one of these tokens, and a look is a block that
+sets every one of them, which a test holds it to. The looks are Superconductor's,
+with its values, so SynthSync matches the rest of the family:
+
+    --ground       the page                   its --ground
+    --panel        a panel or an output       its --panel
+    --raised       a control on a panel       its --title-ground
+    --edge         a separator or a groove    its --edge
+    --edge-strong  a control's outline        its --edge-strong
+    --text         words                      its --ink
+    --quiet        words that matter less     its --ink-quiet
+    --lit          what is on                 its --on
+    --on-lit       words on what is on        its --on-ink
+    --wrong        what went wrong            its --danger
+
+One value is not Superconductor's: Constructor's --wrong, lightened from
+#e0455a, keeping its hue, because SynthSync writes sentences in it and they
+need 4.5:1 on a panel.
+
+Each block is written out in full rather than through light-dark(), which
+only browsers from 2024 understand: an older phone would get no colours at
+all. With no look chosen the page is Dark. A look applies wherever its
+attribute is, so each swatch in Settings paints itself in its own look.
+*/
+
+:root,
+[data-theme="dark"] {
 	color-scheme: dark;
 
-	--ground: #14161a;
-	--panel: #1d2026;
-	--raised: #272b33;
-	--edge: #3a3f48;
-	--text: #ecebe6;
-	--quiet: #9a9da6;
-	--lit: #ffb000;
-	--on-lit: #1a1400;
-	--wrong: #ff7a6b;
+	--ground: #0f1114;
+	--panel: #20242c;
+	--raised: #272c35;
+	--edge: #2a2e37;
+	--edge-strong: #6c7482;
+	--text: #e8eaee;
+	--quiet: #9196a1;
+	--lit: #f0b429;
+	--on-lit: #1a1206;
+	--wrong: #ff8787;
+}
+
+/* Match phone: Dark or Light, whichever the phone is set to. */
+[data-theme="system"] {
+	color-scheme: dark;
+
+	--ground: #0f1114;
+	--panel: #20242c;
+	--raised: #272c35;
+	--edge: #2a2e37;
+	--edge-strong: #6c7482;
+	--text: #e8eaee;
+	--quiet: #9196a1;
+	--lit: #f0b429;
+	--on-lit: #1a1206;
+	--wrong: #ff8787;
+}
+
+@media (prefers-color-scheme: light) {
+
+	[data-theme="system"] {
+		color-scheme: light;
+
+		--ground: #dfe2e7;
+		--panel: #ffffff;
+		--raised: #eceef2;
+		--edge: #d3d8df;
+		--edge-strong: #7c8794;
+		--text: #171a1f;
+		--quiet: #586069;
+		--lit: #b87400;
+		--on-lit: #1a1206;
+		--wrong: #c22a2a;
+	}
+}
+
+[data-theme="light"] {
+	color-scheme: light;
+
+	--ground: #dfe2e7;
+	--panel: #ffffff;
+	--raised: #eceef2;
+	--edge: #d3d8df;
+	--edge-strong: #7c8794;
+	--text: #171a1f;
+	--quiet: #586069;
+	--lit: #b87400;
+	--on-lit: #1a1206;
+	--wrong: #c22a2a;
+}
+
+/* Modular */
+[data-theme="modular"] {
+	color-scheme: dark;
+
+	--ground: #0a0a0b;
+	--panel: #1d1c1a;
+	--raised: #262421;
+	--edge: #302d29;
+	--edge-strong: #6e6862;
+	--text: #f2efe6;
+	--quiet: #a9a399;
+	--lit: #efe0bc;
+	--on-lit: #17140d;
+	--wrong: #f07070;
+}
+
+/* Phosphor */
+[data-theme="phosphor"] {
+	color-scheme: dark;
+
+	--ground: #060b08;
+	--panel: #141d17;
+	--raised: #1a251d;
+	--edge: #223129;
+	--edge-strong: #5e7a68;
+	--text: #d6eedd;
+	--quiet: #8fa898;
+	--lit: #3be07c;
+	--on-lit: #05170d;
+	--wrong: #ff8a8a;
+}
+
+/* Phaedra */
+[data-theme="phaedra"] {
+	color-scheme: dark;
+
+	--ground: #0a0a16;
+	--panel: #1b1b2e;
+	--raised: #222239;
+	--edge: #262640;
+	--edge-strong: #6d6d99;
+	--text: #e4e2f2;
+	--quiet: #9b99bc;
+	--lit: #de84d6;
+	--on-lit: #1c0820;
+	--wrong: #ff87a0;
+}
+
+/* Constructor */
+[data-theme="constructor"] {
+	color-scheme: dark;
+
+	--ground: #060606;
+	--panel: #1a1a1a;
+	--raised: #232323;
+	--edge: #2e2e2e;
+	--edge-strong: #767676;
+	--text: #ffffff;
+	--quiet: #a8a8a8;
+	--lit: #f44336;
+	--on-lit: #140302;
+	--wrong: #e14e62;
+}
+
+/* Aluminium */
+[data-theme="aluminium"] {
+	color-scheme: light;
+
+	--ground: #c8ccd0;
+	--panel: #f4f6f7;
+	--raised: #dce0e3;
+	--edge: #c4c9ce;
+	--edge-strong: #7a828a;
+	--text: #14181c;
+	--quiet: #4e565e;
+	--lit: #b34a10;
+	--on-lit: #fff3ea;
+	--wrong: #b3242c;
+}
+
+/* Airports */
+[data-theme="airports"] {
+	color-scheme: light;
+
+	--ground: #d8d9d5;
+	--panel: #fbfbf9;
+	--raised: #e7e7e3;
+	--edge: #dcdcd7;
+	--edge-strong: #82857f;
+	--text: #1b1d1c;
+	--quiet: #545853;
+	--lit: #24445d;
+	--on-lit: #f4f7f9;
+	--wrong: #9b3a3a;
+}
+
+/* Oxygène */
+[data-theme="oxygene"] {
+	color-scheme: light;
+
+	--ground: #dcd2c2;
+	--panel: #faf5ec;
+	--raised: #e8e0d0;
+	--edge: #ded5c4;
+	--edge-strong: #8a8071;
+	--text: #211d16;
+	--quiet: #5c5346;
+	--lit: #0e5450;
+	--on-lit: #eff7f5;
+	--wrong: #a8302a;
+}
+
+/* Workbench */
+[data-theme="workbench"] {
+	color-scheme: light;
+
+	--ground: #94999e;
+	--panel: #d6dade;
+	--raised: #c8cdd2;
+	--edge: #b0b5ba;
+	--edge-strong: #5e656c;
+	--text: #101317;
+	--quiet: #3f464d;
+	--lit: #a33a05;
+	--on-lit: #fff1e6;
+	--wrong: #a31f26;
 }
 
 * {
@@ -59,10 +265,18 @@ h1 {
 	letter-spacing: 0.02em;
 }
 
+/* Written on a panel's colour rather than straight on the page, which in a light look is too dark for it. */
 #link {
 	margin: 0;
+	padding: 0.15rem 0.5rem;
+	border-radius: 0.4rem;
+	background: var(--panel);
 	color: var(--wrong);
 	font-size: 0.9rem;
+}
+
+#link:empty {
+	display: none;
 }
 
 /* Where SynthSync has gone, while the page can't reach it because it changed networks. */
@@ -114,7 +328,7 @@ button, input, select {
 
 button, .button, input[type="text"], input[type="number"], input[type="password"], select {
 	min-height: 2.75rem;
-	border: 1px solid var(--edge);
+	border: 1px solid var(--edge-strong);
 	border-radius: 0.6rem;
 	background: var(--raised);
 }
@@ -156,12 +370,17 @@ button.go {
 
 /* The tempo: a big knob, with the number beside it to type into and what it counts underneath. */
 
+/* The tempo and play/stop sit on one panel, as each output sits on its own, so
+   nothing on the main view is drawn straight on the page: a light look's page is
+   a bench, darker than its panels, and too close to its lit colour. */
 .tempo {
 	display: grid;
 	grid-template-columns: auto 1fr;
 	align-items: center;
-	gap: 0 1rem;
-	padding: 0.5rem 0 0.75rem;
+	gap: 0 0.75rem;
+	padding: 0.75rem 0.5rem 0.5rem;
+	border-radius: 0.8rem 0.8rem 0 0;
+	background: var(--panel);
 }
 
 #tempo-knob {
@@ -216,7 +435,7 @@ button.go {
 
 .knob-body {
 	fill: var(--raised);
-	stroke: var(--edge);
+	stroke: var(--edge-strong);
 	stroke-width: 1.5;
 }
 
@@ -229,7 +448,8 @@ button.go {
 }
 
 .knob-held .knob-body {
-	fill: #323741;
+	fill: var(--raised);
+	fill: color-mix(in srgb, var(--raised), var(--text) 12%);
 }
 
 .knob[aria-disabled="true"] {
@@ -245,7 +465,10 @@ button.go {
 	display: grid;
 	grid-template-columns: repeat(2, 1fr);
 	gap: 0.5rem;
-	margin-bottom: 1rem;
+	margin-bottom: 0.75rem;
+	padding: 0.25rem 0.5rem 0.75rem;
+	border-radius: 0 0 0.8rem 0.8rem;
+	background: var(--panel);
 }
 
 .transport button {
@@ -323,7 +546,7 @@ and its light, and all three are one thing to press.
 	position: relative;
 	width: 2.4rem;
 	height: 1.35rem;
-	border: 1px solid var(--edge);
+	border: 1px solid var(--edge-strong);
 	border-radius: 1rem;
 	background: var(--raised);
 	transition: background 0.12s, border-color 0.12s;
@@ -384,7 +607,8 @@ and brought in with the switch. A refusal stays at full strength, to be read.
 
 /* Too fast to blink: a steady glow instead. */
 .light.fast {
-	background: #a87400;
+	background: var(--lit);
+	background: color-mix(in srgb, var(--lit) 66%, var(--panel));
 }
 
 .name {
@@ -488,7 +712,7 @@ are open, the usual sign for a panel that opens where it is.
 
 .switch span {
 	padding: 0.45rem 0.6rem;
-	border: 1px solid var(--edge);
+	border: 1px solid var(--edge-strong);
 	border-radius: 2rem;
 	background: var(--raised);
 	color: var(--quiet);
@@ -601,7 +825,7 @@ are open, the usual sign for a panel that opens where it is.
 	gap: 0.5rem;
 	min-height: 2.75rem;
 	padding: 0 0.6rem;
-	border: 1px solid var(--edge);
+	border: 1px solid var(--edge-strong);
 	border-radius: 0.6rem;
 	background: var(--raised);
 	color: var(--quiet);
@@ -704,12 +928,10 @@ are open, the usual sign for a panel that opens where it is.
 
 /* On a narrow phone everything in a row draws in a little, so that a ratio still shows whole. */
 
-@media (max-width: 23.4rem) {
-
-	body {
-		padding-right: max(0.5rem, env(safe-area-inset-right));
-		padding-left: max(0.5rem, env(safe-area-inset-left));
-	}
+/* The tempo takes each smaller size a little sooner than the rest, because its panel's
+   padding comes out of the same width: at 375 px a full-size knob, and at 340 px the
+   middle one, left too little room for a tempo such as 120.25. */
+@media (max-width: 24.25rem) {
 
 	#tempo-knob {
 		width: 8.5rem;
@@ -718,6 +940,26 @@ are open, the usual sign for a panel that opens where it is.
 
 	#tempo-text {
 		font-size: 2.4rem;
+	}
+}
+
+@media (max-width: 22rem) {
+
+	#tempo-knob {
+		width: 7.5rem;
+		height: 7.5rem;
+	}
+
+	#tempo-text {
+		font-size: 2.1rem;
+	}
+}
+
+@media (max-width: 23.4rem) {
+
+	body {
+		padding-right: max(0.5rem, env(safe-area-inset-right));
+		padding-left: max(0.5rem, env(safe-area-inset-left));
 	}
 
 	.ratio-knob {
@@ -733,15 +975,6 @@ are open, the usual sign for a panel that opens where it is.
 /* Narrower still, as a small phone showing everything enlarged, it all draws in again. */
 
 @media (max-width: 21rem) {
-
-	#tempo-knob {
-		width: 7.5rem;
-		height: 7.5rem;
-	}
-
-	#tempo-text {
-		font-size: 2.1rem;
-	}
 
 	.output .row {
 		gap: 0.35rem;
@@ -768,4 +1001,63 @@ are open, the usual sign for a panel that opens where it is.
 	.more {
 		width: 2.5rem;
 	}
+}
+
+/* The looks a phone can choose, two to a line, each with a swatch drawn in its own look. */
+
+.looks {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.4rem;
+}
+
+.look {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	min-width: 0;
+	min-height: 2.75rem;
+	padding: 0 0.5rem;
+	border: 1px solid var(--edge-strong);
+	border-radius: 0.6rem;
+	background: var(--raised);
+	color: var(--text);
+	font-size: 0.9rem;
+	cursor: pointer;
+}
+
+/* The choice is the whole box, so the round button itself isn't drawn. */
+.look input {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.look:has(input:checked) {
+	border-color: var(--lit);
+	box-shadow: inset 0 0 0 1px var(--lit);
+}
+
+.look:has(input:focus-visible) {
+	outline: 2px solid var(--lit);
+	outline-offset: 2px;
+}
+
+.look i {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 1.5rem;
+	height: 1.5rem;
+	border: 1px solid var(--edge-strong);
+	border-radius: 0.45rem;
+	background: var(--panel);
+}
+
+.look i::after {
+	content: "";
+	width: 0.65rem;
+	height: 0.65rem;
+	border-radius: 50%;
+	background: var(--lit);
 }

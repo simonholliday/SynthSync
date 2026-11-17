@@ -17,6 +17,7 @@ import synthsync.sim.network
 
 import tests.pages
 import tests.stand
+import tests.test_themes
 
 if typing.TYPE_CHECKING:
 	import playwright.sync_api
@@ -816,6 +817,85 @@ def test_the_settings_fit_a_phone_with_everything_open (phone: "playwright.sync_
 			box = phone.locator(selector).nth(index).bounding_box()
 
 			assert box is not None and box["height"] >= 44, selector
+
+
+def ground (key: str, scheme: str = "") -> str:
+
+	"""Give a look's ground as the browser writes a colour it has worked out, such as "rgb(15, 17, 20)"."""
+
+	return tests.test_themes.rgb(tests.test_themes.token(key, "ground", scheme))
+
+
+def wearing (page: "playwright.sync_api.Page") -> tuple[str, str, str]:
+
+	"""Say which look the page has on, the colour of its ground, and the colour it gives the phone's own bar."""
+
+	found = page.evaluate("""() => [
+		document.documentElement.dataset.theme || "",
+		getComputedStyle(document.body).backgroundColor,
+		document.querySelector('meta[name="theme-color"]').content,
+	]""")
+
+	return (found[0], found[1], found[2])
+
+
+def test_the_look_is_dark_until_this_phone_chooses_another_and_the_choice_is_kept (phone: "playwright.sync_api.Page") -> None:
+
+	"""Every look is offered, Dark is ticked and worn first, and a look chosen is worn at once, colours the phone's bar, and is back on after a reload before any of the page's own scripts has run."""
+
+	choices = phone.locator(".look")
+
+	assert choices.count() == 11
+	assert choices.all_inner_texts()[:3] == ["Match phone", "Dark", "Light"]
+	assert phone.locator('.look input:checked').get_attribute("value") == "dark"
+	assert wearing(phone) == ("dark", ground("dark"), tests.test_themes.token("dark", "ground"))
+
+	choices.filter(has_text="Workbench").tap()
+
+	assert tests.pages.eventually(lambda: wearing(phone)[:2] == ("workbench", ground("workbench")))
+	assert wearing(phone)[2] == tests.test_themes.token("workbench", "ground")
+
+	# The page's head puts the kept look on as it is read: by the time the page has been read through, and
+	# before its own scripts run, the look is already there.
+	phone.add_init_script("document.addEventListener('readystatechange', () => { if (document.readyState === 'interactive') window.lookWhenRead = document.documentElement.dataset.theme || ''; })")
+	phone.reload()
+	phone.wait_for_function("!document.body.classList.contains('lost') && document.getElementById('wifi-status').textContent !== ''")
+
+	assert phone.evaluate("window.lookWhenRead") == "workbench"
+	assert phone.locator('.look input:checked').get_attribute("value") == "workbench"
+	assert wearing(phone)[:2] == ("workbench", ground("workbench"))
+
+
+def test_match_phone_follows_the_phone_from_dark_to_light (phone: "playwright.sync_api.Page") -> None:
+
+	"""Matching the phone, the page is Light's colours while the phone is set light and Dark's while it is set dark, without being chosen again."""
+
+	phone.emulate_media(color_scheme="dark")
+	phone.locator(".look").filter(has_text="Match phone").tap()
+
+	assert tests.pages.eventually(lambda: wearing(phone)[:2] == ("system", ground("system", "dark")))
+
+	phone.emulate_media(color_scheme="light")
+
+	assert tests.pages.eventually(lambda: wearing(phone)[1] == ground("system", "light"))
+	assert ground("system", "light") == ground("light")
+
+
+def test_another_phone_keeps_its_own_look (chromium: "playwright.sync_api.Browser", phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""The choice is this phone's, so a second phone opening the page is still in Dark."""
+
+	phone.locator(".look").filter(has_text="Phosphor").tap()
+
+	assert tests.pages.eventually(lambda: wearing(phone)[0] == "phosphor")
+
+	other = tests.pages.phone(chromium)
+	other.goto(stand.address + "/#settings")
+	other.wait_for_function("!document.body.classList.contains('lost')")
+
+	assert wearing(other)[:2] == ("dark", ground("dark"))
+
+	other.context.close()
 
 
 def test_the_clocks_pulses_a_beat_are_chosen_here_and_show_on_the_main_view (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:

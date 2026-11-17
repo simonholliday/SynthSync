@@ -15,6 +15,7 @@ import synthsync.core.ratio
 
 import tests.pages
 import tests.stand
+import tests.test_themes
 
 if typing.TYPE_CHECKING:
 	import playwright.sync_api
@@ -191,6 +192,28 @@ def test_the_page_fits_a_phone_and_is_big_enough_to_touch (phone: "playwright.sy
 				assert box is not None and box["height"] >= 44, selector
 
 	assert phone.evaluate("document.documentElement.scrollWidth") <= tests.pages.PHONE["width"]
+
+
+@pytest.mark.parametrize("look", ["dark", "workbench"])
+def test_the_tempo_play_and_stop_sit_on_a_panel_as_the_outputs_do (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand, look: str) -> None:
+
+	"""Nothing on the main view but the header is drawn on the page's own ground, which in a light look is too close to its lit colour: so the tempo, play and stop share a panel, and the line's notice wears a panel's colour too."""
+
+	stand.as_new()
+
+	page = tests.pages.phone(chromium)
+
+	page.context.add_init_script("localStorage.setItem('synthsync.look', '%s')" % look)
+	problems = open_page(page, stand)
+	panel = tests.test_themes.rgb(tests.test_themes.token(look, "panel"))
+
+	for selector in (".tempo", ".transport", ".output", "#link"):
+		assert page.evaluate("selector => getComputedStyle(document.querySelector(selector)).backgroundColor", selector) == panel, (look, selector)
+
+	assert page.evaluate("getComputedStyle(document.body).backgroundColor") == tests.test_themes.rgb(tests.test_themes.token(look, "ground"))
+	assert problems == []
+
+	page.context.close()
 
 
 def test_a_narrow_phone_still_shows_every_number_whole (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
