@@ -422,7 +422,19 @@ In a twelve-hour test, with the page in constant use and the settings saved abou
 
 Anything clocked from PicoClock's outputs follows it exactly. The crystal only matters against another clock that is running free.
 
-> **To come:** the tempo's accuracy measured at the jack at several tempos overnight, and a single command that lets you repeat the measurement on your own board.
+> **To come:** the tempo's accuracy measured at output 1 overnight, at five tempos, with the method below.
+
+### Measuring your own board
+
+You can find out how true your own PicoClock's tempo is, with nothing but the Pico on its USB cable and a computer on the internet. Leave it running overnight: the longer it runs, the closer the answer.
+
+1. **Unplug anything patched to PicoClock's outputs.** For the whole run, output 1 plays 30, 60, 120, 174 and 300 BPM in turn, and the other outputs play along.
+2. **Install Python** (3.10 or newer) on the computer, and then mpremote, which talks to the Pico over USB: `python -m pip install mpremote`
+3. **In PicoClock's folder, run** `python -m tools.accuracy`
+
+PicoClock stops while it measures, and starts again by itself at the end, with your settings as you left them. Every ten minutes it says how it is going. At the end it says whether every pulse was on time, and how fast or slow the tempo ran, in parts per million and in BPM at 120. Add `--hours 1` for a quicker, rougher answer.
+
+**How it works.** The Pico times every pulse of output 1 at its pin, to a 150-millionth of a second, which shows whether each one is where its tempo puts it. Every two seconds it tells the computer how long output 1 has been playing, by its own crystal. The computer notes when each report arrives. All the while, it asks time servers on the internet how far its own clock is out, and keeps only the answers that came back quickest. Over a night, the difference between the Pico's count and true time is the tempo's error.
 
 ## If something isn't working
 
