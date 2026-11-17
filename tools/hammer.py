@@ -18,11 +18,11 @@ found is put back when it finishes.
 After each round it asks PicoClock how well its side has kept up, and counts
 how often and for how long everything there but the clock was held up for over
 a second while this ran, and how many pages PicoClock gave up on. Each reads
--1 if PicoClock never said.
+-1 if PicoClock never said, and it is asked until it does.
 
 This is traffic for the timing rig's `air` test and for a long soak. It exits
 with 0 when every request was answered, the two pages stayed in step and
-nothing held PicoClock's side up.
+PicoClock said nothing held its side up.
 """
 
 import argparse
@@ -122,7 +122,8 @@ async def count (totals: Totals, work: typing.Awaitable[typing.Any], what: str) 
 	try:
 		return await asyncio.wait_for(work, PATIENCE)
 
-	except (OSError, asyncio.TimeoutError, ValueError, IndexError) as problem:
+	# A socket closed part way through, or one PicoClock wouldn't open, is a failure like any other.
+	except (OSError, asyncio.TimeoutError, asyncio.IncompleteReadError, tools.page.Refused, ValueError, IndexError) as problem:
 
 		totals["failed"] += 1
 		note("%s failed after %.1f s: %s" % (what, time.monotonic() - began, type(problem).__name__))
@@ -142,16 +143,27 @@ async def browse (host: str, port: int, totals: Totals) -> None:
 
 async def one_round (host: str, port: int, totals: Totals, turn: int, tempo: bool) -> None:
 
-	"""Use the page hard for a few seconds: two pages open, one busy and one listening, with a browser and plain requests beside them."""
+	"""Use the page hard for a few seconds: two pages open, one busy and one listening, with a browser and plain requests beside them. Both pages are closed whatever happens."""
 
 	origin = "http://%s" % (host if port == 80 else "%s:%d" % (host, port))
 	busy = tools.page.Page(host, port)
 	quiet = tools.page.Page(host, port)
 
-	if await count(totals, busy.open(origin=origin), "opening a page") is None or await count(totals, quiet.open(origin=origin), "opening a second page") is None:
+	try:
+
+		if await count(totals, busy.open(origin=origin), "opening a page") is None or await count(totals, quiet.open(origin=origin), "opening a second page") is None:
+			return
+
+		await use_pages(host, port, totals, turn, tempo, origin, busy, quiet)
+
+	finally:
 		await busy.close()
 		await quiet.close()
-		return
+
+
+async def use_pages (host: str, port: int, totals: Totals, turn: int, tempo: bool, origin: str, busy: tools.page.Page, quiet: tools.page.Page) -> None:
+
+	"""Change things from the busy page for a round while the quiet one listens, with a browser and plain requests beside them, and count whether the two ended in step."""
 
 	# What the listening page last heard of each thing the busy page changes, and of the clock.
 	heard: dict[typing.Any, typing.Any] = {}
@@ -259,8 +271,6 @@ async def one_round (host: str, port: int, totals: Totals, turn: int, tempo: boo
 
 		stop.set()
 		await asyncio.gather(*listeners, return_exceptions=True)
-		await busy.close()
-		await quiet.close()
 
 	totals["rounds"] += 1
 
@@ -360,8 +370,17 @@ def keep_at_it (host: str, port: int, still_going: typing.Callable[[], bool], te
 	if found is None:
 		return totals
 
-	# How things stood before any of this, to count only what happens while it runs.
-	at_first = asyncio.run(health(host, port))
+	# How things stood before any of this, to count only what happens while it runs. Without it nothing
+	# can be said of what held PicoClock up, which counts against the run, so it is asked for until it comes.
+	at_first = None
+
+	while at_first is None and still_going() and time.monotonic() - began < wait:
+
+		at_first = asyncio.run(health(host, port))
+
+		if at_first is None:
+			time.sleep(0.5)
+
 	turn = 0
 
 	while still_going():
@@ -406,9 +425,12 @@ def describe (totals: Totals) -> str:
 
 def went_well (totals: Totals) -> bool:
 
-	"""Say whether the page was used, every request was answered, the two pages stayed in step, nothing held PicoClock's side up and the clock reported no timing fault."""
+	"""Say whether the page was used, every request was answered, the two pages stayed in step, PicoClock said nothing held its side up and the clock reported no timing fault.
 
-	return totals["rounds"] >= 1 and totals["failed"] == 0 and totals["out_of_step"] == 0 and totals["faults"] == 0 and totals["holds"] <= 0
+	Holds of -1 mean PicoClock never said, which isn't the same as nothing holding it up.
+	"""
+
+	return totals["rounds"] >= 1 and totals["failed"] == 0 and totals["out_of_step"] == 0 and totals["faults"] == 0 and totals["holds"] == 0
 
 
 def main (arguments: list[str] | None = None) -> int:

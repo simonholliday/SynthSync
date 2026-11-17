@@ -370,6 +370,8 @@ def test_a_pico_that_has_just_been_restarted_is_waited_for (monkeypatch: pytest.
 
 	def run (command: list[str], **options: object) -> "subprocess.CompletedProcess[str]":
 
+		"""Answer each command with the next answer in the list, and note what was asked."""
+
 		asked.append(command)
 
 		return answers[len(asked) - 1]
@@ -566,10 +568,10 @@ def test_removing_takes_picoclock_off_and_copies_nothing (monkeypatch: pytest.Mo
 
 
 @pytest.mark.usefixtures("compiler")
-@pytest.mark.parametrize("fail", ["REMOVED", "cp"])
-def test_a_step_the_pico_refuses_stops_the_install_and_says_so (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], fail: str) -> None:
+@pytest.mark.parametrize("fail, old_copy_gone", [("REMOVED", False), ("cp", True)])
+def test_a_step_the_pico_refuses_stops_the_install_and_says_so (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], fail: str, old_copy_gone: bool) -> None:
 
-	"""If the old copy can't be taken off or the new one can't be copied, the tool fails and shows what the Pico said."""
+	"""If the old copy can't be taken off or the new one can't be copied, the tool fails and shows what the Pico said, and says when nothing will start at power-up now."""
 
 	pico = Pico(fail=fail)
 
@@ -577,19 +579,27 @@ def test_a_step_the_pico_refuses_stops_the_install_and_says_so (monkeypatch: pyt
 	monkeypatch.setattr(tools.install, "on_pico", pico)
 
 	assert tools.install.main([]) == 1
-	assert "boom" in capsys.readouterr().out
+
+	said = capsys.readouterr().out
+
+	assert "boom" in said
+	assert (tools.install.NOTHING_STARTS in said) == old_copy_gone
 
 
 @pytest.mark.usefixtures("compiler")
 def test_a_copy_the_pico_cannot_load_fails_the_install (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
 
-	"""A copy that went across but won't load is a failure, found now and not at the next power-up."""
+	"""A copy that went across but won't load is a failure, found now and not at the next power-up, and the old copy is gone, so nothing starts."""
 
 	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
 	monkeypatch.setattr(tools.install, "on_pico", Pico(loads=False))
 
 	assert tools.install.main([]) == 1
-	assert "incompatible" in capsys.readouterr().out
+
+	said = capsys.readouterr().out
+
+	assert "incompatible" in said
+	assert tools.install.NOTHING_STARTS in said
 
 
 def test_without_a_compiler_nothing_is_installed (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

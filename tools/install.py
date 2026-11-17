@@ -87,6 +87,9 @@ picoclock.device.start.run(%d)
 # How long the Pico runs PicoClock for when a new copy is tried, in milliseconds.
 TRY_FOR = 3000
 
+# Said when an install fails after the old copy has been taken off.
+NOTHING_STARTS = "The old copy is already off the Pico, so nothing starts when it is switched on until an install works. Put right what went wrong and run this again."
+
 # A Pico that has just been restarted is off its USB port for a second or two.
 # This is how many times to ask for it, how long to leave between, in seconds,
 # and what mpremote says when it isn't there yet.
@@ -228,6 +231,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 		if not worked:
 			print("The files couldn't be copied. The Pico said:")
 			print(output)
+			print(NOTHING_STARTS)
 			return False
 
 		print("Copied.")
@@ -239,6 +243,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 			print("PicoClock was copied, but the Pico couldn't load it. It said:")
 			print(output)
 			print("If it names a .mpy file as incompatible, the Pico's MicroPython and this machine's mpy-cross are different releases.")
+			print(NOTHING_STARTS)
 			return False
 
 		print("Every part loads on the Pico, with %d KB of its memory to spare." % (int(loaded[0].split()[1]) // 1024))
@@ -268,6 +273,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 		if not worked:
 			print("%s couldn't be copied. The Pico said:" % tools.stage.MAIN)
 			print(output)
+			print(NOTHING_STARTS)
 			return False
 
 	# The password isn't said: it may have been changed, and the Pico keeps its settings through an install.

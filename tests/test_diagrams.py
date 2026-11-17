@@ -1,7 +1,10 @@
 """The README's wiring diagrams show the pins the code uses, and the pictures in the repo are the ones the script draws."""
 
 import pathlib
+import typing
 import xml.dom.minidom
+
+import pytest
 
 import picoclock.core.timeline
 import picoclock.device.board
@@ -80,3 +83,30 @@ def test_the_pictures_in_the_repo_are_the_ones_the_script_draws (tmp_path: pathl
 
 		assert kept.exists(), "run `python -m tools.diagrams`: %s is missing" % kept.name
 		assert kept.read_text(encoding="utf-8") == drawn, "run `python -m tools.diagrams`: %s is out of date" % kept.name
+
+
+def test_a_picture_is_put_in_place_whole_by_a_rename_and_nothing_is_left_beside_it (tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Drawn again over an old picture, and over what a run cut short left, the picture is replaced by renaming a new file, never by writing over it."""
+
+	path = tmp_path / "output.svg"
+	path.write_text("old", encoding="utf-8")
+	(tmp_path / "output.svg.new").write_text("half", encoding="utf-8")
+	opened: list[str] = []
+	really_open = open
+
+	def watching (file: typing.Any, mode: str = "r", *rest: typing.Any, **named: typing.Any) -> typing.Any:
+
+		"""Note how each file is opened."""
+
+		opened.append(mode)
+
+		return really_open(file, mode, *rest, **named)
+
+	monkeypatch.setattr("builtins.open", watching)
+	tools.diagrams.write(path, "<svg/>")
+	monkeypatch.undo()
+
+	assert opened == ["x"]
+	assert path.read_text(encoding="utf-8") == "<svg/>"
+	assert sorted(each.name for each in tmp_path.iterdir()) == ["output.svg"]

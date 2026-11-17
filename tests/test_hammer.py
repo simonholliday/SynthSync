@@ -3,6 +3,7 @@
 Against a real Pico it is run by hand and by the timing rig's `air` test.
 """
 
+import asyncio
 import threading
 import time
 import typing
@@ -11,6 +12,7 @@ import pytest
 
 import tests.stand
 import tools.hammer
+import tools.page
 
 
 @pytest.fixture()
@@ -128,3 +130,92 @@ def test_a_round_that_fails_while_the_test_goes_on_is_counted (stand: tests.stan
 
 	assert not tools.hammer.went_well(totals)
 	assert totals["failed"] > 0 or totals["out_of_step"] > 0
+
+
+@pytest.mark.parametrize("problem", [asyncio.IncompleteReadError(b"", 2), tools.page.Refused(403)])
+def test_a_page_that_fails_to_open_fails_the_round_and_neither_page_is_left_open (monkeypatch: pytest.MonkeyPatch, problem: BaseException) -> None:
+
+	"""A socket closed part way through opening, or one PicoClock refuses, is counted as a failure rather than ending the run, and both pages are closed."""
+
+	opened: list[object] = []
+	closed: list[object] = []
+
+	class Page:
+
+		"""Stands in for a page: the second one opened fails as told."""
+
+		def __init__ (self, host: str, port: int = 80) -> None:
+
+			"""Be ready to open."""
+
+		async def open (self, origin: str | None = None) -> dict[str, object]:
+
+			"""Open, or fail as told if this is the second."""
+
+			opened.append(self)
+
+			if len(opened) == 2:
+				raise problem
+
+			return {}
+
+		async def close (self) -> None:
+
+			"""Note being closed."""
+
+			closed.append(self)
+
+	monkeypatch.setattr(tools.page, "Page", Page)
+	tools.hammer.notes.clear()
+	totals = tools.hammer.new_totals()
+
+	asyncio.run(tools.hammer.one_round("127.0.0.1", 80, totals, 1, False))
+
+	assert totals["failed"] == 1 and totals["rounds"] == 0
+	assert len(closed) == 2 and sorted(map(id, closed)) == sorted(map(id, opened))
+	assert tools.hammer.notes[0].startswith("opening a second page failed")
+
+
+def test_how_picoclock_has_kept_up_is_asked_until_it_answers (monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""A first ask of how PicoClock has kept up that goes unanswered is asked again, so what held it up is counted rather than left unknown, and unknown never counts as having gone well."""
+
+	answers: list[dict[str, int] | None] = [None, None, {"holds": 2, "held": 2500, "given_up": 0}, {"holds": 2, "held": 2500, "given_up": 0}]
+	rounds: list[int] = []
+
+	async def settings (host: str, port: int) -> dict[typing.Any, typing.Any]:
+
+		"""Answer at once, with nothing to put back."""
+
+		return {}
+
+	async def health (host: str, port: int) -> dict[str, int] | None:
+
+		"""Answer as the list says, nothing at first."""
+
+		return answers.pop(0)
+
+	async def one_round (host: str, port: int, totals: tools.hammer.Totals, turn: int, tempo: bool) -> None:
+
+		"""Count a round that went well."""
+
+		rounds.append(turn)
+		totals["rounds"] += 1
+
+	async def put_back (host: str, port: int, found: dict[typing.Any, typing.Any]) -> None:
+
+		"""Put nothing back."""
+
+	monkeypatch.setattr(tools.hammer, "settings", settings)
+	monkeypatch.setattr(tools.hammer, "health", health)
+	monkeypatch.setattr(tools.hammer, "one_round", one_round)
+	monkeypatch.setattr(tools.hammer, "put_back", put_back)
+
+	totals = tools.hammer.keep_at_it("127.0.0.1", 80, lambda: not rounds)
+
+	assert answers == []
+	assert totals["holds"] == 0 and totals["held_ms"] == 0 and totals["given_up"] == 0
+	assert tools.hammer.went_well(totals)
+
+	# Never told, it can't be said that nothing held PicoClock up.
+	assert not tools.hammer.went_well(dict(totals, holds=-1))

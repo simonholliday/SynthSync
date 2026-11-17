@@ -16,6 +16,7 @@ README looks for them.
 
 import html
 import math
+import os
 import pathlib
 import sys
 
@@ -474,11 +475,31 @@ def main (arguments: list[str] | None = None) -> int:
 	for name, draw in DIAGRAMS.items():
 
 		path = folder / (name + ".svg")
-		path.write_text(draw().svg(), encoding="utf-8")
+		write(path, draw().svg())
 
 		print("drew", path)
 
 	return 0
+
+
+def write (path: pathlib.Path, text: str) -> None:
+
+	"""Put a file in place whole, by writing it under a new name and then renaming it.
+
+	The folder may be on a network share, where opening a file to write over it
+	can hang the share for good on some machines. A new file and a rename
+	never do that, and a picture is never left half written.
+	"""
+
+	new = path.with_name(path.name + ".new")
+
+	# Left by a run that was cut short.
+	new.unlink(missing_ok=True)
+
+	with open(new, "x", encoding="utf-8") as handle:
+		handle.write(text)
+
+	os.replace(new, path)
 
 
 if __name__ == "__main__":
