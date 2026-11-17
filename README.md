@@ -416,7 +416,7 @@ There are two different questions here.
 
 **Is each pulse where it should be?** The pulses are placed by hardware inside the Pico's chip, counted from its crystal. Each one leaves the Pico within a millionth of a second of its ideal time, and the small differences never add up, so the outputs don't drift against each other however long the clock runs.
 
-In a twelve-hour test, with the page in constant use and the settings saved about twice a minute, 407,443 pulses at ten tempos from 60 to 300 BPM were all timed by the Pico's own hardware. Every gap between pulses was exactly what the arithmetic gives, to a single tick of the Pico's 150 MHz clock. There were no late pulses and no timing faults.
+In a twelve-hour test, with the page in constant use and the settings saved about twice a minute, 407,443 pulses at ten tempos from 60 to 300 BPM were all timed by the Pico's own hardware. Every gap between pulses was exactly what the arithmetic gives, to within 13 billionths of a second, the finest the Pico's timing hardware can see. There were no late pulses and no timing faults.
 
 **Is the tempo true?** That depends on the crystal on your Pico, as it does for any clock. On the one board measured so far, the crystal ran slow by 2.4 parts in a million, give or take about 1. At 120 BPM that is 119.9997 BPM, or about a hundredth of a second an hour against a perfect clock. Other boards will differ: the crystal is specified to within 30 parts in a million.
 
@@ -430,11 +430,11 @@ You can find out how true your own PicoClock's tempo is, with nothing but the Pi
 
 1. **Unplug anything patched to PicoClock's outputs.** For the whole run, output 1 plays 30, 60, 120, 174 and 300 BPM in turn, and the other outputs play along.
 2. **Install Python** (3.10 or newer) on the computer, and then mpremote, which talks to the Pico over USB: `python -m pip install mpremote`
-3. **In PicoClock's folder, run** `python -m tools.accuracy`
+3. **In a copy of PicoClock's source code,** from its GitHub page rather than the ready-made folder for the Pico, **run** `python -m tools.accuracy`
 
 PicoClock stops while it measures, and starts again by itself at the end, with your settings as you left them. Every ten minutes it says how it is going. At the end it says whether every pulse was on time, and how fast or slow the tempo ran, in parts per million and in BPM at 120. Add `--hours 1` for a quicker, rougher answer.
 
-**How it works.** The Pico times every pulse of output 1 at its pin, to a 150-millionth of a second, which shows whether each one is where its tempo puts it. Every two seconds it tells the computer how long output 1 has been playing, by its own crystal. The computer notes when each report arrives. All the while, it asks time servers on the internet how far its own clock is out, and keeps only the answers that came back quickest. Over a night, the difference between the Pico's count and true time is the tempo's error.
+**How it works.** The Pico times every pulse of output 1 at its pin, to within 13 billionths of a second, which shows whether each one is where its tempo puts it. Every two seconds it tells the computer how long output 1 has been playing, by its own crystal. The computer notes when each report arrives. All the while, it asks time servers on the internet how far its own clock is out, and keeps only the answers that came back quickest. Over a night, the difference between the Pico's count and true time is the tempo's error.
 
 ## If something isn't working
 

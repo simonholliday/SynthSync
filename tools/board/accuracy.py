@@ -60,6 +60,11 @@ _SKIP = 2
 # t hundredths of a BPM moves t of them.
 _UNITS = 6000 * 1000000
 
+# How long to wait for output 1 to pulse before a report, in milliseconds. Its
+# longest gap, at 20 BPM and 4 PPQN, is 750 ms, so a pulse not seen in this
+# long means the output has stopped, and the run ends saying so.
+_PULSE_PATIENCE = 3000
+
 # The pulses a beat of every output after the first, which play to keep the
 # player as busy as in use.
 _OTHERS = ((24, 1), (3, 2), (1, 4), (6, 1), (2, 1), (1, 2), (3, 1))
@@ -131,17 +136,16 @@ class Ring:
 
 def gap_lengths (tempo: int, pulses: int, beats: int) -> tuple:
 
-	"""Give the lengths, in cycles, an output's gaps take at a steady tempo: pulse n is on tick n x beats x units / (pulses x tempo), rounded down, as the rig works them out."""
+	"""Give the lengths, in cycles, an output's gaps take at a steady tempo, from wherever they are watched: the exact gap in ticks, rounded down and up.
 
-	lengths = set()
-	previous = 0
+	It is the scheduler's `gap_ticks`, worked out here so that this runs
+	against an installed PicoClock older than that. A test holds the two to
+	the same answers.
+	"""
 
-	for number in range(1, 600):
-		tick = (number * beats * _UNITS) // (pulses * tempo)
-		lengths.add((tick - previous) * _CYCLES_PER_TICK)
-		previous = tick
+	whole, part = divmod(beats * _UNITS, pulses * tempo)
 
-	return tuple(lengths)
+	return (whole * _CYCLES_PER_TICK, (whole + 1 if part else whole) * _CYCLES_PER_TICK)
 
 
 class Stretch:
@@ -249,15 +253,23 @@ def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: 
 
 			# Wait for the next pulse, and note when it came by the Pico's own clock.
 			waited = upto
+			asked = time.ticks_ms()
 
-			while upto == waited:
+			while upto == waited and time.ticks_diff(time.ticks_ms(), asked) < _PULSE_PATIENCE:
 				upto = ring.done()
 
 			pulsed = time.ticks_us()
 
+			if upto == waited:
+				print("ACCURACY stalled after_ms=%d" % elapsed)
+				break
+
+		# Gaps the ring wrapped over before they were read can't be added up, so
+		# what output 1 has played can't be known from here on, and the run ends.
 		if upto - read > _RING_WORDS:
 			lost += upto - read - _RING_WORDS
-			read = upto - _RING_WORDS
+			print("ACCURACY overrun lost=%d" % lost)
+			break
 
 		while read < upto:
 

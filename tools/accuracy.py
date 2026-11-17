@@ -105,11 +105,24 @@ SETTLE = 60.0
 WORST_ALLOWED = 2
 DRIFT_SLACK = 4
 
-# How many standard errors "give or take" stands for: about 95 in 100.
-CONFIDENCE = 2.0
+# "Give or take" is how far either side the true figure is, 95 times in 100:
+# so many standard errors, which depends on how many answers the line had to
+# spare. Student's t, by those degrees of freedom, and beyond the last, about 2.
+STUDENT = ((1, 12.706), (2, 4.303), (3, 3.182), (4, 2.776), (5, 2.571), (6, 2.447), (7, 2.365), (8, 2.306), (9, 2.262), (10, 2.228), (12, 2.179), (15, 2.131), (20, 2.086), (25, 2.060), (30, 2.042), (40, 2.021), (60, 2.000), (120, 1.980))
+CONFIDENCE_IS = "95 in 100"
 
-# How often a run in progress says how it is going, in seconds.
+# How often a run in progress says how it is going, and how long the Pico may
+# say nothing before the run is ended as stalled, in seconds. It reports
+# every two seconds.
 PROGRESS_EVERY = 600.0
+QUIET_FOR = 30.0
+
+# The longest a run can be, in hours: the Pico's clock of milliseconds can
+# measure no longer a stretch of time than about six days.
+LONGEST_RUN = 144.0
+
+# How many turns a time server that asks to be asked less often is left out for.
+KISSED_SKIP = 16
 
 # The Pico's half, which is sent to it and run.
 BOARD_HALF = ROOT / "tools" / "board" / "accuracy.py"
@@ -203,9 +216,24 @@ def answer (data: bytes, identity: int, server: str, sent: float, received: floa
 	return Sample(server, sent, to_seconds(data[32:40]), to_seconds(data[40:48]), received)
 
 
+class TooOften (Exception):
+
+	"""A time server has asked to be asked less often."""
+
+
+def kissed (data: bytes, identity: int) -> bool:
+
+	"""Say whether an answer to this question asks to be asked less often: a stratum of 0, which network time calls a kiss of death."""
+
+	return len(data) >= 48 and data[0] & 7 == 4 and data[1] == 0 and struct.unpack("!Q", data[24:32])[0] == identity
+
+
 def ask (server: str, patience: float = NTP_PATIENCE, port: int = 123) -> Sample | None:
 
-	"""Ask one time server, by its address, how far this computer's hardware clock is out, or give None if it doesn't answer well."""
+	"""Ask one time server, by its address, how far this computer's hardware clock is out, or give None if it doesn't answer well.
+
+	A server that asks to be asked less often raises `TooOften`.
+	"""
 
 	identity = random.getrandbits(64)
 
@@ -221,6 +249,9 @@ def ask (server: str, patience: float = NTP_PATIENCE, port: int = 123) -> Sample
 
 		except OSError:
 			return None
+
+	if kissed(data, identity):
+		raise TooOften(server)
 
 	return answer(data, identity, server, sent, received)
 
@@ -285,17 +316,42 @@ class Log:
 		self._file.close()
 
 
-def keep_asking (names: list[str], log: Log, stop: threading.Event) -> None:
+def find_servers (names: list[str]) -> dict[str, str | None]:
+
+	"""Look up each time server's address, and say which, if any, answers now."""
+
+	found = {name: look_up(name) for name in names}
+
+	return {name: address for name, address in found.items() if address is not None and answers(address)}
+
+
+def answers (address: str) -> bool:
+
+	"""Say whether a time server answers well, asking it up to three times."""
+
+	for _ in range(3):
+
+		try:
+			if ask(address) is not None:
+				return True
+
+		except TooOften:
+			return False
+
+	return False
+
+
+def keep_asking (found: dict[str, str | None], log: Log, stop: threading.Event) -> None:
 
 	"""Ask each time server in turn, each one every NTP_EVERY seconds, until told to stop, and log the answers."""
 
-	found = {name: look_up(name) for name in names}
+	names = sorted(found)
 	unanswered = {name: 0 for name in names}
-
-	for name in names:
-		log.note("time server %s is at %s" % (name, found[name]))
-
+	resting = {name: 0 for name in names}
 	turn = 0
+
+	if not names:
+		return
 
 	while not stop.wait(NTP_EVERY / len(names)):
 
@@ -303,7 +359,18 @@ def keep_asking (names: list[str], log: Log, stop: threading.Event) -> None:
 		turn += 1
 		address = found[name]
 
-		sample = ask(address) if address is not None else None
+		# A server that asked to be asked less often is left out for a while.
+		if resting[name]:
+			resting[name] -= 1
+			continue
+
+		try:
+			sample = ask(address) if address is not None else None
+
+		except TooOften:
+			resting[name] = KISSED_SKIP
+			log.note("time server %s asked to be asked less often, so it is left out for %d turns" % (name, KISSED_SKIP))
+			continue
 
 		if sample is not None:
 			log.ntp(name, sample)
@@ -337,11 +404,13 @@ class Run (typing.NamedTuple):
 	"""What a log holds, read out of it."""
 
 	hz: int
+	stretch_s: int
 	reports: list[tuple[float, float]]
 	stretches: list[Stretch]
 	timed: list[dict[str, int]]
 	samples: list[tuple[str, Sample]]
 	end: dict[str, int] | None
+	broke: list[str]
 	other: list[str]
 
 
@@ -381,11 +450,13 @@ def read_log (lines: typing.Iterable[str]) -> Run:
 	"""
 
 	hz = 0
+	stretch_s = 0
 	reports: list[tuple[float, float]] = []
 	stretches: list[Stretch] = []
 	timed: list[dict[str, int]] = []
 	samples: list[tuple[str, Sample]] = []
 	end: dict[str, int] | None = None
+	broke: list[str] = []
 	other: list[str] = []
 
 	for line in lines:
@@ -412,6 +483,9 @@ def read_log (lines: typing.Iterable[str]) -> Run:
 
 		if kind == "begin":
 			hz = found.get("hz", 0)
+			stretch_s = found.get("stretch_s", 0)
+		elif kind == "stalled" or kind == "overrun":
+			broke.append(" ".join(said[1:]))
 		elif kind == "at" and hz and {"edges", "cycles", "since_us"} <= found.keys():
 			reports.append((arrived, found["cycles"] / hz + found["since_us"] / 1000000))
 		elif kind == "stretch" and {"n", "tempo"} <= found.keys():
@@ -421,7 +495,7 @@ def read_log (lines: typing.Iterable[str]) -> Run:
 		elif kind == "end":
 			end = found
 
-	return Run(hz, reports, stretches, timed, samples, end, other)
+	return Run(hz, stretch_s, reports, stretches, timed, samples, end, broke, other)
 
 
 def quickest (samples: list[tuple[str, Sample]], window: float = WINDOW) -> list[tuple[str, Sample]]:
@@ -507,7 +581,27 @@ def fit (points: list[tuple[object, float, float]]) -> Fit:
 	squares = sum((played - slope * true) ** 2 for true, played in centred)
 	error = (squares / left / along) ** 0.5
 
-	return Fit((slope - 1) * 1000000, CONFIDENCE * error * 1000000, (squares / len(points)) ** 0.5 * 1000, len(points))
+	return Fit((slope - 1) * 1000000, student(left) * error * 1000000, (squares / len(points)) ** 0.5 * 1000, len(points))
+
+
+def student (freedom: int) -> float:
+
+	"""Give how many standard errors either side hold the true figure 95 times in 100, for a line with this many degrees of freedom.
+
+	Between the table's rows it takes the row before, which is a little wider
+	than the truth, never narrower. Far past the last row it is 1.96.
+	"""
+
+	if freedom > 2 * STUDENT[-1][0]:
+		return 1.96
+
+	factor = STUDENT[0][1]
+
+	for least, each in STUDENT:
+		if freedom >= least:
+			factor = each
+
+	return factor
 
 
 def points_of (run: Run) -> list[tuple[str, Sample, float, float]]:
@@ -530,13 +624,19 @@ def points_of (run: Run) -> list[tuple[str, Sample, float, float]]:
 
 def stretch_at (run: Run, moment: float) -> Stretch | None:
 
-	"""Say which stretch a moment by the hardware clock fell in, once it had settled, or None if in none."""
+	"""Say which stretch a moment by the hardware clock fell in, once it had settled, or None if in none.
+
+	A stretch settles for a minute, or a quarter of its length if that is
+	shorter, so that a short run's stretches count too.
+	"""
+
+	settle = min(SETTLE, run.stretch_s / 4) if run.stretch_s else SETTLE
 
 	for index, stretch in enumerate(run.stretches):
 
 		ends = run.stretches[index + 1].began if index + 1 < len(run.stretches) else float("inf")
 
-		if stretch.began + SETTLE <= moment < ends:
+		if stretch.began + settle <= moment < ends:
 			return stretch
 
 	return None
@@ -562,14 +662,16 @@ def analyse (run: Run) -> dict[str, typing.Any]:
 		except ValueError:
 			continue
 
+	# Each hour by its number from the start, with nothing measured for one
+	# whose answers were too few, so that the hours after it keep their places.
 	hours: list[dict[str, typing.Any]] = []
 
 	for hour in range(int((max(true for _, _, true, _ in points) - first_true) // 3600) + 1):
 
 		try:
-			hours.append(fit([(sample.server, true, played) for _, sample, true, played in points if int((true - first_true) // 3600) == hour])._asdict())
+			hours.append(dict(fit([(sample.server, true, played) for _, sample, true, played in points if int((true - first_true) // 3600) == hour])._asdict(), hour=hour))
 		except ValueError:
-			continue
+			hours.append({"hour": hour, "ppm": None, "error": None, "spread_ms": None, "points": 0})
 
 	tempos: list[dict[str, typing.Any]] = []
 	cycles_per_tick = run.hz // 1000000
@@ -605,7 +707,7 @@ def analyse (run: Run) -> dict[str, typing.Any]:
 	worst = max((each["worst_cycles"] for each in tempos), default=0)
 	drift = max((each["furthest_drift_cycles"] for each in tempos), default=0)
 	end = run.end or {}
-	timed_well = worst <= WORST_ALLOWED and drift <= cycles_per_tick + DRIFT_SLACK and end.get("lost", 0) == 0 and end.get("faults", 0) == 0
+	timed_well = not run.broke and worst <= WORST_ALLOWED and drift <= cycles_per_tick + DRIFT_SLACK and end.get("lost", 0) == 0 and end.get("faults", 0) == 0
 
 	return {
 		"hours": (run.reports[-1][0] - run.reports[0][0]) / 3600,
@@ -618,7 +720,8 @@ def analyse (run: Run) -> dict[str, typing.Any]:
 		"cycles_per_microsecond": cycles_per_tick,
 		"ppm": overall.ppm,
 		"give_or_take_ppm": overall.error,
-		"give_or_take_is": "%g standard errors" % CONFIDENCE,
+		"give_or_take_is": CONFIDENCE_IS,
+		"broke": run.broke,
 		"spread_ms": overall.spread_ms,
 		"answers": overall.points,
 		"bpm_at_120": 120 * (1 + overall.ppm / 1000000),
@@ -644,6 +747,9 @@ def describe (result: dict[str, typing.Any]) -> str:
 
 	player = result["player"]
 
+	if result["broke"]:
+		lines.append("The Pico stopped timing output 1 part way through (%s), so the pulses after that went unseen." % "; ".join(result["broke"]))
+
 	if not result["timed_well"]:
 		lines.append("NOT every pulse was on time: the furthest gap was %d cycles out, a stretch drifted by %d cycles, %d pulses went untimed and the player ran out of words %d times. See the table." % (result["worst_cycles"], result["furthest_drift_cycles"], player.get("lost", 0), player.get("faults", 0)))
 	elif result["cut_short"]:
@@ -661,11 +767,11 @@ def describe (result: dict[str, typing.Any]) -> str:
 		lines.append("  %6.2f  %10d  %9d  %8d cyc  %4d cyc   %s" % (tempo["bpm"], tempo["stretches"], tempo["pulses"], tempo["worst_cycles"], tempo["furthest_drift_cycles"], measured))
 
 	lines.append("")
-	lines.append("The tempo ran %s by %.2f parts per million, give or take %.2f (%s, from %d answers)." % ("fast" if ppm >= 0 else "slow", abs(ppm), result["give_or_take_ppm"], result["give_or_take_is"], result["answers"]))
+	lines.append("The tempo ran %s by %.2f parts per million, give or take %.2f, %s times (from %d answers)." % ("fast" if ppm >= 0 else "slow", abs(ppm), result["give_or_take_ppm"], result["give_or_take_is"], result["answers"]))
 	lines.append("At 120 BPM that is %.5f BPM: %.1f ms in an hour, or %.2f s in a day." % (result["bpm_at_120"], abs(result["seconds_an_hour"]) * 1000, abs(result["seconds_a_day"])))
 	lines.append("")
 	lines.append("Against each time server: " + "; ".join("%s %+.2f give or take %.2f" % (name, fitted["ppm"], fitted["error"]) for name, fitted in result["servers"].items()))
-	lines.append("Hour by hour: " + ", ".join("%+.2f" % hour["ppm"] for hour in result["hour_by_hour"]))
+	lines.append("Hour by hour: " + ", ".join("too few answers" if hour["ppm"] is None else "%+.2f" % hour["ppm"] for hour in result["hour_by_hour"]))
 
 	if player:
 		lines.append("The player: " + " ".join("%s=%d" % (name, player[name]) for name in sorted(player)))
@@ -752,9 +858,15 @@ def say_how_it_goes (log: Log, began: float) -> None:
 	print("  after %.1f hours: %d pulses timed%s, and the tempo %+.2f ppm, give or take %.2f, so far." % (hours, result["pulses"], "" if result["worst_cycles"] <= WORST_ALLOWED else " (SOME OFF TIME)", result["ppm"], result["give_or_take_ppm"]), flush=True)
 
 
-def measure (device: str, log: Log, tempos: tuple[int, ...], total: int, stretch: int, servers: list[str]) -> int:
+def measure (device: str, log: Log, tempos: tuple[int, ...], total: int, stretch: int, servers: dict[str, str | None]) -> int:
 
-	"""Run the Pico's half and ask the time servers meanwhile, logging everything, and give mpremote's exit code."""
+	"""Run the Pico's half and ask the time servers meanwhile, logging everything, and give mpremote's exit code.
+
+	Each line the Pico prints is noted the moment it arrives, by a thread that
+	does nothing else, so that working out how the run is going never makes
+	an arrival look late. A Pico that says nothing for `QUIET_FOR` seconds
+	has stalled, and the run is ended.
+	"""
 
 	stop = threading.Event()
 	asking = threading.Thread(target=keep_asking, args=(servers, log, stop), daemon=True)
@@ -763,6 +875,7 @@ def measure (device: str, log: Log, tempos: tuple[int, ...], total: int, stretch
 	environment = dict(os.environ, PYTHONUNBUFFERED="1")
 	began = raw_clock()
 	said_at = began
+	heard = [began]
 
 	with tempfile.TemporaryDirectory(prefix="picoclock-accuracy-") as scratch:
 
@@ -770,27 +883,73 @@ def measure (device: str, log: Log, tempos: tuple[int, ...], total: int, stretch
 		script.write_text(board_script(tempos, stretch, total), encoding="utf-8")
 		command = MPREMOTE + ["connect", device, "soft-reset", "run", str(script)]
 
-		with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=environment) as running:
+		# A byte spoiled on the way is read as a mark rather than ending the run.
+		with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1, env=environment) as running:
 
 			assert running.stdout is not None
+			said = running.stdout
+
+			def listen () -> None:
+
+				"""Note each line the Pico prints as it arrives, until it has finished."""
+
+				for line in said:
+					heard[0] = raw_clock()
+					log.pico(heard[0], line.rstrip("\r\n"))
+
+			listening = threading.Thread(target=listen, daemon=True)
+			listening.start()
 
 			try:
 
-				for line in running.stdout:
+				while listening.is_alive():
 
-					log.pico(raw_clock(), line.rstrip("\r\n"))
+					listening.join(1.0)
+					now = raw_clock()
 
-					if raw_clock() - said_at >= PROGRESS_EVERY:
+					if now - heard[0] > QUIET_FOR:
+						log.note("the Pico said nothing for %d s, so the run was ended" % QUIET_FOR)
+						print("The Pico has said nothing for %d seconds, so the run is ended." % QUIET_FOR, flush=True)
+						break
+
+					if now - said_at >= PROGRESS_EVERY:
 						say_how_it_goes(log, began)
 						said_at = raw_clock()
 
 			finally:
+
 				if running.poll() is None:
 					running.terminate()
 
 				stop.set()
 
 	return running.returncode
+
+
+def tempos_from (text: str) -> tuple[int, ...]:
+
+	"""Read the BPMs asked for, with commas between, into hundredths of a BPM, refusing any PicoClock can't play."""
+
+	tempos = []
+
+	for typed in text.split(","):
+
+		try:
+			bpm = float(typed)
+		except ValueError:
+			raise ValueError("%r isn't a BPM" % typed.strip()) from None
+
+		hundredths = round(bpm * 100)
+
+		if abs(bpm * 100 - hundredths) > 1e-6:
+			raise ValueError("%s BPM has more than two decimal places" % typed.strip())
+
+		if not 2000 <= hundredths <= 30000:
+			raise ValueError("%s BPM is outside 20 to 300 BPM, which is all PicoClock plays" % typed.strip())
+
+		tempos.append(hundredths)
+
+	return tuple(tempos)
 
 
 def main (arguments: list[str] | None = None) -> int:
@@ -820,15 +979,33 @@ def main (arguments: list[str] | None = None) -> int:
 		print("This needs mpremote, which talks to the Pico over USB. Install it with: %s -m pip install mpremote" % pathlib.Path(sys.executable).name)
 		return 1
 
-	tempos = tuple(round(float(bpm) * 100) for bpm in options.tempos.split(","))
-	servers = [name.strip() for name in options.servers.split(",") if name.strip()]
+	try:
+		tempos = tempos_from(options.tempos)
+	except ValueError as problem:
+		parser.error(str(problem))
+
+	if not 0 < options.hours <= LONGEST_RUN:
+		parser.error("a run lasts more than nothing and at most %g hours" % LONGEST_RUN)
+
+	names = [name.strip() for name in options.servers.split(",") if name.strip()]
 	total = int(options.hours * 3600)
 	stretch = stretch_for(total, len(tempos))
 	device = options.device or find_device()
 	path = options.log or pathlib.Path(time.strftime("accuracy-%Y-%m-%d-%H%M.log"))
 
+	# Before PicoClock is stopped, a time server must be answering, or the night would be wasted.
+	print("Asking the time servers...", flush=True)
+	servers = find_servers(names)
+
+	if not servers:
+		print("None of the time servers answered. Check that this computer is on the internet, and try again.")
+		return 1
+
 	log = Log(path)
 	log.note("PicoClock accuracy, begun %s UTC, for %g hours, stretches of %d s, on %s" % (time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), options.hours, stretch, device))
+
+	for name in names:
+		log.note("time server %s is at %s" % (name, servers[name]) if name in servers else "time server %s didn't answer, so it isn't asked" % name)
 
 	print("Measuring PicoClock's accuracy at output 1 for %g hours, at %s BPM in turn, %d minutes each." % (options.hours, options.tempos, stretch // 60), flush=True)
 	print("PicoClock is stopped meanwhile, and the outputs play the tempos being measured. The log is %s." % path, flush=True)
@@ -837,8 +1014,10 @@ def main (arguments: list[str] | None = None) -> int:
 	# the Pico restarted, and what it measured so far is worked out.
 	signal.signal(signal.SIGTERM, lambda number, frame: sys.exit(1))
 
+	ended = 0
+
 	try:
-		measure(device, log, tempos, total, stretch, servers)
+		ended = measure(device, log, tempos, total, stretch, servers)
 
 	except (KeyboardInterrupt, SystemExit):
 		log.note("stopped early")
@@ -858,8 +1037,14 @@ def main (arguments: list[str] | None = None) -> int:
 
 	try:
 		result = analyse(run)
+
 	except ValueError as problem:
 		print("Nothing could be worked out: %s." % problem)
+
+		# mpremote says what kept it from the Pico, such as the port being in use.
+		if not run.reports and run.other:
+			print("mpremote ended with code %s, saying: %s" % (ended, " | ".join(run.other[-5:])))
+
 		return 1
 
 	print(describe(result))

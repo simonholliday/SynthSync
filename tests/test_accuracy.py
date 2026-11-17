@@ -17,6 +17,7 @@ import threading
 
 import pytest
 
+import picoclock.core.timeline
 import tools.accuracy
 import tools.stage
 
@@ -469,3 +470,239 @@ def test_the_picos_half_times_pulses_as_the_rig_does () -> None:
 		return [ast.unparse(statement) for statement in found[0].body[1:]]
 
 	assert body(ROOT / "tools" / "board" / "accuracy.py", "_timing_program") == body(ROOT / "tools" / "board" / "rig.py", "_capture_program")
+
+
+@pytest.mark.parametrize("freedom, factor", [(1, 12.706), (2, 4.303), (11, 2.228), (40, 2.021), (59, 2.021), (120, 1.98), (500, 1.96)])
+def test_give_or_take_widens_for_a_line_with_few_answers_to_spare (freedom: int, factor: float) -> None:
+
+	"""Student's t, taken from the row at or below the degrees of freedom, so never narrower than the truth."""
+
+	assert tools.accuracy.student(freedom) == factor
+
+
+def test_a_fit_with_few_answers_gives_a_wide_give_or_take () -> None:
+
+	"""Four points in one group leave two degrees of freedom, so the give or take is 4.3 standard errors, not 2."""
+
+	points: list[tuple[object, float, float]] = [("a", 0.0, 0.0), ("a", 100.0, 100.001), ("a", 200.0, 199.999), ("a", 300.0, 300.0005)]
+	fitted = tools.accuracy.fit(points)
+	mean_true = sum(true for _, true, _ in points) / 4
+	mean_played = sum(played for _, _, played in points) / 4
+	centred = [(true - mean_true, played - mean_played) for _, true, played in points]
+	along = sum(true ** 2 for true, _ in centred)
+	slope = sum(true * played for true, played in centred) / along
+	squares = sum((played - slope * true) ** 2 for true, played in centred)
+
+	assert fitted.error == pytest.approx(4.303 * (squares / 2 / along) ** 0.5 * 1000000, rel=1e-6)
+
+
+@pytest.mark.parametrize("typed, expected", [("30,60,120,174,300", (3000, 6000, 12000, 17400, 30000)), ("100.01", (10001,)), ("20, 300", (2000, 30000))])
+def test_tempos_are_read_in_hundredths (typed: str, expected: tuple[int, ...]) -> None:
+
+	"""BPMs with up to two decimal places, from 20 to 300."""
+
+	assert tools.accuracy.tempos_from(typed) == expected
+
+
+def refuse_to_go_on (monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Make anything past the tool's checks fail at once, so that a check that let something through can't reach the time servers or the Pico."""
+
+	def went_on (*anything: object) -> None:
+
+		"""Stand in for everything after the checks."""
+
+		raise AssertionError("the tool went on past its checks")
+
+	monkeypatch.setattr(tools.accuracy, "find_servers", went_on)
+	monkeypatch.setattr(tools.accuracy, "measure", went_on)
+	monkeypatch.setattr(tools.accuracy, "MPREMOTE", [sys.executable, "-c", "raise SystemExit(3)"])
+
+
+@pytest.mark.parametrize("typed", ["0", "400", "19.99", "120.001", "fast", ""])
+def test_a_tempo_picoclock_cant_play_is_refused_before_anything_starts (typed: str, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""A tempo out of range, too finely given, or not a number stops the tool before it touches the Pico."""
+
+	refuse_to_go_on(monkeypatch)
+
+	with pytest.raises(SystemExit):
+		tools.accuracy.main(["--tempos", typed])
+
+	assert "error" in capsys.readouterr().err
+
+
+def test_a_run_longer_than_the_pico_can_time_is_refused (capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Past six days the Pico's count of milliseconds would wrap, so a longer run is refused."""
+
+	refuse_to_go_on(monkeypatch)
+
+	with pytest.raises(SystemExit):
+		tools.accuracy.main(["--hours", "200"])
+
+	assert "at most 144 hours" in capsys.readouterr().err
+
+
+def test_a_server_that_asks_to_be_asked_less_often_says_so_over_a_real_socket () -> None:
+
+	"""A stand-in server on this computer answers with a kiss of death, and asking raises rather than giving no answer."""
+
+	server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	server.bind(("127.0.0.1", 0))
+	server.settimeout(5)
+
+	def serve () -> None:
+
+		"""Answer one question with a stratum of 0."""
+
+		data, sender = server.recvfrom(512)
+		identity = struct.unpack("!Q", data[40:48])[0]
+		server.sendto(reply(identity, BEGAN, BEGAN, stratum=0), sender)
+
+	answering = threading.Thread(target=serve)
+	answering.start()
+
+	with pytest.raises(tools.accuracy.TooOften):
+		tools.accuracy.ask("127.0.0.1", 5, server.getsockname()[1])
+
+	answering.join()
+	server.close()
+
+
+def test_a_kiss_of_death_is_told_from_a_good_answer () -> None:
+
+	"""A stratum of 0 from a server, to this question, asks to be asked less often."""
+
+	assert tools.accuracy.kissed(reply(77, BEGAN, BEGAN, stratum=0), 77)
+	assert not tools.accuracy.kissed(reply(77, BEGAN, BEGAN), 77)
+	assert not tools.accuracy.kissed(reply(78, BEGAN, BEGAN, stratum=0), 77)
+
+
+def test_a_server_that_asks_to_be_asked_less_is_left_out_for_a_while (tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""After a kiss of death, the server's next turns are passed over, and the other servers carry on."""
+
+	asked: list[str] = []
+
+	def ask (address: str) -> tools.accuracy.Sample | None:
+
+		"""Stand in for asking: one server always says to ask less often, and the other always answers."""
+
+		asked.append(address)
+
+		if address == "192.0.2.1":
+			raise tools.accuracy.TooOften(address)
+
+		return made_up(address, 100.0, 0.02)[1]
+
+	class Soon:
+
+		"""Stands in for the stop event, letting a set number of turns pass at once."""
+
+		def __init__ (self) -> None:
+
+			"""Begin with forty turns to go."""
+
+			self.left = 40
+
+		def wait (self, seconds: float) -> bool:
+
+			"""Say whether to stop, after the turns have run out."""
+
+			self.left -= 1
+
+			return self.left < 0
+
+	monkeypatch.setattr(tools.accuracy, "ask", ask)
+	log = tools.accuracy.Log(tmp_path / "run.log")
+	tools.accuracy.keep_asking({"kisser": "192.0.2.1", "other": "192.0.2.2"}, log, Soon())  # type: ignore[arg-type]
+	log.close()
+
+	# Twenty turns each: the kisser is asked on the first, rests for sixteen, and is asked once more.
+	assert asked.count("192.0.2.1") == 2
+	assert asked.count("192.0.2.2") == 20
+	assert "asked to be asked less often" in (tmp_path / "run.log").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("broke", ["ACCURACY stalled after_ms=36000", "ACCURACY overrun lost=12"])
+def test_a_run_the_pico_stopped_timing_part_way_is_not_on_time (tmp_path: pathlib.Path, broke: str) -> None:
+
+	"""A dead output or a ring overrun ends the Pico's timing, and the result says so."""
+
+	path = make_run(tmp_path / "run.log", 2.0, -2.4)
+	lines = path.read_text(encoding="utf-8").splitlines()
+	lines.insert(len(lines) - 1, "pico 99999.0 " + broke)
+
+	result = tools.accuracy.analyse(tools.accuracy.read_log(lines))
+
+	assert not result["timed_well"] and not result["every_pulse_on_time"]
+	assert "stopped timing output 1 part way" in tools.accuracy.describe(result)
+
+
+def test_an_hour_with_too_few_answers_keeps_the_others_in_their_places (tmp_path: pathlib.Path) -> None:
+
+	"""With the second hour's answers gone, the third hour is still the third."""
+
+	path = make_run(tmp_path / "run.log", 3.0, -2.4)
+	run = tools.accuracy.read_log(path.read_text(encoding="utf-8").splitlines())
+	first = min(sample.middle for _, sample in run.samples)
+	kept = [(name, sample) for name, sample in run.samples if not 3550 <= sample.middle - first < 7250]
+	result = tools.accuracy.analyse(run._replace(samples=kept))
+
+	assert [hour["hour"] for hour in result["hour_by_hour"]] == [0, 1, 2]
+	assert result["hour_by_hour"][1]["ppm"] is None
+	assert result["hour_by_hour"][2]["ppm"] == pytest.approx(-2.4, abs=0.5)
+	assert "too few answers" in tools.accuracy.describe(result)
+
+
+def test_a_short_stretch_settles_for_a_quarter_of_its_length (tmp_path: pathlib.Path) -> None:
+
+	"""A stretch of two minutes counts from 30 s in, so a short run has settled moments in every stretch, where a minute's settling would leave only one."""
+
+	path = make_run(tmp_path / "run.log", 1.0, -2.4, stretch=120.0)
+	run = tools.accuracy.read_log(path.read_text(encoding="utf-8").splitlines())
+	second = run.stretches[1]
+
+	assert run.stretch_s == 120
+	assert tools.accuracy.stretch_at(run, second.began + 29) is None
+	assert tools.accuracy.stretch_at(run, second.began + 31) == second
+	assert tools.accuracy.stretch_at(run._replace(stretch_s=0), second.began + 31) is None
+
+
+def test_the_picos_half_works_out_gaps_as_the_scheduler_does () -> None:
+
+	"""The board half's own copy of the gap lengths, for older installs, gives what `gap_ticks` gives, in cycles."""
+
+	tree = ast.parse((ROOT / "tools" / "board" / "accuracy.py").read_text(encoding="utf-8"))
+	found: list[ast.stmt] = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "gap_lengths"]
+	space: dict[str, object] = {"_UNITS": 6000 * 1000000, "_CYCLES_PER_TICK": 150}
+	exec(compile(ast.Module(body=found, type_ignores=[]), "gap_lengths", "exec"), space)
+	gap_lengths = space["gap_lengths"]
+
+	for tempo in (2000, 3000, 10001, 12000, 17400, 29999, 30000):
+		for pulses, beats in ((4, 1), (96, 1), (1, 128), (3, 2), (7, 12)):
+			assert gap_lengths(tempo, pulses, beats) == tuple(150 * ticks for ticks in picoclock.core.timeline.gap_ticks(tempo, pulses, beats)), (tempo, pulses, beats)  # type: ignore[operator]
+
+
+def test_a_pico_that_goes_quiet_ends_the_run_and_a_spoiled_byte_does_not (tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""A stand-in for mpremote prints two lines, one with a byte that isn't UTF-8, then says nothing: the run ends after the quiet allowed, with both lines logged."""
+
+	stand_in = tmp_path / "quiet.py"
+	stand_in.write_text("import sys, time\nsys.stdout.buffer.write(b'ACCURACY begin hz=150000000\\n\\xff spoiled\\n')\nsys.stdout.flush()\ntime.sleep(60)\n", encoding="utf-8")
+
+	monkeypatch.setattr(tools.accuracy, "MPREMOTE", [sys.executable, str(stand_in)])
+	monkeypatch.setattr(tools.accuracy, "QUIET_FOR", 1.0)
+	monkeypatch.setattr(tools.accuracy, "keep_asking", lambda found, log, stop: None)
+
+	log = tools.accuracy.Log(tmp_path / "run.log")
+	began = tools.accuracy.raw_clock()
+	tools.accuracy.measure("auto", log, (12000,), 60, 60, {})
+	log.close()
+
+	said = (tmp_path / "run.log").read_text(encoding="utf-8")
+
+	assert tools.accuracy.raw_clock() - began < 10
+	assert "ACCURACY begin" in said and "spoiled" in said
+	assert "said nothing for 1 s" in said
