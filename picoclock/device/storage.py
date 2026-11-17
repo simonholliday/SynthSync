@@ -119,6 +119,8 @@ class Storage:
 
 		def remove () -> None:
 
+			"""Remove the saved file, if there is one."""
+
 			try:
 				os.remove(self.path)
 			except OSError:

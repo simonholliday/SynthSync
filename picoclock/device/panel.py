@@ -144,6 +144,8 @@ class Panel:
 
 		def changed (pin) -> None:
 
+			"""Note the moment the pin let go, or was first pressed since the last look."""
+
 			if pin.value() != level:
 				ups[index] = time.ticks_ms()
 			elif downs[index] < 0:

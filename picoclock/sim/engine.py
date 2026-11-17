@@ -122,7 +122,8 @@ class Engine:
 		"""Say how the clock is doing, in the same terms as the player on the Pico.
 
 		There is no hardware to run short of words here, so the counts that
-		tell of trouble on the Pico never move.
+		tell of trouble on the Pico never move, and there are no buttons to
+		press.
 		"""
 
 		timeline = self.timeline
@@ -137,6 +138,8 @@ class Engine:
 			"fewest_waiting": 8,
 			"slowest_command": 0,
 			"merged": timeline.merged,
+			"presses": 0,
+			"pressed_at": 0,
 			"empty": 0,
 			"one_left": 0,
 			"empty_where": 0,

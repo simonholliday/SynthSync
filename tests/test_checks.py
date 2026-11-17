@@ -20,6 +20,12 @@ import tools.stage
 
 ROOT = pathlib.Path(__file__).parent.parent
 
+# The MicroPython release the Pico runs, which the README tells people to install.
+# Another one on this machine, such as one a Linux distribution ships, would
+# test the shared code against the wrong release.
+PINNED = "1.29.0"
+
+
 def all_checks () -> list[tuple[str, str]]:
 
 	"""List every shared check as (module, function), in a fixed order."""
@@ -115,7 +121,17 @@ def test_checks_pass_under_micropython (tmp_path: pathlib.Path) -> None:
 	result = run_under([micropython], ROOT, tmp_path)
 
 	assert result.returncode == 0, result.stdout + result.stderr
-	assert " 0 failed, on micropython" in result.stdout, result.stdout
+
+	# Every one of them, on the release the Pico runs, so that a run of none, or on the wrong MicroPython, can't pass.
+	assert "on micropython %s" % PINNED in result.stdout, "%s isn't MicroPython %s: %s" % (micropython, PINNED, result.stdout)
+	assert "%d checks run, 0 failed, on micropython %s" % (len(all_checks()), PINNED) in result.stdout, result.stdout
+
+
+def test_the_pinned_micropython_is_the_one_the_readme_names () -> None:
+
+	"""The release the checks insist on is the one people are told to put on their Pico."""
+
+	assert "**version %s**" % PINNED in (ROOT / "README.md").read_text(encoding="utf-8")
 
 
 def test_runner_reports_a_check_that_fails (tmp_path: pathlib.Path) -> None:

@@ -782,6 +782,8 @@ def _low_program (watched: int):
 
 	def lows ():
 
+		"""Wait for the pin to fall, count until it rises, and give the count."""
+
 		wrap_target()
 		wait(1, gpio, watched)
 		wait(0, gpio, watched)
@@ -2061,6 +2063,8 @@ def _flash_program (watched: int):
 
 	def flashes ():
 
+		"""At each rise of output 1, look for the LED to light with it, and time how long it stays lit."""
+
 		wrap_target()
 		label("top")
 		wait(0, gpio, watched)
@@ -2096,6 +2100,8 @@ def _count_program (watched: int):
 	"""Build a program that gives one word for each time a pin rises: here, each flash of the tempo LED."""
 
 	def rises ():
+
+		"""Give a word each time the pin rises."""
 
 		wrap_target()
 		wait(0, gpio, watched)
@@ -3129,6 +3135,9 @@ def test_page (load: str = "idle") -> None:
 		pulse = 5 + counts[1] % 20
 
 		def page ():
+
+			"""Change output 4's pulse and snap, one after the other, as a page would."""
+
 			yield json.dumps({"do": "output", "index": 3, "name": "pulse", "value": pulse, "id": counts[1]})
 			yield json.dumps({"do": "output", "index": 3, "name": "snap", "value": counts[1] % 2 == 0})
 

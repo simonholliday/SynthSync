@@ -9,6 +9,7 @@ import asyncio
 import io
 import json
 import os
+import random
 import sys
 import time
 
@@ -299,6 +300,8 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		client = client_for(app)
 
@@ -371,6 +374,8 @@ def check_a_change_sent_as_json_is_carried_out () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		client = client_for(app)
 
@@ -403,6 +408,8 @@ def check_a_bad_value_is_refused_in_the_settings_own_words () -> None:
 	"""What the page is told is the very message the settings give, with a status of 400."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		client = client_for(app)
@@ -448,6 +455,8 @@ def check_a_change_must_be_json_and_from_the_pages_own_site () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		client = client_for(app)
 		wanted = json.dumps({"do": "tempo", "value": 20000})
@@ -491,10 +500,15 @@ def check_the_socket_is_wired_up_and_refuses_another_sites_page () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		client = client_for(app)
 
 		def page () -> "typing.Iterator[str]":
+
+			"""Give what the page sends over its socket, one message after another."""
+
 			yield json.dumps({"do": "tempo", "value": 14000})
 			yield json.dumps({"do": "start"})
 
@@ -519,12 +533,17 @@ def check_a_page_from_a_site_that_points_its_name_at_the_pico_can_neither_change
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		network.mode = "joined"
 		rebound = {"Origin": "http://clock-stopper.example", "Host": "clock-stopper.example"}
 		client = client_for(app)
 
 		def page () -> "typing.Iterator[str]":
+
+			"""Give what the page sends over its socket, one message after another."""
+
 			yield json.dumps({"do": "stop"})
 			yield json.dumps({"do": "forget"})
 
@@ -554,6 +573,8 @@ def check_the_pico_answers_to_every_address_and_name_of_its_own () -> None:
 	"""By an address of either kind, by its name with .local or without, in any capitals, with or without a port, or at localhost as the laptop stand-in is, the Pico is itself. Its name is the one it has now."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		network.mode = "joined"
@@ -604,6 +625,8 @@ def check_a_page_is_greeted_with_its_number_and_everything () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 
 		first = await open_page(app)
@@ -634,6 +657,8 @@ def check_a_change_from_one_page_reaches_every_page () -> None:
 	"""Two pages open at once stay in step, and each can tell whose change it was."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		first = await open_page(app)
@@ -679,6 +704,8 @@ def check_a_page_is_only_sent_the_latest_of_a_burst () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		dragging = await open_page(app)
 		watching = await open_page(app)
@@ -722,6 +749,8 @@ def check_a_refusal_goes_only_to_the_page_that_asked_and_puts_its_control_back (
 	"""The page that sent a bad value is told why and sent the true value, and no other page hears of it."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		asking = await open_page(app)
@@ -776,6 +805,8 @@ def check_start_pause_and_stop_from_a_page () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		first = await open_page(app)
 		second = await open_page(app)
@@ -804,6 +835,8 @@ def check_a_stop_is_heard_before_where_the_clock_then_is () -> None:
 	"""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		page = await open_page(app)
@@ -836,6 +869,8 @@ def check_a_ratio_comes_back_in_the_form_the_page_shows () -> None:
 	"""However a ratio is typed, every page gets it as a fraction to send back and a label to show."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		page = await open_page(app)
@@ -874,6 +909,8 @@ def check_a_reset_sends_every_page_everything_afresh () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		first = await open_page(app)
 		second = await open_page(app)
@@ -911,6 +948,8 @@ def check_where_the_clock_is_goes_out_only_when_it_has_moved () -> None:
 	"""Each look sends the clock's position if it has changed since the last, and nothing if it hasn't."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 
@@ -963,6 +1002,8 @@ def check_looking_goes_on_by_itself_while_the_app_runs () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		page = await open_page(app)
 		task = asyncio.create_task(app.run())
@@ -984,6 +1025,8 @@ def check_a_change_no_page_made_still_reaches_the_pages () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		page = await open_page(app)
 
@@ -1004,6 +1047,8 @@ def check_the_networks_in_range_go_only_to_the_page_that_asked () -> None:
 	"""A scan's answer is for the page that asked, and a scan with no WiFi is refused."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		asking = await open_page(app)
@@ -1040,6 +1085,8 @@ def check_network_changes_are_remembered_and_no_password_is_ever_sent () -> None
 	"""Joining, forgetting, the Pico's own password and its name all reach the settings, and passwords stay there."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		first = await open_page(app)
@@ -1092,6 +1139,8 @@ def check_a_switch_from_the_page_reaches_the_clock_and_every_page_hears_of_it ()
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		first = await open_page(app)
 		second = await open_page(app)
@@ -1124,6 +1173,8 @@ def check_a_page_that_closes_or_drops_away_is_forgotten () -> None:
 	"""Once a page has gone nothing more is kept for it, and the pages still open carry on."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		staying = await open_page(app)
@@ -1172,6 +1223,8 @@ def check_messages_come_in_numbered_batches_and_a_page_answers_each () -> None:
 	"""Everything sent over a socket is in a batch, counted from 1 for each page, and what changes together goes together."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		first = await open_page(app)
@@ -1229,6 +1282,8 @@ def check_a_page_that_falls_behind_is_sent_no_more_until_it_catches_up_and_then_
 	"""A page that hasn't said it heard what it was sent is sent a little more and then nothing, and loses nothing by it."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		ahead = picoclock.web.app.AHEAD
@@ -1295,6 +1350,8 @@ def check_a_page_that_stops_answering_is_given_up_on_and_one_that_is_only_slow_i
 	"""A batch left unanswered for too long closes the page's socket with no goodbye, and the other pages carry on."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		deadline = looks(picoclock.web.app.DEAF_FOR)
@@ -1369,6 +1426,8 @@ def check_a_page_sent_nothing_for_a_while_is_asked_whether_it_is_still_there () 
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		there = await open_page(app)
 		gone = await open_page(app)
@@ -1415,6 +1474,8 @@ def check_all_the_pages_together_are_never_sent_more_than_there_is_room_for () -
 	"""However many pages are behind, what is on its way to them all stays within the room there is, and a new page waits its turn."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		room = picoclock.web.app.ROOM
@@ -1491,6 +1552,8 @@ def check_a_page_is_greeted_only_once_it_has_shown_it_is_taking_what_it_is_sent 
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		stuck = []
 
@@ -1559,6 +1622,8 @@ def check_how_well_things_have_kept_up_can_be_asked_for () -> None:
 	"""`/api/health` counts the pages, and how often and for how long everything was held up."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		client = client_for(app)
@@ -1653,6 +1718,8 @@ def check_a_connection_that_never_asks_for_anything_is_closed_and_one_that_is_on
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		patience = picoclock.web.app.PATIENCE
 		picoclock.web.app.PATIENCE = 0.05
@@ -1702,24 +1769,34 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 
 	"""Given the folder the page is in, the app sends its files, a gzipped copy as such, and nothing else it finds there."""
 
-	# Kept apart for each Python, in case both run these at once.
-	folder = "/tmp/picoclock-check-files-" + sys.implementation.name
 	files = {
 		"index.html": b"<p>the page</p>",
 		"page.js.gz": b"\x1f\x8bnot really gzipped",
 		"secret.txt": b"not the page's",
 	}
 
-	try:
-		os.mkdir(folder)
-	except OSError:
-		pass
+	# A folder of this run's own, apart from every other run of these, on either Python, at the same time.
+	# MicroPython has no module to make one, so it is named at random until the name is a new one.
+	for _ in range(20):
+
+		folder = "/tmp/picoclock-check-files-%s-%d" % (sys.implementation.name, random.getrandbits(30))
+
+		try:
+			os.mkdir(folder)
+			break
+		except OSError:
+			continue
+
+	else:
+		assert False, "no folder could be made in /tmp"
 
 	for name in files:
 		with open(folder + "/" + name, "wb") as handle:
 			handle.write(files[name])
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		clock, engine, storage = tests.checks.check_clock.make()
 		app = picoclock.web.app.App(clock, None, folder)
@@ -1818,12 +1895,16 @@ def check_two_phones_opening_the_page_together_are_sent_it_in_turn () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		first = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 3000))
 		second = picoclock.web.app.Turn(app, io.BytesIO(b"b" * 3000))
 		reached: "list[tuple[str, bytes]]" = []
 
 		async def load (turn: picoclock.web.app.Turn, name: str) -> None:
+
+			"""Load the page in its turn, and note what came and in what order."""
 
 			reached.append((name, await turn.read(1024)))
 
@@ -1851,6 +1932,8 @@ def check_a_page_load_that_never_ends_holds_the_next_one_up_only_for_a_while () 
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		stuck = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 10))
 		second = picoclock.web.app.Turn(app, io.BytesIO(b"b" * 10))
@@ -1858,6 +1941,8 @@ def check_a_page_load_that_never_ends_holds_the_next_one_up_only_for_a_while () 
 		reached: "list[str]" = []
 
 		async def load (turn: picoclock.web.app.Turn, name: str) -> None:
+
+			"""Load the page in its turn, and note what came and in what order."""
 
 			await turn.read(5)
 			reached.append(name)
@@ -1902,12 +1987,16 @@ def check_the_open_pages_are_sent_nothing_while_the_page_goes_to_a_phone () -> N
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		page = await open_page(app)
 		load = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 3000))
 		reached: "list[str]" = []
 
 		async def begin () -> None:
+
+			"""Begin loading the page, and note when it got its turn."""
 
 			await load.read(1024)
 			reached.append("load")
@@ -1956,6 +2045,8 @@ def check_a_page_load_that_never_ends_doesnt_keep_the_open_pages_waiting_for_goo
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		app, engine, network = make()
 		page = await open_page(app)
 		stuck = picoclock.web.app.Turn(app, io.BytesIO(b"a" * 10))
@@ -1985,6 +2076,8 @@ def check_a_request_for_another_site_is_sent_to_the_page_only_while_the_own_netw
 	"""A phone's check for the internet, at whatever address on whatever site, is sent to the page at the Pico's own address. A request for the Pico is answered as itself, and so is everything once the Pico's own network is down."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		elsewhere = microdot.test_client.TestClient(app.web, host="connectivitycheck.gstatic.com")
@@ -2031,6 +2124,8 @@ def check_a_ppqn_from_a_page_reaches_every_page_with_any_output_it_moved () -> N
 	"""Every page hears the new pulses a beat, the fastest ratio they allow, and an output the change moved, each said to be by the page that asked."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		app, engine, network = make()
 		first = await open_page(app)

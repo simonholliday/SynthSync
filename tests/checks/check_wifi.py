@@ -223,6 +223,8 @@ def found () -> "tuple[picoclock.core.wifi.Wifi, Radio, picoclock.core.clock.Clo
 
 def check_the_own_network_is_named_after_the_last_six_characters_of_the_hardware_id () -> None:
 
+	"""The network a PicoClock puts up is called PicoClock and six characters that are its own."""
+
 	identity = bytes([0xE6, 0x61, 0xA4, 0xD1, 0x23, 0xAB, 0x78, 0xD9])
 
 	assert picoclock.core.wifi.own_name(identity) == "PicoClock AB78D9"
@@ -230,11 +232,15 @@ def check_the_own_network_is_named_after_the_last_six_characters_of_the_hardware
 
 def check_the_own_networks_name_is_in_capitals_with_every_nought_kept () -> None:
 
+	"""The six characters are capitals, and a byte below 16 keeps the nought in front of it."""
+
 	assert picoclock.core.wifi.own_name(bytes([0x11, 0x00, 0x0A, 0xB0])) == "PicoClock 000AB0"
 	assert picoclock.core.wifi.own_name(bytes([0xFF, 0xFE, 0xFD])) == "PicoClock FFFEFD"
 
 
 def check_two_picoclocks_have_different_names_and_one_keeps_its_own () -> None:
+
+	"""Two PicoClocks in one room can be told apart, and each has the same name every time it starts."""
 
 	one = bytes([1, 2, 3, 4, 5, 6, 7, 8])
 	other = bytes([1, 2, 3, 4, 5, 6, 7, 9])
@@ -248,6 +254,8 @@ def check_two_picoclocks_have_different_names_and_one_keeps_its_own () -> None:
 
 def check_the_own_networks_name_fits_what_wifi_allows () -> None:
 
+	"""The name is sixteen characters, well inside the 32 bytes WiFi allows a network's name."""
+
 	name = picoclock.core.wifi.own_name(bytes([0xAB] * 8))
 
 	assert len(name) == 16
@@ -256,6 +264,8 @@ def check_the_own_networks_name_fits_what_wifi_allows () -> None:
 
 
 def check_a_network_heard_several_times_is_listed_once_at_its_strongest () -> None:
+
+	"""A network with several transmitters, as a mesh at home has, is listed once, as strong as the nearest."""
 
 	heard = [
 		(b"Studio", -70, True),
@@ -267,6 +277,8 @@ def check_a_network_heard_several_times_is_listed_once_at_its_strongest () -> No
 
 
 def check_networks_are_listed_strongest_first () -> None:
+
+	"""The page lists the networks in range with the strongest at the top, where the one to pick usually is."""
 
 	heard = [
 		(b"Cafe", -83, False),
@@ -283,6 +295,8 @@ def check_networks_are_listed_strongest_first () -> None:
 
 def check_networks_as_strong_as_each_other_are_listed_by_name () -> None:
 
+	"""Networks heard as strongly as each other are put in order by name, so the list doesn't shuffle between looks."""
+
 	one_way = picoclock.core.wifi.in_range([(b"Barn", -60, True), (b"Attic", -60, True), (b"Cellar", -60, False)])
 	other_way = picoclock.core.wifi.in_range([(b"Cellar", -60, False), (b"Attic", -60, True), (b"Barn", -60, True)])
 
@@ -291,6 +305,8 @@ def check_networks_as_strong_as_each_other_are_listed_by_name () -> None:
 
 
 def check_a_network_that_hides_its_name_is_left_out () -> None:
+
+	"""A network that hides its name can't be picked from a list, so it isn't in it."""
 
 	heard = [
 		(b"", -40, True),
@@ -303,6 +319,8 @@ def check_a_network_that_hides_its_name_is_left_out () -> None:
 
 def check_a_name_that_isnt_text_is_left_out_and_the_rest_still_listed () -> None:
 
+	"""A name the radio gives as bytes that aren't text is passed over, and the networks after it are still listed."""
+
 	heard = [
 		(b"\xff\xfe\xfd", -40, True),
 		(b"Studio", -48, True),
@@ -312,6 +330,8 @@ def check_a_name_that_isnt_text_is_left_out_and_the_rest_still_listed () -> None
 
 
 def check_a_name_with_accents_or_spaces_is_kept_whole () -> None:
+
+	"""A network whose name has accents or spaces in it is listed exactly as it is called."""
 
 	heard = [
 		("Café Müller".encode(), -55, False),
@@ -324,6 +344,8 @@ def check_a_name_with_accents_or_spaces_is_kept_whole () -> None:
 
 
 def check_whether_a_password_is_needed_is_as_the_strongest_says () -> None:
+
+	"""Whether a network needs a password is as its strongest transmitter says, and the radio's 0 means none."""
 
 	heard = [
 		(b"Studio", -80, False),
@@ -338,10 +360,14 @@ def check_whether_a_password_is_needed_is_as_the_strongest_says () -> None:
 
 def check_names_already_text_are_taken_as_they_are () -> None:
 
+	"""A radio that gives names as text rather than bytes, as the laptop's pretend one does, is listened to as it is."""
+
 	assert picoclock.core.wifi.in_range([("Studio", -48, True)]) == [{"name": "Studio", "strength": -48, "secure": True}]
 
 
 def check_hearing_nothing_lists_nothing () -> None:
+
+	"""With no network in range the list is empty, and nothing goes wrong."""
 
 	assert picoclock.core.wifi.in_range([]) == []
 
@@ -352,6 +378,8 @@ def check_hearing_nothing_lists_nothing () -> None:
 
 def check_nothing_is_switched_on_until_the_first_look () -> None:
 
+	"""Making the WiFi asks nothing of the radio: it starts at the first look."""
+
 	wifi, radio, clock = make()
 
 	assert radio.calls == []
@@ -360,6 +388,8 @@ def check_nothing_is_switched_on_until_the_first_look () -> None:
 
 
 def check_a_new_picoclock_runs_its_own_network () -> None:
+
+	"""Out of the box, with nothing saved, PicoClock puts up its own network for a phone to join."""
 
 	wifi, radio, clock = make()
 
@@ -374,6 +404,8 @@ def check_a_new_picoclock_runs_its_own_network () -> None:
 
 
 def check_a_new_password_starts_the_own_network_again_after_half_a_second_and_not_before () -> None:
+
+	"""A new password for the own network takes effect half a second after it is set, so the page that set it hears back first."""
 
 	wifi, radio, clock = make()
 
@@ -396,6 +428,8 @@ def check_a_new_password_starts_the_own_network_again_after_half_a_second_and_no
 
 def check_the_half_second_is_counted_from_the_first_look_after_the_change_however_late_that_look_is () -> None:
 
+	"""The half second starts at the first look after the change, so a look that came late can't cut it short."""
+
 	wifi, radio, clock = make()
 
 	wifi.look(0)
@@ -417,6 +451,8 @@ def check_the_half_second_is_counted_from_the_first_look_after_the_change_howeve
 
 def check_a_new_name_for_the_pico_starts_nothing_again () -> None:
 
+	"""Renaming the Pico leaves its own network as it is, and phones on it stay on it."""
+
 	wifi, radio, clock = make()
 
 	wifi.look(0)
@@ -433,6 +469,8 @@ def check_a_new_name_for_the_pico_starts_nothing_again () -> None:
 
 
 def check_a_join_is_tried_first_and_the_own_network_comes_back_to_say_where_picoclock_will_be () -> None:
+
+	"""A network picked on the page is tried first: once it gives the Pico an address, the own network comes back to tell the page where PicoClock will be."""
 
 	wifi, radio, clock = make()
 
@@ -476,6 +514,8 @@ def check_a_join_is_tried_first_and_the_own_network_comes_back_to_say_where_pico
 
 def check_the_page_can_have_it_switch_at_once_to_the_network_found () -> None:
 
+	"""After a trial that worked, the page can have PicoClock join for good at once rather than two minutes later."""
+
 	wifi, radio, clock = found()
 
 	clock.switch_network()
@@ -492,6 +532,8 @@ def check_the_page_can_have_it_switch_at_once_to_the_network_found () -> None:
 
 
 def check_asking_to_switch_when_nothing_was_found_does_nothing () -> None:
+
+	"""A switch asked for when no trial has found anything changes nothing."""
 
 	wifi, radio, clock = make()
 
@@ -514,6 +556,8 @@ def check_asking_to_switch_when_nothing_was_found_does_nothing () -> None:
 
 def check_a_switch_that_fails_brings_the_own_network_back_and_keeps_the_network () -> None:
 
+	"""A network that worked in the trial but has gone by the switch brings the own network back, and stays saved, since it has worked."""
+
 	wifi, radio, clock = found()
 
 	# The router goes off between the trial and the switch.
@@ -529,6 +573,8 @@ def check_a_switch_that_fails_brings_the_own_network_back_and_keeps_the_network 
 
 
 def check_forgetting_the_network_found_leaves_the_own_network_up_as_it_is () -> None:
+
+	"""Forgetting the network a trial found, before switching to it, leaves the own network up without starting it again."""
 
 	wifi, radio, clock = found()
 
@@ -546,6 +592,8 @@ def check_forgetting_the_network_found_leaves_the_own_network_up_as_it_is () -> 
 
 def check_a_new_password_for_the_own_network_while_found_starts_it_again_and_keeps_what_was_found () -> None:
 
+	"""A new password for the own network while it says where PicoClock will be starts it again, still saying where."""
+
 	wifi, radio, clock = found()
 
 	clock.set_own_password("a new password")
@@ -557,6 +605,8 @@ def check_a_new_password_for_the_own_network_while_found_starts_it_again_and_kee
 
 
 def check_another_join_while_found_is_tried_afresh () -> None:
+
+	"""Picking another network while a trial's result is shown begins a new trial, of that one."""
 
 	wifi, radio, clock = found()
 
@@ -571,6 +621,8 @@ def check_another_join_while_found_is_tried_afresh () -> None:
 
 def check_an_open_network_is_joined_with_no_password () -> None:
 
+	"""A network with no password is joined with none."""
+
 	wifi, radio, clock = make()
 
 	wifi.look(0)
@@ -582,6 +634,8 @@ def check_an_open_network_is_joined_with_no_password () -> None:
 
 
 def check_a_password_refused_twice_ends_the_trying_early_and_the_network_is_forgotten () -> None:
+
+	"""A password refused twice is wrong, so the trying ends there rather than after twenty seconds, and a network that never worked isn't kept."""
 
 	wifi, radio, clock = make()
 
@@ -617,6 +671,8 @@ def check_a_password_refused_twice_ends_the_trying_early_and_the_network_is_forg
 
 def check_forgetting_a_network_itself_isnt_taken_as_a_change_to_act_on () -> None:
 
+	"""When the WiFi itself forgets a network that failed, it doesn't act on that as if the page had asked, and the reason stays to be shown."""
+
 	wifi, radio, clock = make()
 
 	wifi.look(0)
@@ -635,6 +691,8 @@ def check_forgetting_a_network_itself_isnt_taken_as_a_change_to_act_on () -> Non
 
 
 def check_a_network_that_isnt_there_is_looked_for_until_twenty_seconds_are_up () -> None:
+
+	"""A network not in range is looked for again and again for twenty seconds, in case it is slow to answer."""
 
 	wifi, radio, clock = make()
 
@@ -662,6 +720,8 @@ def check_a_network_that_isnt_there_is_looked_for_until_twenty_seconds_are_up ()
 
 def check_a_network_that_turns_up_late_is_joined () -> None:
 
+	"""A network that comes into range part way through the twenty seconds is joined."""
+
 	wifi, radio, clock = make()
 
 	wifi.look(0)
@@ -682,6 +742,8 @@ def check_a_network_that_turns_up_late_is_joined () -> None:
 
 
 def check_a_join_that_never_answers_ends_when_the_time_is_up () -> None:
+
+	"""A network that neither lets PicoClock in nor refuses it is given up when the twenty seconds are up."""
 
 	for stuck, words in (
 		(picoclock.core.wifi.TRYING, "Studio didn't answer in time"),
@@ -714,6 +776,8 @@ def check_a_join_that_never_answers_ends_when_the_time_is_up () -> None:
 
 def check_the_last_thing_that_went_wrong_is_the_reason_given_even_while_another_try_is_under_way () -> None:
 
+	"""The reason shown is what last went wrong, not that another try was under way when the time ran out."""
+
 	wifi, radio, clock = make()
 
 	wifi.look(0)
@@ -728,6 +792,8 @@ def check_the_last_thing_that_went_wrong_is_the_reason_given_even_while_another_
 
 
 def check_at_power_up_the_saved_network_is_joined_at_once () -> None:
+
+	"""At power-up the saved network is joined at once, with no trial, and the own network doesn't come up first."""
 
 	wifi, radio, clock = make(("Studio", "studio wifi"))
 
@@ -744,6 +810,8 @@ def check_at_power_up_the_saved_network_is_joined_at_once () -> None:
 
 
 def check_a_saved_network_that_cant_be_joined_at_power_up_is_kept_and_the_own_network_comes_up () -> None:
+
+	"""A saved network that isn't there at power-up brings the own network up, and stays saved for when it is back."""
 
 	wifi, radio, clock = make(("Garden", "garden wifi"))
 
@@ -774,6 +842,8 @@ def check_a_saved_network_that_cant_be_joined_at_power_up_is_kept_and_the_own_ne
 
 def check_a_saved_network_refused_at_power_up_is_kept_too () -> None:
 
+	"""A saved network that refuses its password at power-up stays saved too, with the reason shown."""
+
 	wifi, radio, clock = make(("Studio", "an old password"))
 
 	wifi.look(0)
@@ -785,6 +855,8 @@ def check_a_saved_network_refused_at_power_up_is_kept_too () -> None:
 
 
 def check_asking_again_for_the_saved_network_tries_it_again () -> None:
+
+	"""Picking the network that is already saved, from the page, tries it again."""
 
 	wifi, radio, clock = make(("Garden", "garden wifi"))
 
@@ -804,6 +876,8 @@ def check_asking_again_for_the_saved_network_tries_it_again () -> None:
 
 
 def check_a_network_lost_for_a_minute_brings_the_own_network_back_and_is_kept () -> None:
+
+	"""A joined network that goes away, as when its router is switched off, is tried for a minute, then the own network comes back and the network stays saved."""
 
 	wifi, radio, clock = joined()
 	saved = saves(clock)
@@ -831,6 +905,8 @@ def check_a_network_lost_for_a_minute_brings_the_own_network_back_and_is_kept ()
 
 def check_a_network_that_comes_back_within_the_minute_is_carried_on_with () -> None:
 
+	"""A network that comes back inside the minute is carried on with, and the next time it goes it has a whole minute again."""
+
 	wifi, radio, clock = joined()
 
 	del radio.networks["Studio"]
@@ -857,6 +933,8 @@ def check_a_network_that_comes_back_within_the_minute_is_carried_on_with () -> N
 
 
 def check_a_radio_getting_a_lost_network_back_by_itself_is_left_to () -> None:
+
+	"""While the radio is getting a lost network back by itself, it isn't interrupted with tries of PicoClock's own."""
 
 	wifi, radio, clock = joined()
 
@@ -1026,6 +1104,8 @@ def check_a_join_asked_for_just_as_listening_is_due_is_tried_as_asked () -> None
 
 def check_forgetting_the_network_brings_the_own_network_back () -> None:
 
+	"""Forgetting the network from the page while on it brings the own network back."""
+
 	wifi, radio, clock = joined()
 
 	clock.forget_network()
@@ -1041,6 +1121,8 @@ def check_forgetting_the_network_brings_the_own_network_back () -> None:
 
 
 def check_a_new_password_for_the_own_network_while_joined_waits_until_that_network_is_next_up () -> None:
+
+	"""A new password for the own network while another is joined changes nothing on the air until the own network next comes up."""
 
 	wifi, radio, clock = joined()
 
@@ -1058,6 +1140,8 @@ def check_a_new_password_for_the_own_network_while_joined_waits_until_that_netwo
 
 def check_putting_every_setting_back_while_joined_brings_the_own_network_back_as_new () -> None:
 
+	"""Putting every setting back as new while on another network brings the own network back as a new PicoClock has it."""
+
 	wifi, radio, clock = joined()
 
 	clock.set_own_password("a new password")
@@ -1071,6 +1155,8 @@ def check_putting_every_setting_back_while_joined_brings_the_own_network_back_as
 
 
 def check_joining_another_network_leaves_the_first () -> None:
+
+	"""Picking another network while joined to one leaves the first, and tries the second as a trial."""
 
 	wifi, radio, clock = joined()
 
@@ -1175,6 +1261,8 @@ def check_a_forgotten_network_isnt_put_back_after_a_failed_join () -> None:
 
 def check_asking_for_the_network_it_is_already_on_does_nothing () -> None:
 
+	"""Picking the network PicoClock is on, with the same password, does nothing, and with another password it is tried."""
+
 	wifi, radio, clock = joined()
 
 	clock.set_network("Studio", "studio wifi")
@@ -1191,6 +1279,8 @@ def check_asking_for_the_network_it_is_already_on_does_nothing () -> None:
 
 
 def check_an_old_reason_goes_when_the_next_thing_is_asked () -> None:
+
+	"""Why the last join failed is shown until the next thing is asked: forgetting the network, or another join, clears it."""
 
 	wifi, radio, clock = make(("Garden", "garden wifi"))
 
@@ -1224,6 +1314,8 @@ def check_an_old_reason_goes_when_the_next_thing_is_asked () -> None:
 
 
 def check_a_radio_that_cant_do_as_asked_is_started_afresh_from_the_settings () -> None:
+
+	"""A radio that fails at what it is asked is started afresh from the settings at the next look, with whatever it left up switched off first."""
 
 	wifi, radio, clock = make()
 
@@ -1301,6 +1393,8 @@ def check_a_radio_that_fails_as_a_join_is_asked_still_puts_back_the_network_save
 
 def check_a_radio_that_fails_during_a_first_join_doesnt_make_the_network_count_as_having_worked () -> None:
 
+	"""A radio failing part way through a network's first join doesn't make that network count as one that has worked."""
+
 	wifi, radio, clock = make()
 
 	wifi.look(0)
@@ -1328,6 +1422,8 @@ def check_a_radio_that_fails_during_a_first_join_doesnt_make_the_network_count_a
 
 
 def check_the_two_networks_are_never_up_together_whatever_is_asked () -> None:
+
+	"""Whatever is asked, in whatever order, the own network and a joined one are never up at the same moment."""
 
 	wifi, radio, clock = make()
 
@@ -1363,6 +1459,8 @@ def check_the_two_networks_are_never_up_together_whatever_is_asked () -> None:
 
 def check_the_networks_in_range_are_listed_tidily_and_a_radio_that_cant_listen_says_so_in_words () -> None:
 
+	"""Looking for networks gives the tidy list the page shows, and a radio that can't listen just then gives words fit to show instead."""
+
 	wifi, radio, clock = make()
 
 	wifi.look(0)
@@ -1383,6 +1481,8 @@ def check_the_networks_in_range_are_listed_tidily_and_a_radio_that_cant_listen_s
 
 
 def check_nothing_is_listened_for_in_the_middle_of_a_join () -> None:
+
+	"""Looking for networks while a join is under way is refused in words, since it would hold the Pico up and could spoil the join."""
 
 	wifi, radio, clock = make()
 
@@ -1412,6 +1512,8 @@ def check_nothing_is_listened_for_in_the_middle_of_a_join () -> None:
 
 
 def check_closing_switches_everything_off_and_a_look_afterwards_starts_afresh () -> None:
+
+	"""Closing switches both networks off, and a look afterwards starts again from the settings."""
 
 	wifi, radio, clock = joined()
 

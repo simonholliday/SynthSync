@@ -594,6 +594,8 @@ def check_running_the_clock_keeps_the_engine_up_to_date () -> None:
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		clock, engine, storage = make()
 		task = asyncio.create_task(clock.run())
 
@@ -663,6 +665,8 @@ def check_running_the_clock_catches_up_with_the_buttons_by_itself () -> None:
 	"""With `run` going, a button pressed on the Pico reaches every watcher within a round or two."""
 
 	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
 
 		clock, engine, storage = make()
 		watcher = Watcher(clock)

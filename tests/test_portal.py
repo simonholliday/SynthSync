@@ -57,6 +57,8 @@ def test_a_look_up_is_answered_over_a_socket_only_while_the_own_network_is_up ()
 
 	async def work () -> None:
 
+		"""The check itself, which needs an event loop to run in."""
+
 		answering = asyncio.create_task(picoclock.web.portal.run(lambda: where[0], port))
 
 		# Its socket is opened at its first turn, and a look-up sent before then is lost.

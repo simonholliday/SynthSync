@@ -18,6 +18,9 @@ import tools.stage
 
 ROOT = pathlib.Path(__file__).parent.parent
 
+# How long a stand-in that has said it is serving may take to answer, in seconds.
+READY_WITHIN = 10
+
 
 def packed (folder: pathlib.Path) -> pathlib.Path:
 
@@ -68,15 +71,23 @@ class Stand:
 
 		assert "stand-in is at" in line, line
 
-		# It says where it is just before it begins to listen.
-		for _ in range(200):
+		# It says where it is just before it begins to listen, so it is asked until it answers, for a while.
+		began = time.monotonic()
+
+		while True:
 
 			try:
 				self.state()
 				break
+
 			except OSError:
+
 				self.process.poll()
+
 				assert self.process.returncode is None, "the stand-in stopped as soon as it started"
+				assert time.monotonic() - began < READY_WITHIN, "the stand-in said it was serving but didn't answer within %d seconds" % READY_WITHIN
+
+				time.sleep(0.02)
 
 	def stop (self) -> None:
 

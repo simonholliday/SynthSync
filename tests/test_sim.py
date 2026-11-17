@@ -1,5 +1,6 @@
 """The laptop stand-in plays the real scheduler, and the page's API can be driven on it over real sockets."""
 
+import ast
 import asyncio
 import contextlib
 import pathlib
@@ -197,9 +198,25 @@ def test_the_stand_in_reports_in_the_players_terms () -> None:
 
 	engine = picoclock.sim.engine.Engine(4)
 
-	# The same names as `picoclock.device.player.Player.status`, which can't be imported here.
-	assert sorted(engine.status().keys()) == ["beat", "empty", "empty_after", "empty_where", "faults", "fewest_waiting", "longest_write", "merged", "one_left", "paused", "position", "refused", "running", "slowest_command", "writes_past_backlog"]
+	assert sorted(engine.status().keys()) == players_status_names()
 	assert engine.status()["faults"] == 0
+
+
+def players_status_names () -> list[str]:
+
+	"""Read the names `picoclock.device.player.Player.status` gives from the player's source, since it can't be imported off the Pico."""
+
+	tree = ast.parse((ROOT / "picoclock" / "device" / "player.py").read_text(encoding="utf-8"))
+	player = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Player")
+	status = next(node for node in player.body if isinstance(node, ast.FunctionDef) and node.name == "status")
+	given = next(node.value for node in ast.walk(status) if isinstance(node, ast.Return) and isinstance(node.value, ast.Dict))
+
+	names = sorted(key.value for key in given.keys if isinstance(key, ast.Constant) and isinstance(key.value, str))
+
+	# A dozen or more, so that a status written some other way can't make this pass with none.
+	assert len(names) >= 12
+
+	return names
 
 
 def test_the_pretend_network_joins_as_a_pico_does_only_sooner () -> None:
@@ -278,6 +295,8 @@ def test_the_page_is_driven_over_real_sockets () -> None:
 	"""Two pages on the stand-in stay in step, hear where the clock is, and another site's page is turned away."""
 
 	async def scenario () -> None:
+
+		"""The test itself, which needs an event loop to run in."""
 
 		port = free_port()
 		stand = picoclock.sim.__main__.Stand()
@@ -361,6 +380,8 @@ def test_a_page_that_stops_answering_is_sent_little_more_and_then_let_go (monkey
 	monkeypatch.setattr(picoclock.web.app, "DEAF_FOR", 1500)
 
 	async def scenario () -> None:
+
+		"""The test itself, which needs an event loop to run in."""
 
 		port = free_port()
 		stand = picoclock.sim.__main__.Stand()

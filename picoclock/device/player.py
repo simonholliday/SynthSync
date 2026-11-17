@@ -172,6 +172,8 @@ def _program ():
 
 	def player ():
 
+		"""Set the pins from each word, then hold them for as long as the word says."""
+
 		# A word is the pins in its low bits and the hold above them. One turn
 		# takes the hold plus 4 cycles, which the scheduler allows for. The hold
 		# needs 19 bits at most: a word lasts 2,500 ticks or less.
