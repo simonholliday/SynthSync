@@ -397,8 +397,6 @@ SynthSync's own network and your WiFi are never on at the same time.
 
 ## More or fewer outputs
 
-> **To come:** this isn't built yet. What follows is how it is meant to work.
-
 SynthSync runs four outputs out of the box, on GP2 to GP5. If you wire fewer, the spare ones do no harm. To have the page show only the outputs you built, or to add up to eight, you change one line in a small text file on the Pico, called `config.txt`:
 
 ```

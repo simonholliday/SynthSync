@@ -44,6 +44,12 @@
 
 	<main id="settings-view" hidden inert>
 
+		<section id="config" class="panel" aria-labelledby="config-title" hidden>
+			<h2 id="config-title">config.txt</h2>
+			<p class="note">Some of config.txt, the file on the Pico that says how it is wired, couldn't be used. SynthSync uses its own setting in place of each line below. Put the file right, then unplug the Pico and plug it in again.</p>
+			<ul id="config-problems"></ul>
+		</section>
+
 		<section id="clock" class="panel" aria-labelledby="clock-title">
 			<h2 id="clock-title">Clock</h2>
 			<p class="note" id="clock-note">How many pulses output 1 sends on each beat (PPQN). Every other output is a ratio of it. 4 suits most step sequencers: one step for each 16th note.</p>

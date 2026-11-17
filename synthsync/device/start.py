@@ -1,7 +1,7 @@
 """What happens when the Pico is switched on.
 
-The clock comes first. The saved settings are read and the clock is started
-before anything else is even loaded, so a SynthSync with no phone in the room
+The clock comes first. How the Pico is wired and the saved settings are read,
+and the clock is started, before anything else is even loaded, so a SynthSync with no phone in the room
 is pulsing a fraction of a second after it gets power. The buttons, the light
 and the saving of settings come after, and then the Pico's own WiFi network
 and the page. Each is kept going on its own: one of them going wrong never
@@ -17,6 +17,7 @@ import sys
 import time
 
 import synthsync.core.clock
+import synthsync.core.config
 import synthsync.core.settings
 import synthsync.core.transport
 import synthsync.device.board
@@ -41,14 +42,15 @@ class Parts:
 
 	"""The clock and what it is made of, once it is running."""
 
-	def __init__ (self, clock, player, storage, problems: list) -> None:
+	def __init__ (self, clock, player, storage, problems: list, config) -> None:
 
-		"""Hold the parts, and what in the saved settings couldn't be used."""
+		"""Hold the parts, what in the saved settings couldn't be used, and what `config.txt` said."""
 
 		self.clock = clock
 		self.player = player
 		self.storage = storage
 		self.problems = problems
+		self.config = config
 
 		# What is made after the clock has started: the buttons and the light,
 		# the network, the page's server, and the jobs that keep them all going.
@@ -63,19 +65,28 @@ class Parts:
 		self.stood = ""
 
 
-def begin () -> Parts:
+def begin (config: str = synthsync.device.board.CONFIG) -> Parts:
 
-	"""Read the saved settings and start the clock, and give back its parts.
+	"""Read how many outputs are wired and the saved settings, start the clock, and give back its parts.
 
-	Settings that can't be read are left as a new SynthSync has them, so a
-	damaged file never stops the clock from starting.
+	`config` is where `config.txt` is, which the rig changes. Whatever in it
+	or in the saved settings can't be read is left as a new SynthSync has
+	it, so neither file can ever stop the clock from starting.
 	"""
 
+	try:
+		wired = synthsync.core.config.read(config)
+
+	except Exception as problem:
+		sys.print_exception(problem)
+		wired = synthsync.core.config.Config()
+		wired.problems.append("%s couldn't be read, so none of it was used" % synthsync.core.config.NAME)
+
 	board = synthsync.device.board
-	settings = synthsync.core.settings.Settings(board.OUTPUTS)
+	settings = synthsync.core.settings.Settings(wired.outputs)
 
 	# The player is made before anything else touches its pins. Setting one up afterwards would take it away.
-	player = synthsync.device.player.Player(board.FIRST_OUTPUT_PIN, board.OUTPUTS)
+	player = synthsync.device.player.Player(board.FIRST_OUTPUT_PIN, wired.outputs)
 	storage = synthsync.device.storage.Storage(settings, player)
 
 	try:
@@ -93,7 +104,7 @@ def begin () -> Parts:
 	# Once the player has taken the start, the first pulse is a few milliseconds away at most.
 	player.settle()
 	STARTED[0] = time.ticks_ms()
-	RUNNING[0] = Parts(clock, player, storage, problems)
+	RUNNING[0] = Parts(clock, player, storage, problems, wired)
 
 	return RUNNING[0]
 
@@ -136,7 +147,7 @@ def reach (parts: Parts, static: "str | None" = None) -> list:
 	if static is None:
 		static = synthsync.web.app.__file__.rsplit("/", 1)[0] + "/static"
 
-	parts.app = synthsync.web.app.App(parts.clock, parts.wifi, static)
+	parts.app = synthsync.web.app.App(parts.clock, parts.wifi, static, parts.config.problems)
 
 	async def network () -> None:
 
@@ -265,7 +276,7 @@ def run (trial: int = 0) -> None:
 	parts = begin()
 	took = time.ticks_diff(time.ticks_ms(), asked)
 
-	for problem in parts.problems:
+	for problem in parts.config.problems + parts.problems:
 		print(problem)
 
 	by_hand = False

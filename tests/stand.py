@@ -44,21 +44,24 @@ class Stand:
 
 	"""One stand-in SynthSync, started from the command line as a person would."""
 
-	def __init__ (self, outputs: int = 4, port: int | None = None, static: pathlib.Path | None = None) -> None:
+	def __init__ (self, outputs: int = 4, port: int | None = None, static: pathlib.Path | None = None, config: pathlib.Path | None = None) -> None:
 
 		"""Start a stand-in with this many outputs, and wait until it says it is serving.
 
 		`static` is a folder to serve the page from, such as one the page has
 		been packed into as the Pico holds it. Without it the page's own six
-		files are served.
+		files are served. `config` is a `config.txt` for it to read, which
+		then says how many outputs it has in place of `outputs`.
 		"""
 
 		self.port = port if port is not None else free_port()
 		self.address = "http://127.0.0.1:%d" % self.port
 		self.packed = static is not None
 
+		wired = ["--config", str(config)] if config is not None else ["--outputs", str(outputs)]
+
 		self.process = subprocess.Popen(
-			[sys.executable, "-B", "-m", "synthsync.sim", "--port", str(self.port), "--outputs", str(outputs)] + (["--static", str(static)] if static is not None else []),
+			[sys.executable, "-B", "-m", "synthsync.sim", "--port", str(self.port)] + wired + (["--static", str(static)] if static is not None else []),
 			cwd = ROOT,
 			stdout = subprocess.PIPE,
 			stderr = subprocess.STDOUT,
@@ -67,9 +70,15 @@ class Stand:
 
 		assert self.process.stdout is not None
 
+		# What it said before it said where it is, which is what it couldn't use in `config.txt`.
+		self.said: list[str] = []
 		line = self.process.stdout.readline()
 
-		assert "stand-in is at" in line, line
+		while line and "stand-in is at" not in line:
+			self.said.append(line.rstrip("\n"))
+			line = self.process.stdout.readline()
+
+		assert "stand-in is at" in line, self.said
 
 		# It says where it is just before it begins to listen, so it is asked until it answers, for a while.
 		began = time.monotonic()

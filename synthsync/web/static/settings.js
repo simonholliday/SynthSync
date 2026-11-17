@@ -1,7 +1,8 @@
 /*
 The page's second view, for the things that are set once: how many pulses the
 clock sends a beat, which WiFi SynthSync is on, the password of its own
-network, starting again as new, and how it is doing.
+network, starting again as new, and how it is doing. At its top, and only when
+there is something to say, it says what in config.txt couldn't be used.
 
 As everywhere on the page, nothing here decides anything. It asks the Pico and
 shows the answer. A form stays open until the Pico has taken what it holds, so
@@ -121,6 +122,17 @@ export class Settings {
 
 		find("version").textContent = "SynthSync " + fixed.version;
 		find("rates").replaceChildren(...fixed.ppqns.map((rate) => this.rate(rate)));
+		find("config").hidden = fixed.config_problems.length === 0;
+
+		find("config-problems").replaceChildren(...fixed.config_problems.map((problem) => {
+
+			const item = document.createElement("li");
+
+			item.textContent = problem;
+
+			return item;
+		}));
+
 		find("ppqn-problem").textContent = "";
 		find("networks").replaceChildren();
 		find("scan-status").textContent = "";

@@ -1,7 +1,8 @@
 """Which pin does what.
 
-This is the one place the wiring is written down. To change the number of
-outputs, change OUTPUTS: the page draws however many there are.
+This is the one place the wiring is written down. How many outputs are wired
+is the musician's to say, in `config.txt` at the top of the Pico's files, which
+`synthsync.core.config` reads. The page draws however many there are.
 
 The outputs take pins from the bottom, starting at GP2, and everything the
 player sets comes straight after them. Everything else takes pins from the
@@ -17,7 +18,9 @@ to GP20 are free.
 # them all at once from the low bits of one word. Output 1 is the first. GP0 and
 # GP1 are left free: they are the Pico's own serial port.
 FIRST_OUTPUT_PIN = 2
-OUTPUTS = 4
+
+# Where the file is that says how many outputs are wired.
+CONFIG = "/config.txt"
 
 # The player can drive eight outputs. The four pins after the outputs are kept
 # free for that. The player also sets the two after those, from the same words:

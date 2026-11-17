@@ -8,6 +8,12 @@ reads back exactly on the Pico.
 Loading is forgiving on purpose. A file that is missing, damaged or from an
 older version must never stop the clock starting, so whatever can be read is
 kept and everything else falls back to its default.
+
+How many outputs there are is `config.txt`'s to say, not these settings'. A
+saved file can hold more outputs than are wired now. Those past the last one
+are kept as they were saved, unchecked, and saved again with the rest, so
+wiring them again brings their settings back. Starting again as new forgets
+them with everything else.
 """
 
 import json
@@ -136,6 +142,10 @@ class Settings:
 		self.tempo = DEFAULT_TEMPO
 		self.ppqn = synthsync.core.ratio.DEFAULT_PPQN
 		self.outputs = [Output() for _ in range(outputs)]
+
+		# The saved settings of outputs past the last one wired, as they were saved.
+		self.beyond: list[object] = []
+
 		self.own_password = DEFAULT_PASSWORD
 		self.host_name = DEFAULT_HOST_NAME
 		self.network_name = ""
@@ -148,6 +158,7 @@ class Settings:
 		self.tempo = DEFAULT_TEMPO
 		self.ppqn = synthsync.core.ratio.DEFAULT_PPQN
 		self.outputs = [Output() for _ in range(self.count)]
+		self.beyond = []
 		self.own_password = DEFAULT_PASSWORD
 		self.host_name = DEFAULT_HOST_NAME
 		self.network_name = ""
@@ -346,6 +357,8 @@ class Settings:
 				"role": output.role,
 			})
 
+		outputs.extend(self.beyond)
+
 		return {
 			"version": VERSION,
 			"tempo": self.tempo,
@@ -399,6 +412,9 @@ class Settings:
 			for name in ("ratio", "snap", "muted", "pulse", "role"):
 				if name in entry:
 					_attempt(problems, "output %d %s" % (index + 1, name), lambda: self.set_output(index, name, entry[name]))
+
+		# Kept for when they are wired again, and checked then.
+		self.beyond = saved[self.count:synthsync.core.timeline.MOST_OUTPUTS]
 
 		if "own_password" in data:
 			_attempt(problems, "own password", lambda: self.set_own_password(data["own_password"]))

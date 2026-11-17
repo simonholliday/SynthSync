@@ -53,13 +53,14 @@ finally:
 import time
 
 import synthsync.core.clock
+import synthsync.core.config
 import synthsync.core.settings
 import synthsync.core.wifi
 import synthsync.device.board
 import synthsync.device.radio
 import synthsync.device.storage
 
-settings = synthsync.core.settings.Settings(synthsync.device.board.OUTPUTS)
+settings = synthsync.core.settings.Settings(synthsync.core.config.read(synthsync.device.board.CONFIG).outputs)
 storage = synthsync.device.storage.Storage(settings)
 storage.load()
 
@@ -111,11 +112,12 @@ finally:
 
 # Run on the Pico to forget the network it has saved.
 FORGET = """
+import synthsync.core.config
 import synthsync.core.settings
 import synthsync.device.board
 import synthsync.device.storage
 
-settings = synthsync.core.settings.Settings(synthsync.device.board.OUTPUTS)
+settings = synthsync.core.settings.Settings(synthsync.core.config.read(synthsync.device.board.CONFIG).outputs)
 storage = synthsync.device.storage.Storage(settings)
 storage.load()
 settings.forget_network()

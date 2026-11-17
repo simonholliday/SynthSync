@@ -27,6 +27,7 @@ import sys
 import time
 
 import synthsync.core.clock
+import synthsync.core.config
 import synthsync.core.ratio
 import synthsync.core.settings
 import synthsync.core.transport
@@ -2292,9 +2293,13 @@ def test_led (load: str = "idle") -> None:
 	report("led", passed, "flashes=%d,%d,%d,%d pulses_without=%d,%d,%d,%d late_cycles=%d worst_cycles=%d flashes_when_off=%d/%d %s load=%s" % (timed[0], timed[1], timed[2], timed[3], missed[0], missed[1], missed[2], missed[3], late, worst, counted[4], beats_off, describe(status), described))
 
 
+# Where the powerup test puts a config.txt of its own, so the board's is never touched.
+_POWERUP_CONFIG = "/_rig_config.txt"
+
+
 def test_powerup (load: str = "idle") -> None:
 
-	"""Start the clock as switching on does, from missing, damaged and good settings, with the board's own settings put back whatever happens."""
+	"""Start the clock as switching on does, from missing, damaged and good settings and config.txt files, with the board's own settings put back whatever happens."""
 
 	kept = keep_settings()
 
@@ -2304,13 +2309,22 @@ def test_powerup (load: str = "idle") -> None:
 	finally:
 		put_back_settings(kept)
 
+		try:
+			os.remove(_POWERUP_CONFIG)
+		except OSError:
+			pass
+
 
 def _powerup_cases (load: str) -> None:
 
-	"""Start the clock as power-up does, from no saved settings, from a damaged file and from a good one, and then everything that follows it.
+	"""Start the clock as power-up does, from no saved settings, from a damaged file and from a good one, then from config.txt files good and bad, and then everything that follows it.
 
 	Each start must leave the clock running and pulsing: at the saved tempo
-	when the file is good, and as a new SynthSync otherwise.
+	when the file is good, and as a new SynthSync otherwise. Each config.txt
+	must give the player and the settings as many outputs as it says, or
+	four where it can't be used, and say as much as it should about the file,
+	with the clock running as ever. None of them asks for more than the four
+	outputs SynthSync drives anyway.
 
 	What follows the clock is the buttons, the saving, the Pico's own network
 	and the page. With all of it going, the network must be up under
@@ -2334,7 +2348,13 @@ def _powerup_cases (load: str) -> None:
 	wrong = []
 	slowest = 0
 
-	good = synthsync.core.settings.Settings(synthsync.device.board.OUTPUTS)
+	# The settings' cases are started with no config.txt, as a new Pico has, whatever a run cut short left.
+	try:
+		os.remove(_POWERUP_CONFIG)
+	except OSError:
+		pass
+
+	good = synthsync.core.settings.Settings(synthsync.core.config.DEFAULT_OUTPUTS)
 	good.set_tempo(24000)
 	good.set_ppqn(2)
 
@@ -2358,7 +2378,7 @@ def _powerup_cases (load: str) -> None:
 				handle.write(text)
 
 		began = time.ticks_ms()
-		parts = synthsync.device.start.begin()
+		parts = synthsync.device.start.begin(_POWERUP_CONFIG)
 		took = time.ticks_diff(time.ticks_ms(), began)
 		slowest = max(slowest, took)
 
@@ -2395,6 +2415,69 @@ def _powerup_cases (load: str) -> None:
 			wrong.append(name + ": said %d things about the file" % len(parts.problems))
 
 		parts.player.close()
+
+	try:
+		os.remove(path)
+	except OSError:
+		pass
+
+	# What config.txt holds, how many outputs there should then be, and how many things should be said about it.
+	wirings = (
+		("no config.txt", None, 4, 0),
+		("two outputs", b"# How many are wired.\noutputs = 2\n", 2, 0),
+		("one output, saved by Windows", b"\xef\xbb\xbfOutputs = 1\r\n", 1, 0),
+		("a typo after a good line", b"outputs = 3\noutptus = 2\n", 3, 1),
+		("too many outputs", b"outputs = 9\n", 4, 1),
+		("a config.txt of rubbish", b"\x00\xff not a setting at all", 4, 1),
+	)
+
+	for name, data, outputs, told in wirings:
+
+		try:
+			os.remove(_POWERUP_CONFIG)
+		except OSError:
+			pass
+
+		if data is not None:
+			with open(_POWERUP_CONFIG, "wb") as handle:
+				handle.write(data)
+
+		began = time.ticks_ms()
+		parts = synthsync.device.start.begin(_POWERUP_CONFIG)
+		took = time.ticks_diff(time.ticks_ms(), began)
+		slowest = max(slowest, took)
+
+		# Output 1 is always wired, at 120 BPM and four pulses a beat: eight in a second.
+		pulses = 0
+		was = first.value()
+		deadline = time.ticks_add(time.ticks_ms(), 1000)
+
+		while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+
+			now = first.value()
+
+			if now and not was:
+				pulses += 1
+
+			was = now
+
+		status = parts.player.status()
+
+		if not (status["running"] and not status["paused"] and sound(status)):
+			wrong.append(name + ": the clock isn't running cleanly")
+
+		if parts.player.timeline.outputs != outputs or parts.clock.settings.count != outputs:
+			wrong.append(name + ": the player has %d outputs and the settings %d" % (parts.player.timeline.outputs, parts.clock.settings.count))
+
+		if not 7 <= pulses <= 9:
+			wrong.append(name + ": %d pulses in a second" % pulses)
+
+		if len(parts.config.problems) != told:
+			wrong.append(name + ": said %d things about config.txt" % len(parts.config.problems))
+
+		parts.player.close()
+
+	os.remove(_POWERUP_CONFIG)
 
 	start = synthsync.device.start
 	own = network.WLAN(network.AP_IF)
@@ -2554,7 +2637,7 @@ def _powerup_cases (load: str) -> None:
 
 	parts.player.close()
 
-	report("powerup", not wrong, "cases=%d wrong=%d slowest_start_ms=%d free_kb=%d first_wrong=%s load=%s" % (len(cases), len(wrong), slowest, free // 1024, wrong[0].replace(" ", "_") if wrong else "none", load))
+	report("powerup", not wrong, "cases=%d configs=%d wrong=%d slowest_start_ms=%d free_kb=%d first_wrong=%s load=%s" % (len(cases), len(wirings), len(wrong), slowest, free // 1024, wrong[0].replace(" ", "_") if wrong else "none", load))
 
 
 # Where the network test keeps its settings.

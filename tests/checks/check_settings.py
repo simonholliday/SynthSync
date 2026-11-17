@@ -557,3 +557,70 @@ def refusal_of_ppqn (settings: synthsync.core.settings.Settings, ppqn: object) -
 		return str(error)
 
 	return ""
+
+
+def check_saved_outputs_past_those_wired_are_kept_and_saved_again () -> None:
+
+	"""Wiring fewer outputs in config.txt and then more again gets back the settings the extra ones had."""
+
+	six = synthsync.core.settings.Settings(6)
+	six.set_output(4, "ratio", "3")
+	six.set_output(5, "muted", True)
+
+	four = synthsync.core.settings.Settings(4)
+
+	assert four.load_text(six.to_text()) == []
+	assert len(four.outputs) == 4
+
+	saved = four.to_dict()["outputs"]
+	original = six.to_dict()["outputs"]
+
+	assert isinstance(saved, list) and len(saved) == 6
+	assert isinstance(original, list) and saved[4:] == original[4:]
+
+	# A change to an output that is wired leaves the others as they were.
+	four.set_output(1, "ratio", "2")
+
+	again = synthsync.core.settings.Settings(6)
+
+	assert again.load_text(four.to_text()) == []
+	assert again.outputs[1].ratio == (2, 1)
+	assert again.outputs[4].ratio == (3, 1)
+	assert again.outputs[5].muted
+
+
+def check_saved_outputs_past_those_wired_are_checked_only_when_wired_again () -> None:
+
+	"""Kept as they were saved, however they were saved, and never more than the player can drive."""
+
+	data = json.loads(synthsync.core.settings.Settings(2).to_text())
+	data["outputs"] += [{"ratio": "not a ratio"}, "not an output"] + [{}] * 10
+
+	two = synthsync.core.settings.Settings(2)
+
+	assert two.load_dict(data) == []
+
+	saved = two.to_dict()["outputs"]
+
+	assert isinstance(saved, list) and len(saved) == synthsync.core.timeline.MOST_OUTPUTS
+	assert saved[2] == {"ratio": "not a ratio"} and saved[3] == "not an output"
+
+	four = synthsync.core.settings.Settings(4)
+
+	assert four.load_dict(two.to_dict()) == ["output 3 ratio: Type a ratio as a number such as 1.5, or as a fraction such as 4/3", "output 4: not readable"]
+
+
+def check_starting_again_forgets_outputs_not_wired_too () -> None:
+
+	"""A reset forgets every output's settings, wired or not."""
+
+	six = synthsync.core.settings.Settings(6)
+	six.set_output(5, "ratio", "3")
+
+	four = synthsync.core.settings.Settings(4)
+	four.load_text(six.to_text())
+	four.reset()
+
+	saved = four.to_dict()["outputs"]
+
+	assert isinstance(saved, list) and len(saved) == 4

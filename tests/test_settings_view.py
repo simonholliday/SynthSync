@@ -7,6 +7,7 @@ view does without a Pico.
 
 import contextlib
 import json
+import pathlib
 import typing
 
 import pytest
@@ -141,6 +142,51 @@ def test_it_says_how_synthsync_is_reached_and_how_it_is_doing (phone: "playwrigh
 	assert phone.is_hidden("#forget")
 	assert phone.is_hidden("#reset-confirm")
 	assert text(phone, "#wifi-problem") == ""
+
+	# All of config.txt could be used, so nothing is said of it.
+	assert phone.is_hidden("#config")
+
+
+def test_what_in_config_txt_could_not_be_used_is_said_above_everything_else (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand, tmp_path: pathlib.Path) -> None:
+
+	"""Each line that couldn't be used is named, in a panel at the top of the settings, and the outputs the file could give are drawn."""
+
+	config = tmp_path / "config.txt"
+	config.write_text("outputs = 3\noutptus = 2\n" + "nonsense\n" * 5)
+
+	other = tests.stand.Stand(config=config, static=tests.stand.packed(tmp_path / "packed") if stand.packed else None)
+
+	try:
+
+		page = tests.pages.phone(chromium)
+
+		page.goto(other.address + "/#settings")
+		page.wait_for_function("!document.body.classList.contains('lost') && document.getElementById('wifi-status').textContent !== ''")
+
+		assert page.is_visible("#config")
+		assert text(page, "#config-title") == "config.txt"
+		assert page.locator("#config-problems li").all_inner_texts() == [
+			'config.txt, line 2: SynthSync has no setting called "outptus"',
+			"config.txt, line 3: a setting is a name, an equals sign and a value, such as outputs = 4",
+			"config.txt, line 4: a setting is a name, an equals sign and a value, such as outputs = 4",
+			"config.txt, line 5: a setting is a name, an equals sign and a value, such as outputs = 4",
+			"config.txt has 2 more lines that couldn't be used",
+		]
+
+		# Above the clock's own settings, which come first otherwise.
+		above = page.evaluate("() => document.getElementById('config').getBoundingClientRect().bottom <= document.getElementById('clock').getBoundingClientRect().top")
+
+		assert above
+
+		page.tap("#to-main")
+
+		assert tests.pages.eventually(lambda: page.is_visible("#main-view"))
+		assert page.locator("#outputs > *").count() == 3
+
+		page.context.close()
+
+	finally:
+		other.stop()
 
 
 def test_the_networks_in_range_are_listed_strongest_first (phone: "playwright.sync_api.Page") -> None:

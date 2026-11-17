@@ -16,6 +16,7 @@ import synthsync.sim.__main__
 import synthsync.sim.engine
 import synthsync.sim.network
 import synthsync.web.app
+import tests.stand
 import tools.page
 
 ROOT = pathlib.Path(__file__).parent.parent
@@ -499,3 +500,49 @@ def test_the_stand_in_refuses_a_number_of_outputs_it_cannot_have () -> None:
 
 	with pytest.raises(SystemExit):
 		synthsync.sim.__main__.main(["--outputs", "9"])
+
+
+def test_the_stand_in_reads_a_config_txt_as_the_pico_does (tmp_path: pathlib.Path) -> None:
+
+	"""Given a config.txt it has as many outputs as the file says, and says what in it couldn't be used, before saying where it is and in what it tells the page."""
+
+	config = tmp_path / "config.txt"
+	config.write_text("# Two of them.\noutputs = 2\noutptus = 3\n")
+
+	stand = tests.stand.Stand(config=config)
+
+	try:
+		state = stand.state()
+
+	finally:
+		stand.stop()
+
+	told = ['config.txt, line 3: SynthSync has no setting called "outptus"']
+
+	assert [message["index"] for message in state["now"] if message["type"] == "output"] == [0, 1]
+	assert state["fixed"]["config_problems"] == told
+	assert stand.said == told
+
+
+def test_the_stand_in_has_four_outputs_and_nothing_to_say_when_not_told_otherwise () -> None:
+
+	"""As a Pico with no config.txt has."""
+
+	stand = synthsync.sim.__main__.Stand()
+
+	assert stand.clock.settings.count == 4
+	assert stand.app.state()["fixed"]["config_problems"] == []
+
+
+def test_the_stand_in_refuses_two_answers_to_how_many_outputs_or_a_config_txt_that_is_not_there (tmp_path: pathlib.Path) -> None:
+
+	"""`--outputs` and `--config` together are turned down before anything starts, and so is a config.txt that isn't there, which on a Pico would mean every default."""
+
+	config = tmp_path / "config.txt"
+	config.write_text("outputs = 2\n")
+
+	with pytest.raises(SystemExit):
+		synthsync.sim.__main__.main(["--outputs", "2", "--config", str(config)])
+
+	with pytest.raises(SystemExit):
+		synthsync.sim.__main__.main(["--config", str(tmp_path / "nothing.txt")])

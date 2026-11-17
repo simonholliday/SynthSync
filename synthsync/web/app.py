@@ -59,6 +59,8 @@ fastest ratio there is depends on that, so it comes with it. The musical
 values a knob stops on are the same notes at every PPQN, so "fixed" lists
 them once, as pulses a beat, and the page divides them by the PPQN. A change
 of PPQN that moves an output's ratio is followed by that output's message.
+"fixed" also holds what in `config.txt` couldn't be used when the Pico was
+switched on, in words fit to show, which is nothing when all of it could.
 Passwords are never sent.
 
 Only the page that asked gets an answer to "scan", as "networks", and only the
@@ -223,6 +225,7 @@ FIXED = (
 	"shortest_pulse",
 	"longest_pulse",
 	"roles",
+	"config_problems",
 )
 
 # The page's own files, and what kind each is. Nothing else is ever sent from
@@ -507,17 +510,19 @@ class App:
 	date with where the clock has got to, and wants running alongside it.
 	"""
 
-	def __init__ (self, clock: synthsync.core.clock.Clock, network: "Network | None" = None, static: "str | None" = None) -> None:
+	def __init__ (self, clock: synthsync.core.clock.Clock, network: "Network | None" = None, static: "str | None" = None, config_problems: "list[str] | None" = None) -> None:
 
 		"""Serve this clock.
 
 		With a network, the page can see and change how the Pico is reached.
 		`static` is the folder the page's own files are in. Without it only
-		the API is served.
+		the API is served. `config_problems` is what in `config.txt` couldn't
+		be used, for the page to show.
 		"""
 
 		self.clock = clock
 		self.network = network
+		self.config_problems = list(config_problems or [])
 		self.static = static
 
 		# Which of the page's files have a gzipped copy to send in their place,
@@ -584,6 +589,7 @@ class App:
 			"shortest_pulse": synthsync.core.settings.SHORTEST_PULSE,
 			"longest_pulse": synthsync.core.settings.LONGEST_PULSE,
 			"roles": list(synthsync.core.settings.ROLES),
+			"config_problems": list(self.config_problems),
 		}
 
 	def _keys (self) -> "list[Key]":

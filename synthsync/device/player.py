@@ -212,7 +212,11 @@ class Player:
 			raise ValueError("The player needs a system clock that is a whole number of megahertz")
 
 		self.timeline = synthsync.core.timeline.Timeline(outputs, cycles_per_tick=cycles)
-		self.machine = rp2.StateMachine(0, _program(), freq=machine.freq(), out_base=machine.Pin(first_pin))
+
+		# The program is kept, so that closing the player can give back the room it takes in the
+		# hardware. There is room for six, and each player made would otherwise take its own.
+		self._program = _program()
+		self.machine = rp2.StateMachine(0, self._program, freq=machine.freq(), out_base=machine.Pin(first_pin))
 
 		# The program takes every pin a word carries. Those of outputs not fitted,
 		# and MIDI's, which isn't sent yet, are given back as plain inputs, so the
@@ -1008,7 +1012,7 @@ class Player:
 
 	def close (self) -> None:
 
-		"""Stop the second core and the hardware player, leaving every pin low."""
+		"""Stop the second core and the hardware player, leaving every pin low, and give back the room its program took."""
 
 		self.stop()
 		self.settle()
@@ -1017,4 +1021,5 @@ class Player:
 		self._alive = False
 		time.sleep_ms(5)
 		self.machine.active(0)
+		rp2.PIO(0).remove_program(self._program)
 		self._dma.close()

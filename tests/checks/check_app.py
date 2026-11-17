@@ -324,6 +324,7 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 		assert fixed["slowest_ratio"] == "1/128"
 		assert fixed["ppqns"] == [1, 2, 4, 8, 12, 16, 24, 48]
 		assert fixed["roles"] == ["clock", "start", "stop", "run"]
+		assert fixed["config_problems"] == []
 
 		for message in now:
 			assert fits(message), message
@@ -648,6 +649,38 @@ def check_a_page_is_greeted_with_its_number_and_everything () -> None:
 			assert fits(message), message
 
 		await close_pages(app, first, second)
+
+	tests.checks.check_clock.run(work())
+
+
+def check_what_config_txt_could_not_use_goes_with_what_never_changes () -> None:
+
+	"""The state and every page's greeting say what in config.txt couldn't be used, as the app was told it when it was made."""
+
+	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
+
+		clock, engine, storage = tests.checks.check_clock.make(2, synthsync.core.ratio.DEFAULT_PPQN)
+		problems = ["config.txt, line 2: outputs has to be a whole number from 1 to 8", "config.txt, line 3: SynthSync has no setting called \"tempo\""]
+		app = synthsync.web.app.App(clock, Network(), None, problems)
+
+		# The app keeps its own copy, as it was when the Pico was switched on.
+		told = list(problems)
+		problems.append("something said later")
+
+		response = await client_for(app).get("/api/state")
+
+		assert response.json["fixed"]["config_problems"] == told
+
+		page = await open_page(app)
+		hello = page.sent[0]
+
+		assert hello["type"] == "hello"
+		assert hello["fixed"]["config_problems"] == told
+		assert len(hello["now"]) == 7
+
+		await close_pages(app, page)
 
 	tests.checks.check_clock.run(work())
 

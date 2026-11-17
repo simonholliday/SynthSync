@@ -322,7 +322,8 @@ def test_nothing_but_the_clock_is_loaded_before_the_first_pulse () -> None:
 
 	This reads the source of what runs at power-up. Loading Microdot and the
 	page's code takes the Pico a good part of a second, which would otherwise
-	come before the first pulse.
+	come before the first pulse. What reads config.txt comes first, because it
+	says how many outputs the clock has.
 	"""
 
 	tree = ast.parse((ROOT / "synthsync" / "device" / "start.py").read_text())
@@ -331,7 +332,7 @@ def test_nothing_but_the_clock_is_loaded_before_the_first_pulse () -> None:
 
 	assert at_once == {
 		"asyncio", "gc", "sys", "time",
-		"synthsync.core.clock", "synthsync.core.settings", "synthsync.core.transport",
+		"synthsync.core.clock", "synthsync.core.config", "synthsync.core.settings", "synthsync.core.transport",
 		"synthsync.device.board", "synthsync.device.chip", "synthsync.device.player", "synthsync.device.storage",
 	}
 	assert later == {"synthsync.device.panel", "synthsync.device.radio", "synthsync.web.app", "synthsync.web.portal"}
@@ -401,16 +402,18 @@ class Pico:
 
 	"""Stands in for the Pico: it notes what it was asked, and answers as told to."""
 
-	def __init__ (self, fail: str | None = None, loads: bool = True, ran: str = "SYNTHSYNC RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=synthsync own=SynthSync AB78D9\n") -> None:
+	def __init__ (self, fail: str | None = None, loads: bool = True, ran: str = "SYNTHSYNC RAN started_in_ms=41 beat=7 faults=0 refused=0 page=1 free=312000 mode=own address=192.168.4.1 host=synthsync own=SynthSync AB78D9\n", has_config: bool = False) -> None:
 
 		"""Answer well to everything, bar a command containing `fail`, or the loading if `loads` is false.
 
-		`ran` is what comes back when SynthSync is tried.
+		`ran` is what comes back when SynthSync is tried, and `has_config`
+		says whether there is a config.txt on it already.
 		"""
 
 		self.fail = fail
 		self.loads = loads
 		self.ran = ran
+		self.has_config = has_config
 		self.asked: list[list[str]] = []
 		self.copied: set[str] = set()
 
@@ -433,6 +436,9 @@ class Pico:
 		if arguments[0] == "exec" and "start.run" in arguments[1]:
 			return True, self.ran
 
+		if arguments[0] == "exec" and "CONFIG PLACED" in arguments[1]:
+			return True, "CONFIG KEPT\n" if self.has_config else "CONFIG PLACED\n"
+
 		if arguments[0] == "exec":
 			return True, "LOADED 400000\n" if self.loads else "ImportError: incompatible .mpy file\n"
 
@@ -451,13 +457,14 @@ def test_an_install_takes_the_old_copy_off_copies_the_new_tries_it_and_only_then
 
 	assert tools.install.main([]) == 0
 
-	removing, copying, loading, trying, starting, restarting = pico.asked
+	removing, copying, placing, loading, trying, starting, restarting = pico.asked
 
 	# The join tool's file goes too, in case anything ever left it behind with a network's password in it,
 	# and so does the folder a copy from before the name SynthSync used.
 	assert removing[0] == "exec" and "['synthsync', 'microdot', 'main.py', '_join.txt', 'picoclock']" in removing[1]
 	assert copying[:3] == ["fs", "cp", "-r"] and copying[-1] == ":"
 	assert sorted(copying[3:-1]) == ["microdot", "synthsync"]
+	assert placing[0] == "exec" and repr((tools.stage.ROOT / "config.txt").read_text()) in placing[1]
 	assert "synthsync.core.timeline" in loading[1] and "synthsync.device.start" in loading[1]
 	assert "synthsync.device.start.run(3000)" in trying[1]
 	assert starting == ["fs", "cp", "main.py", ":"]
@@ -469,6 +476,7 @@ def test_an_install_takes_the_old_copy_off_copies_the_new_tries_it_and_only_then
 
 	assert "/dev/one" in said
 	assert "Every part loads" in said
+	assert "Put SynthSync's own config.txt on the Pico, which says there are 4 outputs." in said
 	assert "41 ms" in said
 	assert "304 KB" in said
 
@@ -553,9 +561,59 @@ def test_wiping_empties_the_pico_first (monkeypatch: pytest.MonkeyPatch) -> None
 	assert "for name in [] or os.listdir" in pico.asked[0][1]
 
 
+@pytest.mark.usefixtures("compiler")
+def test_an_install_keeps_the_config_txt_the_pico_has (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""config.txt is the musician's, so an install never copies over one, and says it kept it."""
+
+	pico = Pico(has_config=True)
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main([]) == 0
+	assert not [asked for asked in pico.asked if asked[0] == "fs" and "config.txt" in " ".join(asked)]
+	assert "Kept the config.txt that was on the Pico." in capsys.readouterr().out
+
+
+def test_what_puts_config_txt_in_place_writes_it_whole_and_only_where_there_is_none (tmp_path: pathlib.Path) -> None:
+
+	"""Run as the Pico runs it: the first time it writes the file under another name and renames it, and after that it leaves the file as it finds it."""
+
+	path = str(tmp_path / "config.txt")
+	text = (tools.stage.ROOT / "config.txt").read_text()
+	place = tools.install.PLACE_CONFIG % (path, path + ".new", text, path + ".new", path)
+	said: list[str] = []
+
+	exec(place, {"print": said.append})
+
+	assert (tmp_path / "config.txt").read_text() == text
+	assert sorted(entry.name for entry in tmp_path.iterdir()) == ["config.txt"]
+
+	(tmp_path / "config.txt").write_text("outputs = 6\n")
+	exec(place, {"print": said.append})
+
+	assert (tmp_path / "config.txt").read_text() == "outputs = 6\n"
+	assert said == ["CONFIG PLACED", "CONFIG KEPT"]
+
+
+@pytest.mark.usefixtures("compiler")
+def test_an_install_says_what_in_config_txt_the_pico_could_not_use (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+
+	"""What the trial printed about config.txt is passed on, as the page would say it."""
+
+	pico = Pico(has_config=True, ran="config.txt, line 2: outputs has to be a whole number from 1 to 8\n" + Pico().ran)
+
+	monkeypatch.setattr(tools.install, "find_devices", lambda: ["/dev/one"])
+	monkeypatch.setattr(tools.install, "on_pico", pico)
+
+	assert tools.install.main([]) == 0
+	assert "config.txt, line 2: outputs has to be a whole number from 1 to 8" in capsys.readouterr().out
+
+
 def test_removing_takes_synthsync_off_and_copies_nothing (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
 
-	"""`--remove` takes off SynthSync's own files, any file the join tool left, and a copy from before the name SynthSync, and stops there."""
+	"""`--remove` takes off SynthSync's own files, any file the join tool left, and a copy from before the name SynthSync, and stops there. The saved settings and config.txt stay."""
 
 	pico = Pico()
 
@@ -565,11 +623,14 @@ def test_removing_takes_synthsync_off_and_copies_nothing (monkeypatch: pytest.Mo
 	assert tools.install.main(["--remove"]) == 0
 	assert len(pico.asked) == 1
 	assert "['synthsync', 'microdot', 'main.py', '_join.txt', 'picoclock']" in pico.asked[0][1]
-	assert "settings" in capsys.readouterr().out
+
+	said = capsys.readouterr().out
+
+	assert "settings" in said and "config.txt" in said
 
 
 @pytest.mark.usefixtures("compiler")
-@pytest.mark.parametrize("fail, old_copy_gone", [("REMOVED", False), ("cp", True)])
+@pytest.mark.parametrize("fail, old_copy_gone", [("REMOVED", False), ("cp", True), ("CONFIG PLACED", True)])
 def test_a_step_the_pico_refuses_stops_the_install_and_says_so (monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], fail: str, old_copy_gone: bool) -> None:
 
 	"""If the old copy can't be taken off or the new one can't be copied, the tool fails and shows what the Pico said, and says when nothing will start at power-up now."""

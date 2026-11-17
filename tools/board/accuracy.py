@@ -210,7 +210,15 @@ def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: 
 	"""
 
 	first_pin = synthsync.device.board.FIRST_OUTPUT_PIN
-	outputs = synthsync.device.board.OUTPUTS
+
+	# As many outputs play as config.txt says are wired. An install from before
+	# config.txt said so in its own code.
+	try:
+		import synthsync.core.config
+		outputs = synthsync.core.config.read(synthsync.device.board.CONFIG).outputs
+
+	except ImportError:
+		outputs = synthsync.device.board.OUTPUTS
 	ring = Ring(first_pin)
 	player = synthsync.device.player.Player(first_pin, outputs)
 
