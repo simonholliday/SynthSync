@@ -513,6 +513,91 @@ def check_the_socket_is_wired_up_and_refuses_another_sites_page () -> None:
 	tests.checks.check_clock.run(work())
 
 
+def check_a_page_from_a_site_that_points_its_name_at_the_pico_can_neither_change_it_nor_read_it () -> None:
+
+	"""On a network the Pico has joined, a site can point its own name at the Pico's address, so its page seems to the browser to be its own site's. It is turned away, and the network's name is never given to it."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		network.mode = "joined"
+		rebound = {"Origin": "http://clock-stopper.example", "Host": "clock-stopper.example"}
+		client = client_for(app)
+
+		def page () -> "typing.Iterator[str]":
+			yield json.dumps({"do": "stop"})
+			yield json.dumps({"do": "forget"})
+
+		response = await post(client, {"do": "tempo", "value": 20000}, dict(rebound))
+
+		assert response.status_code == 403
+		assert response.json == {"error": "PicoClock only answers to its own name or address"}
+
+		response = await through_socket(client, page, dict(rebound))
+
+		assert response.status_code == 403
+		assert app.pages == []
+
+		response = await client.get("/api/state", headers={"Host": "clock-stopper.example"})
+
+		assert response.status_code == 403
+		assert "Studio" not in json.dumps(response.json)
+
+		assert app.clock.settings.tempo == 12000
+		assert engine.calls == []
+
+	tests.checks.check_clock.run(work())
+
+
+def check_the_pico_answers_to_every_address_and_name_of_its_own () -> None:
+
+	"""By an address of either kind, by its name with .local or without, in any capitals, with or without a port, or at localhost as the laptop stand-in is, the Pico is itself. Its name is the one it has now."""
+
+	async def work () -> None:
+
+		app, engine, network = make()
+		network.mode = "joined"
+		tempo = 12000
+
+		for host in ("192.168.0.144", "192.168.0.144:80", "[fe80::1]:80", "picoclock", "picoclock.local", "PicoClock.Local:80", "localhost:8000"):
+
+			client = microdot.test_client.TestClient(app.web, host=host)
+			tempo += 100
+
+			response = await client.get("/api/state")
+
+			assert response.status_code == 200, host
+
+			response = await post(client, {"do": "tempo", "value": tempo}, {"Origin": "http://" + host, "Host": host})
+
+			assert response.status_code == 200, host
+			assert app.clock.settings.tempo == tempo, host
+
+		# Renamed, it answers to its new name and no longer to the old one.
+		app.clock.set_host_name("studio-clock")
+
+		response = await microdot.test_client.TestClient(app.web, host="studio-clock.local").get("/api/state")
+
+		assert response.status_code == 200
+
+		response = await microdot.test_client.TestClient(app.web, host="picoclock.local").get("/api/state")
+
+		assert response.status_code == 403
+
+		# And on its own network, a phone asking for it by its new name is answered as itself, and by the old one is sent to the page.
+		network.mode = "own"
+
+		response = await microdot.test_client.TestClient(app.web, host="studio-clock.local").get("/api/health")
+
+		assert response.status_code == 200
+
+		response = await microdot.test_client.TestClient(app.web, host="picoclock.local").get("/api/health")
+
+		assert response.status_code == 302
+
+	tests.checks.check_clock.run(work())
+
+
 def check_a_page_is_greeted_with_its_number_and_everything () -> None:
 
 	"""The first thing a page is sent holds its own number and all it needs to draw itself."""

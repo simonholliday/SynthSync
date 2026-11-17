@@ -97,6 +97,11 @@ and the clock's own count of timing faults.
 
 A change needs a JSON body or the socket, and both refuse a request that comes
 from a page on some other site, so a link elsewhere can't change the clock.
+They, and `/api/state`, which holds the saved network's name, refuse too a
+request sent to any name but the Pico's own: its address, its name with
+`.local` or without, or `localhost` for the laptop stand-in. Otherwise a site
+that pointed its own name at the Pico's address could use it from any web page
+opened on the same network.
 
 **While PicoClock's own network is up, a request for any other site is sent to
 the page**, at the Pico's own address. That is what a phone's check for the
@@ -300,6 +305,7 @@ CLOCK = "clock"
 _NOBODY = (0, 0)
 
 _OTHER_SITE = "PicoClock only takes changes from its own page"
+_NOT_THE_PICO = "PicoClock only answers to its own name or address"
 
 # MicroPython counts milliseconds in a way of its own, which a laptop's Python doesn't have.
 _ticks_ms: "typing.Any" = getattr(time, "ticks_ms", None)
@@ -379,6 +385,20 @@ def _same_site (request: microdot.Request) -> bool:
 		return True
 
 	return bool(origin.split("://", 1)[-1] == request.headers.get("Host"))
+
+
+def _to_the_pico (request: microdot.Request, host_name: str) -> bool:
+
+	"""Say whether a request was sent to the Pico by an address or a name of its own.
+
+	A site elsewhere can point its own name at the Pico's address. Its page
+	then names that site as both where it came from and where it is sent,
+	which `_same_site` can't tell from the Pico's own page, so anyone on a
+	network the Pico has joined could have a web page stop it or move it to
+	another network. It is this that turns such a page away.
+	"""
+
+	return picoclock.web.portal.names_pico(request.headers.get("Host"), host_name)
 
 
 class Patient:
@@ -1187,14 +1207,17 @@ class App:
 
 			address = picoclock.web.portal.sent_to(self.network.status()) if self.network is not None else ""
 
-			if picoclock.web.portal.for_here(request.headers.get("Host"), address):
+			if picoclock.web.portal.for_here(request.headers.get("Host"), address, self.clock.settings.host_name):
 				return None
 
 			return microdot.Response.redirect("http://%s/" % address)
 
-		async def state (request: microdot.Request) -> "Message":
+		async def state (request: microdot.Request) -> "Message | tuple[Message, int]":
 
-			"""Give everything, for a page that has just opened."""
+			"""Give everything, for a page that has just opened, unless the request was sent to another site's name: what is given includes the saved network's name."""
+
+			if not _to_the_pico(request, self.clock.settings.host_name):
+				return {"error": _NOT_THE_PICO}, 403
 
 			return self.state()
 
@@ -1207,6 +1230,9 @@ class App:
 		async def change (request: microdot.Request) -> "Message | tuple[Message, int]":
 
 			"""Carry out one message sent as JSON."""
+
+			if not _to_the_pico(request, self.clock.settings.host_name):
+				return {"error": _NOT_THE_PICO}, 403
 
 			if not _same_site(request):
 				return {"error": _OTHER_SITE}, 403
@@ -1229,6 +1255,9 @@ class App:
 		async def upgrade (request: microdot.Request) -> microdot.websocket.WebSocket:
 
 			"""Turn a request into a socket, unless another site's page is asking."""
+
+			if not _to_the_pico(request, self.clock.settings.host_name):
+				microdot.abort(403, _NOT_THE_PICO)
 
 			if not _same_site(request):
 				microdot.abort(403, _OTHER_SITE)

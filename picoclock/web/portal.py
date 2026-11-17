@@ -74,23 +74,41 @@ def sent_to (status: "dict[str, typing.Any]") -> str:
 	return ""
 
 
-def for_here (host: "str | None", address: str) -> bool:
+def names_pico (host: "str | None", host_name: str) -> bool:
+
+	"""Say whether a request's Host names the Pico: by an address, by its own name with .local or without, or as localhost, where the laptop stand-in is.
+
+	A port after it makes no difference, and nor do capitals. A request with
+	no Host at all comes from no browser. A site elsewhere that has pointed
+	its own name at the Pico's address, to get past a browser's guard
+	against one site's page using another's, still sends its own name here,
+	and so doesn't name the Pico.
+	"""
+
+	if not host:
+		return True
+
+	# The port, if one is given, follows the last colon, unless the address is of the newer kind, in brackets.
+	name = (host if host.endswith("]") else host.rsplit(":", 1)[0]).lower()
+
+	return name.startswith("[") or _packed(name) is not None or name == host_name or name == host_name + ".local" or name == "localhost"
+
+
+def for_here (host: "str | None", address: str, host_name: str) -> bool:
 
 	"""Say whether a request with this Host is the Pico's own to answer, while a phone is sent to `address`.
 
 	Every request is, unless the Pico's own network is up and the request
 	names a site that isn't the Pico. One that names an address rather than
 	a site reached the Pico by that address, so it can only have meant the
-	Pico, and a name the Pico didn't answer was never looked up here.
+	Pico, and a name the Pico didn't answer was never looked up here. One
+	that names the Pico by its own name is its own too.
 	"""
 
-	if address == "" or not host:
+	if address == "":
 		return True
 
-	# The port, if one is given, follows the last colon, unless the address is of the newer kind, in brackets.
-	name = host if host.endswith("]") else host.rsplit(":", 1)[0]
-
-	return name == address or name.startswith("[") or _packed(name) is not None
+	return names_pico(host, host_name)
 
 
 def _packed (address: str) -> "bytes | None":

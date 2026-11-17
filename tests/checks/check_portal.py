@@ -130,19 +130,30 @@ def check_a_phone_is_sent_to_the_pico_only_while_its_own_network_is_up () -> Non
 
 def check_a_request_is_the_picos_own_unless_it_names_another_site () -> None:
 
-	"""A request naming another site isn't the Pico's own while a phone is being sent to the page. Naming the Pico, an address, or nothing at all, it is, and every request is once the Pico's own network is down."""
+	"""A request naming another site isn't the Pico's own while a phone is being sent to the page. Naming the Pico by its name or an address, or naming nothing at all, it is, and every request is once the Pico's own network is down."""
 
-	for other in ("connectivitycheck.gstatic.com", "captive.apple.com:80", "picoclock.local", "localhost:8080"):
-		assert not picoclock.web.portal.for_here(other, OWN), other
+	for other in ("connectivitycheck.gstatic.com", "captive.apple.com:80", "picoclock.lan", "clock-stopper.example", "studio-clock.local"):
+		assert not picoclock.web.portal.for_here(other, OWN, "picoclock"), other
 
-	for mine in (OWN, OWN + ":80", "10.0.0.7", "10.0.0.7:8080", "[fe80::1]", "[fe80::1]:80", "", None):
-		assert picoclock.web.portal.for_here(mine, OWN), mine
+	for mine in (OWN, OWN + ":80", "10.0.0.7", "10.0.0.7:8080", "[fe80::1]", "[fe80::1]:80", "picoclock", "picoclock.local", "PicoClock.LOCAL:80", "", None):
+		assert picoclock.web.portal.for_here(mine, OWN, "picoclock"), mine
 
-	# On a laptop the Pico is pretended to be at a name, which is then its own.
-	assert picoclock.web.portal.for_here("localhost:8080", "localhost")
+	# On a laptop the Pico is pretended to be at localhost, which is then its own.
+	assert picoclock.web.portal.for_here("localhost:8080", "localhost", "picoclock")
 
 	for anything in ("connectivitycheck.gstatic.com", OWN, None):
-		assert picoclock.web.portal.for_here(anything, ""), anything
+		assert picoclock.web.portal.for_here(anything, "", "picoclock"), anything
+
+
+def check_the_pico_is_named_by_its_addresses_and_its_own_name_as_it_is_now () -> None:
+
+	"""What names the Pico, wherever it is: an address, its name with .local or without, or localhost. A site that has pointed its own name at the Pico doesn't."""
+
+	for mine in ("192.168.0.144", "192.168.0.144:80", "[fe80::1]:80", "studio-clock", "studio-clock.local", "Studio-Clock.Local:80", "localhost", "localhost:8000", "", None):
+		assert picoclock.web.portal.names_pico(mine, "studio-clock"), mine
+
+	for other in ("picoclock.local", "clock-stopper.example", "studio-clock.example", "studio-clock.local.example", "192.168.0", "fe80::1"):
+		assert not picoclock.web.portal.names_pico(other, "studio-clock"), other
 
 
 class Listener:

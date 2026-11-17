@@ -3101,6 +3101,17 @@ def test_page (load: str = "idle") -> None:
 		response = await client.post("/api/change", headers={"Origin": "http://elsewhere.example", "Host": "192.168.4.1"}, body={"do": "stop"})
 		expect("another site's page wasn't refused", response.status_code == 403 and clock.transport.state == picoclock.core.transport.RUNNING)
 
+		# A site that has pointed its own name at the Pico gets nothing of it, nor the network's name.
+		response = await client.post("/api/change", headers={"Origin": "http://clock-stopper.example", "Host": "clock-stopper.example"}, body={"do": "stop"})
+		expect("a page sent to another site's name wasn't refused", response.status_code in (302, 403) and clock.transport.state == picoclock.core.transport.RUNNING)
+
+		response = await client.get("/api/state", headers={"Host": "clock-stopper.example"})
+		expect("the state was given to a page sent to another site's name", response.status_code in (302, 403))
+
+		# By its own name, with .local, it is itself.
+		response = await client.get("/api/state", headers={"Host": settings.host_name + ".local"})
+		expect("the Pico didn't answer to its own name", response.status_code == 200)
+
 		response = await client.get("/settings.json", headers={"Host": "192.168.4.1"})
 		expect("a file that isn't the page's was sent", response.status_code == 404)
 
@@ -3179,7 +3190,10 @@ def test_page (load: str = "idle") -> None:
 
 	described = run_load(load, capture, 60, meanwhile)
 	status = player.status()
-	gaps = capture.gaps()
+
+	# Judged where they lie: with the page's server loaded, a list of them may not find room in one piece.
+	timed, worst = capture.judge(gap_lengths(tempo, 24, 1))
+	drifted = capture.drift(tempo, 24, 1)
 
 	async def finish () -> None:
 
@@ -3215,11 +3229,9 @@ def test_page (load: str = "idle") -> None:
 
 	# Memory that went down by more than a few KB between the first round and the last would be a page or a request never let go of.
 	kept = counts[3] - counts[6] <= 8192
-	worst = worst_error(gaps, gap_lengths(tempo, 24, 1))
-	drifted = drift(gaps, tempo, 24, 1)
-	passed = len(gaps) >= count - _SKIP and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status) and not wrong and counts[1] >= 3 and heard and kept and storage.saves >= 1
+	passed = timed >= count - _SKIP and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status) and not wrong and counts[1] >= 3 and heard and kept and storage.saves >= 1
 
-	report("page", passed, "requests=%d rounds=%d slowest_ms=%d look_ms=%d found=%d told=%d/%d/%d saves=%d free_kb=%d..%d wrong=%d first_wrong=%s pulses=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (counts[0], counts[1], counts[2], counts[5], counts[4], told.get("hello", 0), told.get("output", 0), told.get("clock", 0), storage.saves, counts[3] // 1024, counts[6] // 1024, len(wrong), wrong[0].replace(" ", "_") if wrong else "none", len(gaps), worst, drifted, describe(status), described))
+	report("page", passed, "requests=%d rounds=%d slowest_ms=%d look_ms=%d found=%d told=%d/%d/%d saves=%d free_kb=%d..%d wrong=%d first_wrong=%s pulses=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (counts[0], counts[1], counts[2], counts[5], counts[4], told.get("hello", 0), told.get("output", 0), told.get("clock", 0), storage.saves, counts[3] // 1024, counts[6] // 1024, len(wrong), wrong[0].replace(" ", "_") if wrong else "none", timed, worst, drifted, describe(status), described))
 
 
 # How long the air test runs PicoClock for, in milliseconds, and how many of
