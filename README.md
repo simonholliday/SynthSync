@@ -16,9 +16,11 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 **You don't need to write any code.** If you can patch a modular system and follow a simple circuit diagram, you can be up and running within an hour.
 
 <p align="center">
-	<img src="docs/images/page-main.png" width="280" alt="SynthSync's page on a phone: a tempo knob reading 124 BPM, a play/pause button and a stop button, and four outputs set to ×1, ×2, ×4 and ÷4.">
-	&nbsp;&nbsp;
-	<img src="docs/images/page-output.png" width="280" alt="The same page with output 2 opened, showing its role, Multivider, and its pulse, a set length of 10 ms.">
+	<img src="docs/images/page-main.png" width="250" alt="SynthSync's page on a phone: the tempo strip lit on the beat, a tempo knob reading 124 BPM, play/pause and stop buttons, a locked Tap tempo bar, and four outputs set to ×1, ×2, ×4 and ÷4.">
+	&nbsp;
+	<img src="docs/images/page-tap.png" width="250" alt="The same page with tap tempo unlocked: a large Tap pad reading 5 taps, 124 BPM, with a padlock beside it.">
+	&nbsp;
+	<img src="docs/images/page-output.png" width="250" alt="The same page with output 2 opened, showing its role, Multivider, and its pulse, a set length of 10 ms.">
 </p>
 
 <p align="center"><em>The page SynthSync serves to your phone's web browser. The clock itself is the hardware you build.</em></p>
