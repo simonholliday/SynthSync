@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1290" width="720" height="1290" role="img" aria-labelledby="title about">
+<title id="title">An example: a main clock, two multividers and both buttons</title><desc id="about">A Pico 2 W with three clock outputs on GP2, GP3 and GP4, each as the clock output circuit, a play/pause button on GP21, a stop button on GP22, 5 volts taken from VSYS and ground from a GND pin.</desc>
+<style>
+	.wire { fill: none; stroke: #e6edf3; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.shape { fill: #161b22; stroke: #e6edf3; stroke-width: 2; stroke-linejoin: round; }
+	.solid { fill: #e6edf3; stroke: none; }
+	.pin { fill: #12351f; stroke: #3fb950; stroke-width: 1.5; }
+	.maybe { fill: none; stroke: #9198a1; stroke-width: 1.5; stroke-dasharray: 6 5; }
+	text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e6edf3; }
+	.label { font-size: 14px; }
+	.name { font-size: 14px; font-weight: 600; }
+	.title { font-size: 17px; font-weight: 600; }
+	.note { font-size: 13px; fill: #9198a1; }
+</style>
+<rect x="1" y="1" width="718" height="1288" rx="12" fill="#161b22" stroke="#3d444d" stroke-width="2"/>
+<text class="title" x="24" y="36" text-anchor="start">An example: a main clock, two multividers and both buttons</text>
+<rect x="22" y="56" width="128" height="1180" rx="10" fill="#21262d" stroke="#3d444d" stroke-width="2"/>
+<text class="name" x="86" y="84" text-anchor="middle">Pico 2 W</text>
+<rect class="pin" x="36" y="266" width="124" height="28" rx="6"/>
+<text class="name" x="98" y="285" text-anchor="middle">GP2 · pin 4</text>
+<text class="name" x="176" y="130" text-anchor="start">Output 1: the main clock</text>
+<path class="wire" d="M160 280 L176 280 L180 273 L188 287 L196 273 L204 287 L212 273 L220 287 L224 280 L240 280"/>
+<text class="label" x="200" y="266" text-anchor="middle">10 kΩ</text>
+<circle class="shape" cx="276" cy="280" r="25"/>
+<path class="wire" d="M240 280 L264 280"/>
+<path class="wire" style="stroke-width: 3.5" d="M264 265 L264 295"/>
+<path class="wire" d="M264 274 L286 260 L286 240"/>
+<path class="wire" d="M264 286 L286 300 L286 320"/>
+<path class="solid" d="M284.0 298.7 L274.0 297.7 L278.8 290.1 Z"/>
+<text class="name" x="310" y="306" text-anchor="start">NPN</text>
+<path class="wire" d="M286 320 L286 336"/>
+<path class="wire" d="M272 336 L300 336"/>
+<path class="wire" d="M277 342 L295 342"/>
+<path class="wire" d="M282 348 L290 348"/>
+<path class="wire" d="M286 240 L286 200"/>
+<path class="wire" d="M286 200 L302 200 L306 193 L314 207 L322 193 L330 207 L338 193 L346 207 L350 200 L366 200"/>
+<text class="label" x="326" y="226" text-anchor="middle">10 kΩ</text>
+<path class="wire" d="M366 200 L386 200 L406 200"/>
+<circle class="solid" cx="386" cy="200" r="3.5"/>
+<path class="wire" d="M386 120 L386 136 L379 140 L393 148 L379 156 L393 164 L379 172 L393 180 L386 184 L386 200"/>
+<text class="label" x="370" y="165" text-anchor="end">10 kΩ</text>
+<circle class="shape" cx="442" cy="200" r="25"/>
+<path class="wire" d="M406 200 L430 200"/>
+<path class="wire" style="stroke-width: 3.5" d="M430 185 L430 215"/>
+<path class="wire" d="M430 194 L452 180 L452 160"/>
+<path class="wire" d="M430 206 L452 220 L452 240"/>
+<path class="solid" d="M436.0 190.2 L441.2 181.6 L446.0 189.2 Z"/>
+<text class="name" x="476" y="205" text-anchor="start">PNP</text>
+<path class="wire" d="M386 120 L452 120"/>
+<path class="wire" d="M452 160 L452 120"/>
+<circle class="solid" cx="452" cy="120" r="3.5"/>
+<path class="wire" d="M452 120 L452 104"/>
+<path class="wire" d="M440 104 L464 104"/>
+<text class="name" x="452" y="96" text-anchor="middle">+5 V</text>
+<path class="wire" d="M452 240 L452 280 L472 280"/>
+<path class="wire" d="M472 280 L488 280 L492 273 L500 287 L508 273 L516 287 L524 273 L532 287 L536 280 L552 280"/>
+<text class="label" x="512" y="266" text-anchor="middle">1 kΩ</text>
+<path class="wire" d="M572 280 L590 280 L600 289 L610 280"/>
+<rect class="shape" x="624" y="256" width="9" height="40" rx="2"/>
+<path class="wire" d="M628.5 296 L628.5 320"/>
+<text class="note" x="600" y="268" text-anchor="middle">tip</text>
+<text class="note" x="642" y="282" text-anchor="start">sleeve</text>
+<path class="wire" d="M552 280 L572 280"/>
+<path class="wire" d="M614.5 320 L642.5 320"/>
+<path class="wire" d="M619.5 326 L637.5 326"/>
+<path class="wire" d="M624.5 332 L632.5 332"/>
+<text class="name" x="600" y="240" text-anchor="middle">3.5 mm jack</text>
+<rect class="pin" x="36" y="546" width="124" height="28" rx="6"/>
+<text class="name" x="98" y="565" text-anchor="middle">GP3 · pin 5</text>
+<text class="name" x="176" y="410" text-anchor="start">Output 2: a multivider</text>
+<path class="wire" d="M160 560 L176 560 L180 553 L188 567 L196 553 L204 567 L212 553 L220 567 L224 560 L240 560"/>
+<text class="label" x="200" y="546" text-anchor="middle">10 kΩ</text>
+<circle class="shape" cx="276" cy="560" r="25"/>
+<path class="wire" d="M240 560 L264 560"/>
+<path class="wire" style="stroke-width: 3.5" d="M264 545 L264 575"/>
+<path class="wire" d="M264 554 L286 540 L286 520"/>
+<path class="wire" d="M264 566 L286 580 L286 600"/>
+<path class="solid" d="M284.0 578.7 L274.0 577.7 L278.8 570.1 Z"/>
+<text class="name" x="310" y="586" text-anchor="start">NPN</text>
+<path class="wire" d="M286 600 L286 616"/>
+<path class="wire" d="M272 616 L300 616"/>
+<path class="wire" d="M277 622 L295 622"/>
+<path class="wire" d="M282 628 L290 628"/>
+<path class="wire" d="M286 520 L286 480"/>
+<path class="wire" d="M286 480 L302 480 L306 473 L314 487 L322 473 L330 487 L338 473 L346 487 L350 480 L366 480"/>
+<text class="label" x="326" y="506" text-anchor="middle">10 kΩ</text>
+<path class="wire" d="M366 480 L386 480 L406 480"/>
+<circle class="solid" cx="386" cy="480" r="3.5"/>
+<path class="wire" d="M386 400 L386 416 L379 420 L393 428 L379 436 L393 444 L379 452 L393 460 L386 464 L386 480"/>
+<text class="label" x="370" y="445" text-anchor="end">10 kΩ</text>
+<circle class="shape" cx="442" cy="480" r="25"/>
+<path class="wire" d="M406 480 L430 480"/>
+<path class="wire" style="stroke-width: 3.5" d="M430 465 L430 495"/>
+<path class="wire" d="M430 474 L452 460 L452 440"/>
+<path class="wire" d="M430 486 L452 500 L452 520"/>
+<path class="solid" d="M436.0 470.2 L441.2 461.6 L446.0 469.2 Z"/>
+<text class="name" x="476" y="485" text-anchor="start">PNP</text>
+<path class="wire" d="M386 400 L452 400"/>
+<path class="wire" d="M452 440 L452 400"/>
+<circle class="solid" cx="452" cy="400" r="3.5"/>
+<path class="wire" d="M452 400 L452 384"/>
+<path class="wire" d="M440 384 L464 384"/>
+<text class="name" x="452" y="376" text-anchor="middle">+5 V</text>
+<path class="wire" d="M452 520 L452 560 L472 560"/>
+<path class="wire" d="M472 560 L488 560 L492 553 L500 567 L508 553 L516 567 L524 553 L532 567 L536 560 L552 560"/>
+<text class="label" x="512" y="546" text-anchor="middle">1 kΩ</text>
+<path class="wire" d="M572 560 L590 560 L600 569 L610 560"/>
+<rect class="shape" x="624" y="536" width="9" height="40" rx="2"/>
+<path class="wire" d="M628.5 576 L628.5 600"/>
+<text class="note" x="600" y="548" text-anchor="middle">tip</text>
+<text class="note" x="642" y="562" text-anchor="start">sleeve</text>
+<path class="wire" d="M552 560 L572 560"/>
+<path class="wire" d="M614.5 600 L642.5 600"/>
+<path class="wire" d="M619.5 606 L637.5 606"/>
+<path class="wire" d="M624.5 612 L632.5 612"/>
+<text class="name" x="600" y="520" text-anchor="middle">3.5 mm jack</text>
+<rect class="pin" x="36" y="826" width="124" height="28" rx="6"/>
+<text class="name" x="98" y="845" text-anchor="middle">GP4 · pin 6</text>
+<text class="name" x="176" y="690" text-anchor="start">Output 3: a multivider</text>
+<path class="wire" d="M160 840 L176 840 L180 833 L188 847 L196 833 L204 847 L212 833 L220 847 L224 840 L240 840"/>
+<text class="label" x="200" y="826" text-anchor="middle">10 kΩ</text>
+<circle class="shape" cx="276" cy="840" r="25"/>
+<path class="wire" d="M240 840 L264 840"/>
+<path class="wire" style="stroke-width: 3.5" d="M264 825 L264 855"/>
+<path class="wire" d="M264 834 L286 820 L286 800"/>
+<path class="wire" d="M264 846 L286 860 L286 880"/>
+<path class="solid" d="M284.0 858.7 L274.0 857.7 L278.8 850.1 Z"/>
+<text class="name" x="310" y="866" text-anchor="start">NPN</text>
+<path class="wire" d="M286 880 L286 896"/>
+<path class="wire" d="M272 896 L300 896"/>
+<path class="wire" d="M277 902 L295 902"/>
+<path class="wire" d="M282 908 L290 908"/>
+<path class="wire" d="M286 800 L286 760"/>
+<path class="wire" d="M286 760 L302 760 L306 753 L314 767 L322 753 L330 767 L338 753 L346 767 L350 760 L366 760"/>
+<text class="label" x="326" y="786" text-anchor="middle">10 kΩ</text>
+<path class="wire" d="M366 760 L386 760 L406 760"/>
+<circle class="solid" cx="386" cy="760" r="3.5"/>
+<path class="wire" d="M386 680 L386 696 L379 700 L393 708 L379 716 L393 724 L379 732 L393 740 L386 744 L386 760"/>
+<text class="label" x="370" y="725" text-anchor="end">10 kΩ</text>
+<circle class="shape" cx="442" cy="760" r="25"/>
+<path class="wire" d="M406 760 L430 760"/>
+<path class="wire" style="stroke-width: 3.5" d="M430 745 L430 775"/>
+<path class="wire" d="M430 754 L452 740 L452 720"/>
+<path class="wire" d="M430 766 L452 780 L452 800"/>
+<path class="solid" d="M436.0 750.2 L441.2 741.6 L446.0 749.2 Z"/>
+<text class="name" x="476" y="765" text-anchor="start">PNP</text>
+<path class="wire" d="M386 680 L452 680"/>
+<path class="wire" d="M452 720 L452 680"/>
+<circle class="solid" cx="452" cy="680" r="3.5"/>
+<path class="wire" d="M452 680 L452 664"/>
+<path class="wire" d="M440 664 L464 664"/>
+<text class="name" x="452" y="656" text-anchor="middle">+5 V</text>
+<path class="wire" d="M452 800 L452 840 L472 840"/>
+<path class="wire" d="M472 840 L488 840 L492 833 L500 847 L508 833 L516 847 L524 833 L532 847 L536 840 L552 840"/>
+<text class="label" x="512" y="826" text-anchor="middle">1 kΩ</text>
+<path class="wire" d="M572 840 L590 840 L600 849 L610 840"/>
+<rect class="shape" x="624" y="816" width="9" height="40" rx="2"/>
+<path class="wire" d="M628.5 856 L628.5 880"/>
+<text class="note" x="600" y="828" text-anchor="middle">tip</text>
+<text class="note" x="642" y="842" text-anchor="start">sleeve</text>
+<path class="wire" d="M552 840 L572 840"/>
+<path class="wire" d="M614.5 880 L642.5 880"/>
+<path class="wire" d="M619.5 886 L637.5 886"/>
+<path class="wire" d="M624.5 892 L632.5 892"/>
+<text class="name" x="600" y="800" text-anchor="middle">3.5 mm jack</text>
+<rect class="pin" x="36" y="976" width="124" height="28" rx="6"/>
+<text class="name" x="98" y="995" text-anchor="middle">GP21 · pin 27</text>
+<path class="wire" d="M160 990 L200 990"/>
+<path class="wire" d="M200 990 L226 990"/>
+<path class="wire" d="M254 990 L280 990"/>
+<circle class="shape" cx="229" cy="990" r="3.5"/>
+<circle class="shape" cx="251" cy="990" r="3.5"/>
+<path class="wire" d="M223 980 L257 980"/>
+<path class="wire" d="M240 980 L240 969"/>
+<path class="wire" d="M233 969 L247 969"/>
+<path class="wire" d="M280 990 L340 990 L340 1070"/>
+<text class="label" x="240" y="958" text-anchor="middle">Play/pause</text>
+<rect class="pin" x="36" y="1056" width="124" height="28" rx="6"/>
+<text class="name" x="98" y="1075" text-anchor="middle">GP22 · pin 29</text>
+<path class="wire" d="M160 1070 L200 1070"/>
+<path class="wire" d="M200 1070 L226 1070"/>
+<path class="wire" d="M254 1070 L280 1070"/>
+<circle class="shape" cx="229" cy="1070" r="3.5"/>
+<circle class="shape" cx="251" cy="1070" r="3.5"/>
+<path class="wire" d="M223 1060 L257 1060"/>
+<path class="wire" d="M240 1060 L240 1049"/>
+<path class="wire" d="M233 1049 L247 1049"/>
+<path class="wire" d="M280 1070 L340 1070 L340 1100"/>
+<circle class="solid" cx="340" cy="1070" r="3.5"/>
+<path class="wire" d="M326 1100 L354 1100"/>
+<path class="wire" d="M331 1106 L349 1106"/>
+<path class="wire" d="M336 1112 L344 1112"/>
+<text class="label" x="240" y="1038" text-anchor="middle">Stop</text>
+<text class="note" x="364" y="1075" text-anchor="start">hold for 5 s to reset</text>
+<rect class="pin" x="36" y="1136" width="124" height="28" rx="6"/>
+<text class="name" x="98" y="1155" text-anchor="middle">VSYS · pin 39</text>
+<rect class="pin" x="36" y="1186" width="124" height="28" rx="6"/>
+<text class="name" x="98" y="1205" text-anchor="middle">GND · pin 38</text>
+<path class="wire" d="M160 1150 L210 1150"/>
+<path class="wire" d="M210 1150 L210 1134"/>
+<path class="wire" d="M198 1134 L222 1134"/>
+<text class="name" x="210" y="1126" text-anchor="middle">+5 V</text>
+<path class="wire" d="M160 1200 L210 1200 L210 1212"/>
+<path class="wire" d="M196 1212 L224 1212"/>
+<path class="wire" d="M201 1218 L219 1218"/>
+<path class="wire" d="M206 1224 L214 1224"/>
+<text class="note" x="250" y="1155" text-anchor="start">every +5 V above</text>
+<text class="note" x="250" y="1205" text-anchor="start">every ground above (any GND pin will do)</text>
+<text class="note" x="24" y="1268" text-anchor="start">Power comes in through the Pico&#x27;s USB socket.</text>
+</svg>

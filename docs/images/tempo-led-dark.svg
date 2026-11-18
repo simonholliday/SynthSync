@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 250" width="620" height="250" role="img" aria-labelledby="title about">
+<title id="title">The tempo LED</title><desc id="about">GP10 goes through a 1 kilohm resistor and an LED to ground.</desc>
+<style>
+	.wire { fill: none; stroke: #e6edf3; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.shape { fill: #161b22; stroke: #e6edf3; stroke-width: 2; stroke-linejoin: round; }
+	.solid { fill: #e6edf3; stroke: none; }
+	.pin { fill: #12351f; stroke: #3fb950; stroke-width: 1.5; }
+	.maybe { fill: none; stroke: #9198a1; stroke-width: 1.5; stroke-dasharray: 6 5; }
+	text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e6edf3; }
+	.label { font-size: 14px; }
+	.name { font-size: 14px; font-weight: 600; }
+	.title { font-size: 17px; font-weight: 600; }
+	.note { font-size: 13px; fill: #9198a1; }
+</style>
+<rect x="1" y="1" width="618" height="248" rx="12" fill="#161b22" stroke="#3d444d" stroke-width="2"/>
+<text class="title" x="24" y="36" text-anchor="start">The tempo LED</text>
+<rect class="pin" x="26" y="82" width="124" height="28" rx="6"/>
+<text class="name" x="88" y="101" text-anchor="middle">GP10 · pin 14</text>
+<path class="wire" d="M150 96 L166 96 L170 89 L178 103 L186 89 L194 103 L202 89 L210 103 L214 96 L230 96"/>
+<text class="label" x="190" y="82" text-anchor="middle">1 kΩ</text>
+<path class="wire" d="M230 96 L270 96"/>
+<path class="wire" d="M270 96 L270 116"/>
+<path class="shape" d="M259 116 L281 116 L270 136 Z"/>
+<path class="wire" d="M259 136 L281 136"/>
+<path class="wire" d="M270 136 L270 156"/>
+<path class="wire" d="M287 124 L298 116"/>
+<path class="solid" d="M300.0 114.5 L296.9 120.5 L293.4 115.6 Z"/>
+<path class="wire" d="M287 135 L298 127"/>
+<path class="solid" d="M300.0 125.5 L296.9 131.5 L293.4 126.6 Z"/>
+<path class="wire" d="M256 156 L284 156"/>
+<path class="wire" d="M261 162 L279 162"/>
+<path class="wire" d="M266 168 L274 168"/>
+<text class="label" x="314" y="134" text-anchor="start">LED</text>
+<text class="note" x="24" y="228" text-anchor="start">It flashes on every beat. Pin 13, next to this pin, is a GND pin.</text>
+</svg>

@@ -171,8 +171,8 @@ Leave every other pin unconnected.
 **You need at least one of these.** Output 1 is the main clock, and it is the place to start.
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/output-dark.png">
-<img src="docs/images/output.png" alt="A clock output: a Pico pin drives an NPN transistor, which switches a PNP transistor, which connects the jack to 5 V.">
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/output-dark.svg">
+<img src="docs/images/output.svg" alt="A clock output: a Pico pin drives an NPN transistor, which switches a PNP transistor, which connects the jack to 5 V.">
 </picture>
 
 A Pico pin gives 3.3 V and shouldn't be patched straight into a modular system. These two transistors do two jobs: they turn the pin's 3.3 V into a 5 V pulse, and they stand between the Pico and whatever gets plugged into the jack.
@@ -196,8 +196,8 @@ A Pico pin gives 3.3 V and shouldn't be patched straight into a modular system. 
 **Optional, for any output.** An output LED, with one more resistor, shows each pulse as it leaves the jack.
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/output-led-dark.png">
-<img src="docs/images/output-led.png" alt="The same clock output, with a resistor and an LED from the second transistor to ground.">
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/output-led-dark.svg">
+<img src="docs/images/output-led.svg" alt="The same clock output, with a resistor and an LED from the second transistor to ground.">
 </picture>
 
 An output LED shows the real pulse, so with the usual 10 ms pulse it is a quick blink. For a light that is easy to read as the beat, fit [the tempo LED](#the-tempo-led) as well. The LED's longer leg goes towards the resistor, and its shorter leg to ground. Any colour will do, and [Choosing LEDs](#choosing-leds) says more.
@@ -212,8 +212,8 @@ It is tempting to leave the transistors out and wire a pin to a jack. There are 
 **That said, it often works, and it is a quick way to see your modules follow the clock** before the transistors arrive:
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/direct-dark.png">
-<img src="docs/images/direct.png" alt="The quick way: a Pico pin through a 1 kΩ resistor to the jack's tip.">
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/direct-dark.svg">
+<img src="docs/images/direct.svg" alt="The quick way: a Pico pin through a 1 kΩ resistor to the jack's tip.">
 </picture>
 
 The resistor improves the Pico's chances if something is patched wrongly. It doesn't make it safe. The risk is to the Pico, which is cheap to replace, and not to your modules. If a module ignores the pulses, 3.3 V is too low for it, and the proper output above will put that right.
@@ -223,8 +223,8 @@ The resistor improves the Pico's chances if something is patched wrongly. It doe
 **Optional, and the stop button is recommended.** Everything the buttons do can also be done from the page. But holding the stop button is the way back if you ever lose track of SynthSync on your WiFi.
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/buttons-dark.png">
-<img src="docs/images/buttons.png" alt="Two push buttons: one from GP21 to ground, and one from GP22 to ground.">
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/buttons-dark.svg">
+<img src="docs/images/buttons.svg" alt="Two push buttons: one from GP21 to ground, and one from GP22 to ground.">
 </picture>
 
 Any push button that connects while it is pressed will do. Each one goes between its pin and ground, with nothing else: the Pico holds the pin at 3.3 V by itself, and pressing the button pulls it to ground.
@@ -240,8 +240,8 @@ A press takes effect as the button goes down, not when you let go.
 **Optional, and the most useful LED to fit.** One LED that flashes on every beat, so you can see the tempo at a glance.
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/tempo-led-dark.png">
-<img src="docs/images/tempo-led.png" alt="The tempo LED: GP10 through a resistor and an LED to ground.">
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/tempo-led-dark.svg">
+<img src="docs/images/tempo-led.svg" alt="The tempo LED: GP10 through a resistor and an LED to ground.">
 </picture>
 
 It shows the BPM: one flash a beat, whatever the outputs are set to. That makes it different from an [output LED](#a-clock-output-with-an-led):
@@ -264,8 +264,8 @@ MIDI comes on three kinds of socket: 3.5 mm TRS jacks wired **Type A** or **Type
 **A socket for each type you want.** Fit any of them, or all three, and they all work at once. Each socket needs its own 33 Ω and 10 Ω resistors.
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/midi-dark.png">
-<img src="docs/images/midi.png" alt="MIDI out with three sockets: 3.3 V feeds a 33 ohm resistor for each socket, and GP11 switches a transistor whose collector feeds a 10 ohm resistor for each socket.">
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/midi-dark.svg">
+<img src="docs/images/midi.svg" alt="MIDI out with three sockets: 3.3 V feeds a 33 ohm resistor for each socket, and GP11 switches a transistor whose collector feeds a 10 ohm resistor for each socket.">
 </picture>
 
 | Socket | 33 Ω, from 3.3 V | 10 Ω, from the transistor | Ground |
@@ -277,8 +277,8 @@ MIDI comes on three kinds of socket: 3.5 mm TRS jacks wired **Type A** or **Type
 **Or one jack with a switch.** A two-pole, two-way switch swaps the tip and ring, so one jack serves both types. Build the transistor as above, and use one 33 Ω and one 10 Ω resistor.
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/midi-switch-dark.png">
-<img src="docs/images/midi-switch.png" alt="One TRS jack behind a two-pole switch: its middle tags go to the tip and ring, and the two resistors are cross-wired to the outer tags.">
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/midi-switch-dark.svg">
+<img src="docs/images/midi-switch.svg" alt="One TRS jack behind a two-pole switch: its middle tags go to the tip and ring, and the two resistors are cross-wired to the outer tags.">
 </picture>
 
 It sends 24 clocks a beat, and Start, Continue and Stop as you press play, pause and stop. Each clock finishes arriving as the matching pulse leaves the outputs. No Song Position or notes are sent.
@@ -377,8 +377,8 @@ Ordinary quarter-watt resistors are fine. Start with output 1, and add outputs i
 A whole SynthSync with three outputs and both buttons: the main clock on output 1, and a multivider on each of outputs 2 and 3.
 
 <picture>
-<source media="(prefers-color-scheme: dark)" srcset="docs/images/example-dark.png">
-<img src="docs/images/example.png" alt="A complete example: a Pico 2 W with three clock outputs and two buttons.">
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/example-dark.svg">
+<img src="docs/images/example.svg" alt="A complete example: a Pico 2 W with three clock outputs and two buttons.">
 </picture>
 
 **It takes:** 3 NPN transistors, 3 PNP transistors, nine 10 kΩ resistors, three 1 kΩ resistors, 3 jack sockets and 2 push buttons, besides the Pico and its USB power.

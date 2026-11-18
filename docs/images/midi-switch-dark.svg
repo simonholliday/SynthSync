@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 436" width="780" height="436" role="img" aria-labelledby="title about">
+<title id="title">One jack, with a switch for Type A or Type B</title><desc id="about">The transistor&#x27;s 10 ohm resistor goes to the switch&#x27;s Type A tag on its upper row and its Type B tag on its lower row. The 33 ohm resistor from the 3.3 volt pin goes to the Type A tag on the lower row and the Type B tag on the upper row. The upper middle tag goes to the jack&#x27;s tip, and the lower middle tag to its ring. The sleeve goes to ground.</desc>
+<style>
+	.wire { fill: none; stroke: #e6edf3; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.shape { fill: #161b22; stroke: #e6edf3; stroke-width: 2; stroke-linejoin: round; }
+	.solid { fill: #e6edf3; stroke: none; }
+	.pin { fill: #12351f; stroke: #3fb950; stroke-width: 1.5; }
+	.maybe { fill: none; stroke: #9198a1; stroke-width: 1.5; stroke-dasharray: 6 5; }
+	text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e6edf3; }
+	.label { font-size: 14px; }
+	.name { font-size: 14px; font-weight: 600; }
+	.title { font-size: 17px; font-weight: 600; }
+	.note { font-size: 13px; fill: #9198a1; }
+</style>
+<rect x="1" y="1" width="778" height="434" rx="12" fill="#161b22" stroke="#3d444d" stroke-width="2"/>
+<text class="title" x="24" y="36" text-anchor="start">One jack, with a switch for Type A or Type B</text>
+<rect class="shape" x="356" y="118" width="228" height="164" rx="8"/>
+<text class="name" x="400" y="136" text-anchor="middle">Type A</text>
+<text class="name" x="540" y="136" text-anchor="middle">Type B</text>
+<text class="name" x="24" y="155" text-anchor="start">Transistor&#x27;s collector</text>
+<path class="wire" d="M206 150 L215 150"/>
+<path class="wire" d="M215 150 L231 150 L235 143 L243 157 L251 143 L259 157 L267 143 L275 157 L279 150 L295 150"/>
+<text class="label" x="255" y="136" text-anchor="middle">10 Ω</text>
+<path class="wire" d="M295 150 L400 150"/>
+<rect class="pin" x="26" y="236" width="124" height="28" rx="6"/>
+<text class="name" x="88" y="255" text-anchor="middle">3V3 · pin 36</text>
+<path class="wire" d="M150 250 L215 250"/>
+<path class="wire" d="M215 250 L231 250 L235 243 L243 257 L251 243 L259 257 L267 243 L275 257 L279 250 L295 250"/>
+<text class="label" x="255" y="236" text-anchor="middle">33 Ω, 0.5 W</text>
+<path class="wire" d="M295 250 L400 250"/>
+<path class="wire" d="M400 150 L540 250"/>
+<path class="wire" d="M400 250 L461.0 206.4 A11 11 0 0 1 479.0 193.6 L540 150"/>
+<path class="wire" d="M470 150 L470 104 L600 104"/>
+<path class="wire" d="M470 250 L470 296 L600 296"/>
+<circle class="shape" cx="400" cy="150" r="5"/>
+<circle class="shape" cx="400" cy="250" r="5"/>
+<circle class="shape" cx="470" cy="150" r="5"/>
+<circle class="shape" cx="470" cy="250" r="5"/>
+<circle class="shape" cx="540" cy="150" r="5"/>
+<circle class="shape" cx="540" cy="250" r="5"/>
+<rect class="shape" x="600" y="64" width="156" height="300" rx="8"/>
+<text class="name" x="678" y="84" text-anchor="middle">3.5 mm TRS jack</text>
+<text class="label" x="614" y="109" text-anchor="start">Tip</text>
+<text class="label" x="614" y="301" text-anchor="start">Ring</text>
+<text class="label" x="614" y="345" text-anchor="start">Sleeve</text>
+<path class="wire" d="M600 340 L576 340 L576 350"/>
+<path class="wire" d="M562 350 L590 350"/>
+<path class="wire" d="M567 356 L585 356"/>
+<path class="wire" d="M572 362 L580 362"/>
+<text class="note" x="24" y="396" text-anchor="start">Any two-pole, two-way (DPDT) switch will do, with the jack on its two middle tags.</text>
+<text class="note" x="24" y="416" text-anchor="start">Check which way is which with a meter: a toggle joins the tags on the side away from its lever.</text>
+</svg>

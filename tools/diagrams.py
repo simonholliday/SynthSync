@@ -6,30 +6,22 @@
 Each diagram is an SVG file, drawn here from the same few symbols: a resistor,
 a transistor, an LED, a push button, a jack socket, ground and the 5 V supply.
 The pins and the part values are written once, below, so a changed value is
-changed in one place and every picture is drawn again.
+changed in one place and every picture is drawn again. Nothing beyond Python
+is needed to run it.
 
-The README shows each one as a PNG made from its SVG, at twice the size, on a
-rounded card with nothing behind its corners: one for light pages and one, with
-`-dark` in its name, for dark ones. Each PNG notes which SVG it was made from,
-so only those out of date are made again. Making one takes Playwright's
-Chromium, and nothing else here needs more than Python.
-
-With no folder given, the pictures go where the README looks for them.
+Every diagram sits on a rounded card of its own, and is drawn twice: once for
+light pages, and once, with `-dark` in its name, for dark ones. With no folder
+given, the pictures go where the README looks for them.
 """
 
-import base64
-import hashlib
 import html
 import math
 import os
 import pathlib
-import struct
 import sys
-import zlib
 
-# Where the README looks for its pictures, and the fonts a PNG's words are set in, which are the page's.
+# Where the README looks for its pictures.
 IMAGES = pathlib.Path(__file__).parent.parent / "docs" / "images"
-FONTS = pathlib.Path(__file__).parent.parent / "fonts" / "inter"
 
 # The Pico's header pin for each GPIO that SynthSync uses, as the official pinout numbers them.
 HEADER_PIN = {2: 4, 3: 5, 4: 6, 5: 7, 6: 9, 7: 10, 8: 11, 9: 12, 10: 14, 11: 15, 21: 27, 22: 29}
@@ -77,7 +69,7 @@ BOARD = "#f6f8fa"
 PIN_FILL = "#dafbe1"
 PIN_EDGE = "#1a7f37"
 
-# What each of those becomes in a picture for a dark page.
+# What each of those becomes in a diagram for a dark page.
 DARK = {
 	INK: "#e6edf3",
 	QUIET: "#9198a1",
@@ -87,26 +79,6 @@ DARK = {
 	PIN_FILL: "#12351f",
 	PIN_EDGE: "#3fb950",
 }
-
-# How many pixels of a PNG go to each unit of its SVG, and the name its note of that SVG goes under.
-PNG_SCALE = 2
-PNG_SOURCE = b"Source SVG SHA-256"
-
-# The length of a PNG's signature and its first chunk, after which the note goes.
-_PNG_HEAD = 33
-
-# The page a PNG is taken from: nothing behind the drawing, and the page's own font for its words.
-_PNG_PAGE = """<!doctype html>
-<meta charset="utf-8">
-<style>
-	@font-face { font-family: Inter; font-weight: 400; src: url("data:font/woff2;base64,%s"); }
-	@font-face { font-family: Inter; font-weight: 600 700; src: url("data:font/woff2;base64,%s"); }
-	html, body { margin: 0; background: transparent; }
-	svg { display: block; }
-	svg text { font-family: Inter, sans-serif; }
-</style>
-%s
-"""
 
 STYLE = """
 	.wire { fill: none; stroke: %s; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -699,139 +671,37 @@ def shaded (svg: str, dark: bool) -> str:
 	return svg
 
 
-def png_path (folder: pathlib.Path, name: str, dark: bool) -> pathlib.Path:
+def svg_path (folder: pathlib.Path, name: str, dark: bool) -> pathlib.Path:
 
-	"""Say where one diagram's PNG goes."""
+	"""Say where one diagram goes, for a light page or a dark one."""
 
-	return folder / (name + ("-dark" if dark else "") + ".png")
-
-
-def fingerprint (svg: str) -> str:
-
-	"""Give what a PNG notes of the SVG it was made from."""
-
-	return hashlib.sha256(svg.encode("utf-8")).hexdigest()
+	return folder / (name + ("-dark" if dark else "") + ".svg")
 
 
-def noted (png: bytes, source: str) -> bytes:
+def main (arguments: list[str] | None = None) -> int:
 
-	"""Add a note of the SVG it was made from to a PNG, straight after its header."""
+	"""Draw every diagram, light and dark, into the README's folder of pictures, or into a folder that is named, and say what was drawn."""
 
-	body = PNG_SOURCE + b"\0" + source.encode("ascii")
-	chunk = struct.pack(">I", len(body)) + b"tEXt" + body + struct.pack(">I", zlib.crc32(b"tEXt" + body))
-
-	return png[:_PNG_HEAD] + chunk + png[_PNG_HEAD:]
-
-
-def note_in (png: bytes) -> str:
-
-	"""Read which SVG a PNG was made from, or nothing if it doesn't say."""
-
-	place = 8
-
-	while place + 8 <= len(png):
-
-		length = struct.unpack(">I", png[place:place + 4])[0]
-		kind = png[place + 4:place + 8]
-		body = png[place + 8:place + 8 + length]
-
-		if kind == b"tEXt" and body.startswith(PNG_SOURCE + b"\0"):
-			return body[len(PNG_SOURCE) + 1:].decode("ascii")
-
-		place += length + 12
-
-	return ""
-
-
-def draw_svgs (folder: pathlib.Path) -> None:
-
-	"""Draw every diagram's SVG into a folder, and say what was drawn."""
+	arguments = sys.argv[1:] if arguments is None else arguments
+	folder = pathlib.Path(arguments[0]) if arguments else IMAGES
 
 	folder.mkdir(parents=True, exist_ok=True)
 
 	for name, draw in DIAGRAMS.items():
 
-		path = folder / (name + ".svg")
-		write(path, draw().svg().encode("utf-8"))
-
-		print("drew", path)
-
-
-def out_of_date (folder: pathlib.Path) -> list[tuple[pathlib.Path, str, int, int]]:
-
-	"""List the PNGs missing from a folder or made from another SVG, each with its SVG and size."""
-
-	found = []
-
-	for name, draw in DIAGRAMS.items():
-
-		sheet = draw()
+		svg = draw().svg()
 
 		for dark in (False, True):
 
-			path = png_path(folder, name, dark)
-			svg = shaded(sheet.svg(), dark)
+			path = svg_path(folder, name, dark)
+			write(path, shaded(svg, dark))
 
-			if not path.exists() or note_in(path.read_bytes()) != fingerprint(svg):
-				found.append((path, svg, sheet.width, sheet.height))
-
-	return found
-
-
-def make_pngs (wanted: list[tuple[pathlib.Path, str, int, int]]) -> None:
-
-	"""Make these PNGs in Chromium, each on nothing, so that its card's corners are see-through."""
-
-	# Here and not at the top, because nothing else in this file needs it.
-	import playwright.sync_api
-
-	regular = base64.b64encode((FONTS / "inter-latin-400-normal.woff2").read_bytes()).decode("ascii")
-	bold = base64.b64encode((FONTS / "inter-latin-700-normal.woff2").read_bytes()).decode("ascii")
-
-	with playwright.sync_api.sync_playwright() as driver:
-
-		browser = driver.chromium.launch()
-
-		for path, svg, width, height in wanted:
-
-			page = browser.new_page(viewport={"width": width, "height": height}, device_scale_factor=PNG_SCALE)
-
-			page.set_content(_PNG_PAGE % (regular, bold, svg))
-			page.evaluate("document.fonts.ready.then(() => true)")
-
-			write(path, noted(page.screenshot(omit_background=True), fingerprint(svg)))
-			page.close()
-
-			print("made", path)
-
-		browser.close()
-
-
-def main (arguments: list[str] | None = None) -> int:
-
-	"""Draw every diagram into the README's folder of pictures, or into a folder that is named, and make the PNGs that are out of date."""
-
-	arguments = sys.argv[1:] if arguments is None else arguments
-	folder = pathlib.Path(arguments[0]) if arguments else IMAGES
-
-	draw_svgs(folder)
-
-	wanted = out_of_date(folder)
-
-	if not wanted:
-		return 0
-
-	try:
-		make_pngs(wanted)
-
-	except ImportError:
-		print("The SVGs are drawn, but %d PNGs need making, which takes Playwright and its Chromium." % len(wanted))
-		return 1
+			print("drew", path)
 
 	return 0
 
 
-def write (path: pathlib.Path, content: bytes) -> None:
+def write (path: pathlib.Path, text: str) -> None:
 
 	"""Put a file in place whole, by writing it under a new name and then renaming it.
 
@@ -845,8 +715,8 @@ def write (path: pathlib.Path, content: bytes) -> None:
 	# Left by a run that was cut short.
 	new.unlink(missing_ok=True)
 
-	with open(new, "xb") as handle:
-		handle.write(content)
+	with open(new, "x", encoding="utf-8") as handle:
+		handle.write(text)
 
 	os.replace(new, path)
 

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" width="720" height="380" role="img" aria-labelledby="title about">
+<title id="title">A clock output</title><desc id="about">A Pico pin drives an NPN transistor through 10 kilohms. The NPN switches a PNP transistor, which joins the jack&#x27;s tip to 5 volts through 1 kilohm. The jack&#x27;s sleeve goes to ground.</desc>
+<style>
+	.wire { fill: none; stroke: #e6edf3; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.shape { fill: #161b22; stroke: #e6edf3; stroke-width: 2; stroke-linejoin: round; }
+	.solid { fill: #e6edf3; stroke: none; }
+	.pin { fill: #12351f; stroke: #3fb950; stroke-width: 1.5; }
+	.maybe { fill: none; stroke: #9198a1; stroke-width: 1.5; stroke-dasharray: 6 5; }
+	text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e6edf3; }
+	.label { font-size: 14px; }
+	.name { font-size: 14px; font-weight: 600; }
+	.title { font-size: 17px; font-weight: 600; }
+	.note { font-size: 13px; fill: #9198a1; }
+</style>
+<rect x="1" y="1" width="718" height="378" rx="12" fill="#161b22" stroke="#3d444d" stroke-width="2"/>
+<text class="title" x="24" y="36" text-anchor="start">A clock output</text>
+<rect class="pin" x="26" y="248" width="124" height="28" rx="6"/>
+<text class="name" x="88" y="267" text-anchor="middle">GP2 · pin 4</text>
+<path class="wire" d="M150 262 L166 262 L170 255 L178 269 L186 255 L194 269 L202 255 L210 269 L214 262 L230 262"/>
+<text class="label" x="190" y="248" text-anchor="middle">10 kΩ</text>
+<circle class="shape" cx="266" cy="262" r="25"/>
+<path class="wire" d="M230 262 L254 262"/>
+<path class="wire" style="stroke-width: 3.5" d="M254 247 L254 277"/>
+<path class="wire" d="M254 256 L276 242 L276 222"/>
+<path class="wire" d="M254 268 L276 282 L276 302"/>
+<path class="solid" d="M274.0 280.7 L264.0 279.7 L268.8 272.1 Z"/>
+<text class="name" x="300" y="288" text-anchor="start">NPN</text>
+<path class="wire" d="M276 302 L276 318"/>
+<path class="wire" d="M262 318 L290 318"/>
+<path class="wire" d="M267 324 L285 324"/>
+<path class="wire" d="M272 330 L280 330"/>
+<path class="wire" d="M276 222 L276 182"/>
+<path class="wire" d="M276 182 L292 182 L296 175 L304 189 L312 175 L320 189 L328 175 L336 189 L340 182 L356 182"/>
+<text class="label" x="316" y="208" text-anchor="middle">10 kΩ</text>
+<path class="wire" d="M356 182 L376 182 L396 182"/>
+<circle class="solid" cx="376" cy="182" r="3.5"/>
+<path class="wire" d="M376 102 L376 118 L369 122 L383 130 L369 138 L383 146 L369 154 L383 162 L376 166 L376 182"/>
+<text class="label" x="360" y="147" text-anchor="end">10 kΩ</text>
+<circle class="shape" cx="432" cy="182" r="25"/>
+<path class="wire" d="M396 182 L420 182"/>
+<path class="wire" style="stroke-width: 3.5" d="M420 167 L420 197"/>
+<path class="wire" d="M420 176 L442 162 L442 142"/>
+<path class="wire" d="M420 188 L442 202 L442 222"/>
+<path class="solid" d="M426.0 172.2 L431.2 163.6 L436.0 171.2 Z"/>
+<text class="name" x="466" y="187" text-anchor="start">PNP</text>
+<path class="wire" d="M376 102 L442 102"/>
+<path class="wire" d="M442 142 L442 102"/>
+<circle class="solid" cx="442" cy="102" r="3.5"/>
+<path class="wire" d="M442 102 L442 86"/>
+<path class="wire" d="M430 86 L454 86"/>
+<text class="name" x="442" y="78" text-anchor="middle">+5 V</text>
+<path class="wire" d="M442 222 L442 262 L462 262"/>
+<path class="wire" d="M462 262 L478 262 L482 255 L490 269 L498 255 L506 269 L514 255 L522 269 L526 262 L542 262"/>
+<text class="label" x="502" y="248" text-anchor="middle">1 kΩ</text>
+<path class="wire" d="M562 262 L580 262 L590 271 L600 262"/>
+<rect class="shape" x="614" y="238" width="9" height="40" rx="2"/>
+<path class="wire" d="M618.5 278 L618.5 302"/>
+<text class="note" x="590" y="250" text-anchor="middle">tip</text>
+<text class="note" x="632" y="264" text-anchor="start">sleeve</text>
+<path class="wire" d="M542 262 L562 262"/>
+<path class="wire" d="M604.5 302 L632.5 302"/>
+<path class="wire" d="M609.5 308 L627.5 308"/>
+<path class="wire" d="M614.5 314 L622.5 314"/>
+<text class="name" x="590" y="222" text-anchor="middle">3.5 mm jack</text>
+<text class="note" x="24" y="358" text-anchor="start">+5 V is the Pico&#x27;s VSYS, pin 39. Every ground symbol is one of the Pico&#x27;s GND pins.</text>
+</svg>
