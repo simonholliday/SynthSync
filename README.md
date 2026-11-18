@@ -15,13 +15,9 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 
 **You don't need to write any code.** If you can patch a modular system and follow a simple circuit diagram, you can be up and running within an hour.
 
-<p align="center">
-	<img src="docs/images/page-main.png" width="280" alt="SynthSync's page on a phone: the tempo strip lit on the beat, a tempo knob reading 124 BPM, play/pause and stop buttons, a locked Tap tempo bar, and four outputs set to ×1, ×2, ×4 and ÷4.">
-	&nbsp;&nbsp;
-	<img src="docs/images/page-output.png" width="280" alt="The same page with output 2 opened, showing its role, Multivider, and its pulse, a set length of 10 ms.">
-</p>
+![SynthSync's page on a phone, twice. On the left: the tempo strip lit on the beat, a tempo knob reading 124 BPM, play/pause and stop buttons, a locked Tap tempo bar, and four outputs set to ×1, ×2, ×4 and ÷4. On the right: output 2 opened, showing its role, Multivider, and its pulse, a set length of 10 ms.](docs/images/page.png)
 
-<p align="center"><em>The page SynthSync serves to your phone's web browser. The clock itself is the hardware you build.</em></p>
+*The page SynthSync serves to your phone's web browser. The clock itself is the hardware you build.*
 
 > **This README is a draft.** SynthSync is still being tested. Notes marked **To come** are waiting on a measurement, a decision or a piece of work.
 
@@ -30,10 +26,10 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 - [What it does](#what-it-does)
 - [What you need](#what-you-need)
 - [From parts to pulses](#from-parts-to-pulses)
-- [Step 1: Put MicroPython on the Pico](#step-1-put-micropython-on-the-pico)
-- [Step 2: Copy SynthSync onto the Pico](#step-2-copy-synthsync-onto-the-pico)
-- [Step 3: Try it from your phone](#step-3-try-it-from-your-phone)
-- [Step 4: Wire it up](#step-4-wire-it-up)
+- [Step 1: put MicroPython on the Pico](#step-1-put-micropython-on-the-pico)
+- [Step 2: copy SynthSync onto the Pico](#step-2-copy-synthsync-onto-the-pico)
+- [Step 3: try it from your phone](#step-3-try-it-from-your-phone)
+- [Step 4: wire it up](#step-4-wire-it-up)
 	- [Finding your way around the pins](#finding-your-way-around-the-pins)
 	- [A clock output](#a-clock-output)
 	- [A clock output with an LED](#a-clock-output-with-an-led)
@@ -104,7 +100,7 @@ The whole job, in order. You can stop after step 3 and already have a working cl
 3. **[Try it from your phone.](#step-3-try-it-from-your-phone)** The Pico's own light flashes on the beat, and the page sets the tempo.
 4. **[Wire it up.](#step-4-wire-it-up)** One clock output is enough to start. Add more outputs, LEDs and the buttons as you like.
 
-## Step 1: Put MicroPython on the Pico
+## Step 1: put MicroPython on the Pico
 
 1. **Download MicroPython for the Pico 2 W** from [micropython.org/download/RPI_PICO2_W](https://micropython.org/download/RPI_PICO2_W/). Take **version 1.29.0**, the file named `RPI_PICO2_W-20260824-v1.29.0.uf2`, even if a newer one is listed. SynthSync is built and tested for that version.
 2. **Hold down the Pico's only button** (it is marked BOOTSEL), and plug the Pico into your computer while you hold it. Then let go.
@@ -113,13 +109,13 @@ The whole job, in order. You can stop after step 3 and already have a working cl
 
 Raspberry Pi's own guide to this, with pictures, is [here](https://www.raspberrypi.com/documentation/microcontrollers/micropython.html).
 
-## Step 2: Copy SynthSync onto the Pico
+## Step 2: copy SynthSync onto the Pico
 
 > **To come:** Thonny's exact menu names still have to be checked against a real install.
 
 [Thonny](https://thonny.org/) is a free app that can show the files on a Pico beside the files on your computer, and copy between the two.
 
-1. **Download the SynthSync zip file** from this project's [Releases](../../releases) page, and unzip it.
+1. **Download the SynthSync zip file** from this project's [Releases](https://github.com/simonholliday/SynthSync/releases) page, and unzip it.
 2. **Install Thonny** from [thonny.org](https://thonny.org/), and open it with the Pico plugged in.
 3. **Tell Thonny it is talking to a Pico:** in the menu **Run → Select interpreter**, choose MicroPython for the Raspberry Pi Pico.
 4. **Show the files:** **View → Files**. Your computer's files are in the top half, and the Pico's are in the bottom half, which is empty for now.
@@ -132,7 +128,7 @@ Raspberry Pi's own guide to this, with pictures, is [here](https://www.raspberry
 
 If you are at home on a command line, [For developers](#for-developers) has another way.
 
-## Step 3: Try it from your phone
+## Step 3: try it from your phone
 
 Nothing needs to be wired for this. The Pico only needs power from its USB socket.
 
@@ -145,7 +141,7 @@ Nothing needs to be wired for this. The Pico only needs power from its USB socke
 
 Once this works, the software side is done. The rest is wiring.
 
-## Step 4: Wire it up
+## Step 4: wire it up
 
 ### Finding your way around the pins
 
@@ -174,7 +170,10 @@ Leave every other pin unconnected.
 
 **You need at least one of these.** Output 1 is the main clock, and it is the place to start.
 
-![A clock output: a Pico pin drives an NPN transistor, which switches a PNP transistor, which connects the jack to 5 V.](docs/images/output.svg)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/output-dark.png">
+<img src="docs/images/output.png" alt="A clock output: a Pico pin drives an NPN transistor, which switches a PNP transistor, which connects the jack to 5 V.">
+</picture>
 
 A Pico pin gives 3.3 V and shouldn't be patched straight into a modular system. These two transistors do two jobs: they turn the pin's 3.3 V into a 5 V pulse, and they stand between the Pico and whatever gets plugged into the jack.
 
@@ -196,7 +195,10 @@ A Pico pin gives 3.3 V and shouldn't be patched straight into a modular system. 
 
 **Optional, for any output.** An output LED, with one more resistor, shows each pulse as it leaves the jack.
 
-![The same clock output, with a resistor and an LED from the second transistor to ground.](docs/images/output-led.svg)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/output-led-dark.png">
+<img src="docs/images/output-led.png" alt="The same clock output, with a resistor and an LED from the second transistor to ground.">
+</picture>
 
 An output LED shows the real pulse, so with the usual 10 ms pulse it is a quick blink. For a light that is easy to read as the beat, fit [the tempo LED](#the-tempo-led) as well. The LED's longer leg goes towards the resistor, and its shorter leg to ground. Any colour will do, and [Choosing LEDs](#choosing-leds) says more.
 
@@ -209,7 +211,10 @@ It is tempting to leave the transistors out and wire a pin to a jack. There are 
 
 **That said, it often works, and it is a quick way to see your modules follow the clock** before the transistors arrive:
 
-![The quick way: a Pico pin through a 1 kΩ resistor to the jack's tip.](docs/images/direct.svg)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/direct-dark.png">
+<img src="docs/images/direct.png" alt="The quick way: a Pico pin through a 1 kΩ resistor to the jack's tip.">
+</picture>
 
 The resistor improves the Pico's chances if something is patched wrongly. It doesn't make it safe. The risk is to the Pico, which is cheap to replace, and not to your modules. If a module ignores the pulses, 3.3 V is too low for it, and the proper output above will put that right.
 
@@ -217,7 +222,10 @@ The resistor improves the Pico's chances if something is patched wrongly. It doe
 
 **Optional, and the stop button is recommended.** Everything the buttons do can also be done from the page. But holding the stop button is the way back if you ever lose track of SynthSync on your WiFi.
 
-![Two push buttons: one from GP21 to ground, and one from GP22 to ground.](docs/images/buttons.svg)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/buttons-dark.png">
+<img src="docs/images/buttons.png" alt="Two push buttons: one from GP21 to ground, and one from GP22 to ground.">
+</picture>
 
 Any push button that connects while it is pressed will do. Each one goes between its pin and ground, with nothing else: the Pico holds the pin at 3.3 V by itself, and pressing the button pulls it to ground.
 
@@ -231,7 +239,10 @@ A press takes effect as the button goes down, not when you let go.
 
 **Optional, and the most useful LED to fit.** One LED that flashes on every beat, so you can see the tempo at a glance.
 
-![The tempo LED: GP10 through a resistor and an LED to ground.](docs/images/tempo-led.svg)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/tempo-led-dark.png">
+<img src="docs/images/tempo-led.png" alt="The tempo LED: GP10 through a resistor and an LED to ground.">
+</picture>
 
 It shows the BPM: one flash a beat, whatever the outputs are set to. That makes it different from an [output LED](#a-clock-output-with-an-led):
 
@@ -252,7 +263,10 @@ MIDI comes on three kinds of socket: 3.5 mm TRS jacks wired **Type A** or **Type
 
 **A socket for each type you want.** Fit any of them, or all three, and they all work at once. Each socket needs its own 33 Ω and 10 Ω resistors.
 
-![MIDI out with three sockets: 3.3 V feeds a 33 ohm resistor for each socket, and GP11 switches a transistor whose collector feeds a 10 ohm resistor for each socket.](docs/images/midi.svg)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/midi-dark.png">
+<img src="docs/images/midi.png" alt="MIDI out with three sockets: 3.3 V feeds a 33 ohm resistor for each socket, and GP11 switches a transistor whose collector feeds a 10 ohm resistor for each socket.">
+</picture>
 
 | Socket | 33 Ω, from 3.3 V | 10 Ω, from the transistor | Ground |
 | --- | --- | --- | --- |
@@ -262,7 +276,10 @@ MIDI comes on three kinds of socket: 3.5 mm TRS jacks wired **Type A** or **Type
 
 **Or one jack with a switch.** A two-pole, two-way switch swaps the tip and ring, so one jack serves both types. Build the transistor as above, and use one 33 Ω and one 10 Ω resistor.
 
-![One TRS jack behind a two-pole switch: its middle tags go to the tip and ring, and the two resistors are cross-wired to the outer tags.](docs/images/midi-switch.svg)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/midi-switch-dark.png">
+<img src="docs/images/midi-switch.png" alt="One TRS jack behind a two-pole switch: its middle tags go to the tip and ring, and the two resistors are cross-wired to the outer tags.">
+</picture>
 
 It sends 24 clocks a beat, and Start, Continue and Stop as you press play, pause and stop. Each clock finishes arriving as the matching pulse leaves the outputs. No Song Position or notes are sent.
 
@@ -359,7 +376,10 @@ Ordinary quarter-watt resistors are fine. Start with output 1, and add outputs i
 
 A whole SynthSync with three outputs and both buttons: the main clock on output 1, and a multivider on each of outputs 2 and 3.
 
-![A complete example: a Pico 2 W with three clock outputs and two buttons.](docs/images/example.svg)
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/example-dark.png">
+<img src="docs/images/example.png" alt="A complete example: a Pico 2 W with three clock outputs and two buttons.">
+</picture>
 
 **It takes:** 3 NPN transistors, 3 PNP transistors, nine 10 kΩ resistors, three 1 kΩ resistors, 3 jack sockets and 2 push buttons, besides the Pico and its USB power.
 
@@ -524,7 +544,7 @@ SynthSync is written in MicroPython, with tests that run on an ordinary computer
 
 - **The page runs with no Pico:** `python -m synthsync.sim` serves it from a laptop, on the same code that keeps time on the board.
 - **The tests:** `pip install -e '.[dev]'`, then `pytest` and `mypy`.
-- **The version** is the git tag's: tagging `v1.2.0` makes it 1.2.0, which the page's About shows. A Pico is given the version installed on the computer that copies SynthSync to it, so run `pip install -e '.[dev]'` again after tagging.
+- **The version** is the git tag's, which the page's About shows. A Pico is given the version installed on the computer that copies SynthSync to it, so run `pip install -e '.[dev]'` again after tagging.
 - **Copying it to a Pico from the command line:** `python -m tools.install`, which needs `mpy-cross` for the same version of MicroPython.
 - **Making a release:** tag the commit, run `pip install -e '.[dev]'` again, and run `python -m tools.release FOLDER`. It makes the zip people download, and refuses anything but a clean, tagged commit. The same code always makes the same zip, so anyone can check a published one.
 - **The wiring diagrams** in this README are drawn by `python -m tools.diagrams`, which needs nothing installed. Change a pin or a value there, never in the pictures.
