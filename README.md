@@ -412,17 +412,21 @@ Eight is the most there can be. Outputs 5 to 8 are on GP6 to GP9, pins 9 to 12.
 
 ## How accurate is it?
 
-There are two different questions here.
+There are two different questions here: how steady each pulse is, and how true the tempo stays over time. The figures below come from one Pico, timed for twelve hours.
 
-**Is each pulse where it should be?** The pulses are placed by hardware inside the Pico's chip, counted from its crystal. Each one leaves the Pico within a millionth of a second of its ideal time, and the small differences never add up, so the outputs don't drift against each other however long the clock runs.
+**How steady is each pulse?** The pulses are placed by hardware inside the Pico's chip, counted from its crystal. No gap between one pulse and the next was more than a millionth of a second (1 µs) from what the tempo asks for. For scale, one sample of 48 kHz audio lasts about 21 µs, and one MIDI clock message takes 320 µs to send.
 
-In a twelve-hour test, with the page in constant use and the settings saved about twice a minute, 407,443 pulses at ten tempos from 60 to 300 BPM were all timed by the Pico's own hardware. Every gap between pulses was exactly what the arithmetic gives, to within 13 billionths of a second, the finest the Pico's timing hardware can see. There were no late pulses and no timing faults.
+At 30, 60, 120 and 300 BPM, every gap came out identical. At 174 BPM the exact gap isn't a whole number of microseconds, so it alternates between 86,206 and 86,207 µs, which keeps the average exact. These small differences never add up, so the outputs don't drift against each other however long the clock runs.
 
-**Is the tempo true?** That depends on the crystal on your Pico, as it does for any clock. On the one board measured so far, the crystal ran slow by 2.4 parts in a million, give or take about 1. At 120 BPM that is 119.9997 BPM, or about a hundredth of a second an hour against a perfect clock. Other boards will differ: the crystal is specified to within 30 parts in a million.
+**Does the tempo stay true over time?** Over the twelve hours, the Pico stayed within about 3 ms of network time, either way, and gained about 0.7 ms overall. In every hour, 120 BPM was still 120.000 BPM to three decimal places. Network time can only be read to about a millisecond over an ordinary internet connection, so part of that 3 ms may be the measurement itself.
 
-Anything clocked from SynthSync's outputs follows it exactly. The crystal only matters against another clock that is running free.
+That is one Pico's crystal on one night, and yours may stray further: the crystal's specification allows about a tenth of a second an hour. It only matters against another clock that is running free. Anything clocked from SynthSync's outputs follows it exactly.
 
-> **To come:** the tempo's accuracy measured at output 1 overnight, at five tempos, with the method below.
+**How we measured it.** Output 1 played 30, 60, 120, 174 and 300 BPM in turn, half an hour of each, at 4 pulses a beat, with the other outputs playing too. The Pico timed all of about 374,000 pulses at its own pin, to within 13 billionths of a second, and none was missing or out of place.
+
+A separate twelve-hour test kept the page in constant use and saved the settings about twice a minute. All 407,443 pulses, at ten tempos from 60 to 300 BPM, were just as exact, with no late pulses and no timing faults.
+
+**What this can't show.** The Pico times its pulses with the same crystal that makes them. So these figures show that each pulse leaves exactly when the chip means it to, but not any wobble in the crystal itself, or anything that happens after the pin, such as in the output transistor. That takes an outside instrument such as an oscilloscope, which is why we say "within 1 µs" and not "no jitter at all".
 
 ### Measuring your own board
 
@@ -432,7 +436,7 @@ You can find out how true your own SynthSync's tempo is, with nothing but the Pi
 2. **Install Python** (3.10 or newer) on the computer, and then mpremote, which talks to the Pico over USB: `python -m pip install mpremote`
 3. **In a copy of SynthSync's source code,** from its GitHub page rather than the ready-made folder for the Pico, **run** `python -m tools.accuracy`
 
-SynthSync stops while it measures, and starts again by itself at the end, with your settings as you left them. Every ten minutes it says how it is going. At the end it says whether every pulse was on time, and how fast or slow the tempo ran, in parts per million and in BPM at 120. Add `--hours 1` for a quicker, rougher answer.
+SynthSync stops while it measures, and starts again by itself at the end, with your settings as you left them. Every ten minutes it says how it is going. At the end it says whether every pulse was on time, how far the tempo strayed from network time in milliseconds, and what 120 BPM really came to. Add `--hours 1` for a quicker, rougher answer.
 
 **How it works.** The Pico times every pulse of output 1 at its pin, to within 13 billionths of a second, which shows whether each one is where its tempo puts it. Every two seconds it tells the computer how long output 1 has been playing, by its own crystal. The computer notes when each report arrives. All the while, it asks time servers on the internet how far its own clock is out, and keeps only the answers that came back quickest. Over a night, the difference between the Pico's count and true time is the tempo's error.
 

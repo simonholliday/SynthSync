@@ -151,6 +151,26 @@ def test_only_the_quickest_answer_in_each_window_is_kept_for_each_server () -> N
 	assert [(sample.server, round(sample.delay, 3)) for _, sample in kept] == [("a", 0.012), ("b", 0.05), ("a", 0.04)]
 
 
+def test_an_answer_far_slower_than_its_servers_best_is_left_out () -> None:
+
+	"""Being the quickest of a window says nothing when the window held one slow answer, and each server is held to its own best."""
+
+	kept = [made_up("a", 10.0, 0.015), made_up("a", 250.0, 0.034), made_up("a", 490.0, 0.086), made_up("b", 20.0, 0.060), made_up("b", 260.0, 0.075)]
+
+	assert [(sample.server, round(sample.delay, 3)) for _, sample in tools.accuracy.prompt_enough(kept)] == [("a", 0.015), ("a", 0.034), ("b", 0.06), ("b", 0.075)]
+
+
+def test_a_slow_answer_doesnt_reach_the_figures () -> None:
+
+	"""A last answer that was slow and far out, as a lone answer at the end of a run can be, is not among the points the tempo is worked out from."""
+
+	reports = [(float(second), float(second)) for second in range(0, 1000, 2)]
+	samples = [made_up("a", 100.0, 0.015), made_up("a", 400.0, 0.016), made_up("a", 700.0, 0.017), made_up("a", 960.0, 0.090, offset=-0.030)]
+	run = tools.accuracy.Run(150000000, 1800, reports, [], [], samples, None, [], [])
+
+	assert [round(sample.middle) for _, sample, _, _ in tools.accuracy.points_of(run)] == [100, 400, 700]
+
+
 def test_how_long_output_1_had_played_is_read_through_the_usb_delay () -> None:
 
 	"""Reports that arrive a few milliseconds late, give or take, still say to well under a millisecond how far output 1 had got."""
@@ -310,6 +330,47 @@ def test_a_run_finds_the_picos_own_error_through_everything_elses (tmp_path: pat
 		assert tempo["furthest_drift_cycles"] == 3
 
 	assert result["other_lines"] == ["Traceback (most recent call last): a line that isn't a report"]
+
+
+def test_a_run_says_how_far_it_strayed_and_what_it_gained_in_milliseconds (tmp_path: pathlib.Path) -> None:
+
+	"""A tempo that runs fast gains steadily, so over the run it strays half that gain either way from its average."""
+
+	path = make_run(tmp_path / "run.log", 4.0, 17.5)
+
+	with open(path, encoding="utf-8") as handle:
+		result = tools.accuracy.analyse(tools.accuracy.read_log(handle))
+
+	assert result["gained_ms"] == pytest.approx(17.5 * 4 * 3.6, abs=3)
+	assert result["gained_give_or_take_ms"] == pytest.approx(result["give_or_take_ppm"] * 4 * 3.6, rel=0.01)
+	assert result["strayed_ms"] == pytest.approx(17.5 * 4 * 3.6 / 2, abs=4)
+	assert "stayed within %.1f ms either way, and over the 4.0 hours it gained %.1f ms" % (result["strayed_ms"], result["gained_ms"]) in tools.accuracy.describe(result)
+
+
+def test_a_true_tempo_strays_only_by_the_networks_noise_whatever_each_server_is_out_by (tmp_path: pathlib.Path) -> None:
+
+	"""The made-up servers are each out by up to 1.5 ms and the computer's clock wanders, and none of that is counted as the Pico straying."""
+
+	path = make_run(tmp_path / "run.log", 4.0, 0.0)
+
+	with open(path, encoding="utf-8") as handle:
+		result = tools.accuracy.analyse(tools.accuracy.read_log(handle))
+
+	assert result["strayed_ms"] < 1.5
+
+
+def test_losing_time_is_called_losing_it (tmp_path: pathlib.Path) -> None:
+
+	"""A slow tempo is said to lose time, and the amount is given without its sign."""
+
+	path = make_run(tmp_path / "run.log", 2.0, -2.4)
+
+	with open(path, encoding="utf-8") as handle:
+		said = tools.accuracy.describe(tools.accuracy.analyse(tools.accuracy.read_log(handle)))
+
+	lost = re.search(r"over the 2\.0 hours it lost ([0-9.]+) ms", said)
+
+	assert lost is not None and float(lost.group(1)) == pytest.approx(2.4 * 2 * 3.6, abs=1.5)
 
 
 @pytest.mark.parametrize("worst, lost, drift", [(5, 0, -3), (0, 3, -3), (0, 0, 155), (0, 0, -155)], ids=["a gap off by five cycles", "gaps lost from the ring", "a stretch a tick and more long", "a stretch a tick and more short"])

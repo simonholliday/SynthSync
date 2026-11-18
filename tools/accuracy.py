@@ -19,7 +19,8 @@ network only now and then, or nudged faster and slower to catch up. The
 reports are noted by its hardware clock, which nothing adjusts, and it asks
 time servers on the internet itself, every ten seconds or so, how far that
 clock is out. Each answer is only as good as the time it took to come back,
-so for each server only the quickest answer in every four minutes is kept.
+so for each server only the quickest answer in every four minutes is kept, and
+not even that one if it still took far longer than the server's best.
 
 It needs SynthSync installed on a Pico on a USB port, and a computer with
 Python 3.10 or newer, mpremote and the internet: nothing else. It stops
@@ -79,6 +80,12 @@ EVERY = 2
 SERVERS = ("time.google.com", "time.cloudflare.com", "pool.ntp.org")
 NTP_EVERY = 32.0
 WINDOW = 240.0
+
+# How much longer than its server's quickest answer of the run an answer may
+# take and still count, in seconds. All the extra could be on one leg of the
+# trip, which would put the answer out by half of it. A window near the end of
+# a run can hold a single answer, so being its quickest says nothing.
+SLOWEST_EXTRA = 0.020
 
 # How long to wait for a time server's answer, in seconds, and after how many
 # unanswered questions in a row its name is looked up afresh.
@@ -514,6 +521,18 @@ def quickest (samples: list[tuple[str, Sample]], window: float = WINDOW) -> list
 	return sorted(kept.values(), key=lambda each: each[1].middle)
 
 
+def prompt_enough (kept: list[tuple[str, Sample]], extra: float = SLOWEST_EXTRA) -> list[tuple[str, Sample]]:
+
+	"""Leave out any answer that took far longer than its server's quickest."""
+
+	least: dict[str, float] = {}
+
+	for _, sample in kept:
+		least[sample.server] = min(sample.delay, least.get(sample.server, sample.delay))
+
+	return [each for each in kept if each[1].delay - least[each[1].server] <= extra]
+
+
 def played_at (arrivals: list[float], played: list[float], moment: float, reach: float = REACH) -> float | None:
 
 	"""Say how long output 1 had played at a moment by the hardware clock, from the reports either side of it, or None if there are too few.
@@ -612,7 +631,7 @@ def points_of (run: Run) -> list[tuple[str, Sample, float, float]]:
 	played = [seconds for _, seconds in run.reports]
 	found = []
 
-	for name, sample in quickest(run.samples):
+	for name, sample in prompt_enough(quickest(run.samples)):
 
 		seconds = played_at(arrivals, played, sample.middle)
 
@@ -620,6 +639,29 @@ def points_of (run: Run) -> list[tuple[str, Sample, float, float]]:
 			found.append((name, sample, sample.middle + sample.offset, seconds))
 
 	return found
+
+
+def strayed (points: list[tuple[str, Sample, float, float]], window: float = WINDOW) -> float:
+
+	"""Say how far output 1 strayed from network time, either way from its average over the run, in milliseconds.
+
+	Each server is taken from its own average, since it may be out by a steady
+	amount of its own, and the servers' answers in each window are averaged,
+	which quiets the network's noise.
+	"""
+
+	ahead: dict[str, list[float]] = {}
+
+	for _, sample, true, played in points:
+		ahead.setdefault(sample.server, []).append(played - true)
+
+	middle = {server: sum(each) / len(each) for server, each in ahead.items()}
+	windows: dict[int, list[float]] = {}
+
+	for _, sample, true, played in points:
+		windows.setdefault(int(sample.middle // window), []).append(played - true - middle[sample.server])
+
+	return max(abs(sum(each) / len(each)) for each in windows.values()) * 1000
 
 
 def stretch_at (run: Run, moment: float) -> Stretch | None:
@@ -707,10 +749,11 @@ def analyse (run: Run) -> dict[str, typing.Any]:
 	worst = max((each["worst_cycles"] for each in tempos), default=0)
 	drift = max((each["furthest_drift_cycles"] for each in tempos), default=0)
 	end = run.end or {}
+	seconds = run.reports[-1][0] - run.reports[0][0]
 	timed_well = not run.broke and worst <= WORST_ALLOWED and drift <= cycles_per_tick + DRIFT_SLACK and end.get("lost", 0) == 0 and end.get("faults", 0) == 0
 
 	return {
-		"hours": (run.reports[-1][0] - run.reports[0][0]) / 3600,
+		"hours": seconds / 3600,
 		"pulses": sum(each["pulses"] for each in tempos),
 		"every_pulse_on_time": timed_well and run.end is not None,
 		"cut_short": run.end is None,
@@ -727,6 +770,9 @@ def analyse (run: Run) -> dict[str, typing.Any]:
 		"bpm_at_120": 120 * (1 + overall.ppm / 1000000),
 		"seconds_an_hour": 3600 * overall.ppm / 1000000,
 		"seconds_a_day": 86400 * overall.ppm / 1000000,
+		"strayed_ms": strayed(points),
+		"gained_ms": seconds * overall.ppm / 1000,
+		"gained_give_or_take_ms": seconds * overall.error / 1000,
 		"servers": servers,
 		"hour_by_hour": hours,
 		"tempos": tempos,
@@ -767,6 +813,7 @@ def describe (result: dict[str, typing.Any]) -> str:
 		lines.append("  %6.2f  %10d  %9d  %8d cyc  %4d cyc   %s" % (tempo["bpm"], tempo["stretches"], tempo["pulses"], tempo["worst_cycles"], tempo["furthest_drift_cycles"], measured))
 
 	lines.append("")
+	lines.append("Against network time it stayed within %.1f ms either way, and over the %.1f hours it %s %.1f ms, give or take %.1f." % (result["strayed_ms"], result["hours"], "gained" if result["gained_ms"] >= 0 else "lost", abs(result["gained_ms"]), result["gained_give_or_take_ms"]))
 	lines.append("The tempo ran %s by %.2f parts per million, give or take %.2f, %s times (from %d answers)." % ("fast" if ppm >= 0 else "slow", abs(ppm), result["give_or_take_ppm"], result["give_or_take_is"], result["answers"]))
 	lines.append("At 120 BPM that is %.5f BPM: %.1f ms in an hour, or %.2f s in a day." % (result["bpm_at_120"], abs(result["seconds_an_hour"]) * 1000, abs(result["seconds_a_day"])))
 	lines.append("")
