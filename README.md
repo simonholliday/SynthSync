@@ -476,8 +476,17 @@ SynthSync is written in MicroPython, with tests that run on an ordinary computer
 
 ## Licence and thanks
 
-> **To come:** the licence.
+SynthSync is free and open source, under the [GNU Affero General Public License, version 3 or later](LICENSE). In short:
 
-SynthSync runs on [MicroPython](https://micropython.org/), and its page is served by [Microdot](https://github.com/miguelgrinberg/microdot).
+- **You can use it, build it, change it and share it,** and you can sell clocks that run it.
+- **If you pass it on or sell it,** you must also give people its source code, with any changes you made, under the same licence.
+- **If you change it and people use your version through its page,** that page must offer them the source code too.
+- **It comes with no warranty.**
+
+That is a summary, and the licence itself is what counts.
+
+**Commercial licensing.** To use SynthSync in a closed-source product without these conditions, contact [Simon Holliday](https://simonholliday.com/) to discuss a commercial licence.
+
+SynthSync runs on [MicroPython](https://micropython.org/), and its page is served by [Microdot](https://github.com/miguelgrinberg/microdot), both under the MIT licence. Microdot's licence goes onto the Pico with its code.
 
 The page is set in [Inter](https://github.com/rsms/inter) and [Lexend](https://github.com/googlefonts/lexend), both under the [SIL Open Font Licence](https://openfontlicense.org/), whose text is beside each font in `fonts/`.

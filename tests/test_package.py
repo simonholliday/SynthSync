@@ -71,6 +71,20 @@ def test_a_copy_with_nowhere_to_write_the_version_is_refused (tmp_path: pathlib.
 		tools.stage.copy_synthsync(tmp_path / "copy")
 
 
+def test_the_package_declares_the_licence_its_licence_file_holds () -> None:
+
+	"""The build says AGPL version 3 or later, and the file beside it is that licence's own text."""
+
+	root = pathlib.Path(tools.stage.ROOT)
+
+	text = (root / tools.stage.LICENCE).read_text()
+
+	assert re.findall(r'^license = "(.*)"$', (root / "pyproject.toml").read_text(), re.MULTILINE) == ["AGPL-3.0-or-later"]
+	assert text.split()[:4] == ["GNU", "AFFERO", "GENERAL", "PUBLIC"]
+	assert "Version 3, 19 November 2007" in text
+	assert "13. Remote Network Interaction" in text
+
+
 def test_host_side_packages_import () -> None:
 
 	"""Everything except the Pico-only code imports on a laptop."""

@@ -7,6 +7,7 @@ name = "synthsync"
 dynamic = ["version"]
 description = "A master clock for modular synths on a Raspberry Pi Pico 2 W, set from a phone."
 requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
 authors = [
 	{name = "Simon Holliday"},
 ]
@@ -19,9 +20,8 @@ keywords = [
 	"micropython",
 	"pio",
 ]
-# No licence is declared yet because none has been chosen. Add the `license` key
-# and its classifier together once one is. There is no `readme` key yet either,
-# because the README is written once the clock has been measured end to end.
+# The licence is the SPDX expression above alone, which replaces the old
+# classifier. There is no `readme` key yet, because the README is written once the clock has been measured end to end.
 classifiers = [
 	"Development Status :: 2 - Pre-Alpha",
 	"Intended Audience :: End Users/Desktop",

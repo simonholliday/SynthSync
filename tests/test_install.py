@@ -7,6 +7,7 @@ and what it lays out is checked as files on this machine.
 import ast
 import base64
 import gzip
+import importlib.metadata
 import pathlib
 import re
 import subprocess
@@ -81,7 +82,8 @@ def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () ->
 	source = ROOT / "synthsync" / "web" / "static"
 
 	# Nothing left that a browser would fetch: the icon is written into the page itself.
-	assert re.findall(r'(?:src|href)="([^"#][^"]*)"', page) == ["data:,"]
+	# A link is only followed if it is tapped, so the licence's don't count.
+	assert re.findall(r'(?:src|href)="([^"#][^"]*)"', re.sub(r"<a [^>]*>", "<a>", page)) == ["data:,"]
 	assert "import " not in page.split("<script", 1)[1]
 	assert page.count("<style>") == 1
 
@@ -127,7 +129,7 @@ def test_a_style_sheet_naming_a_file_the_page_cant_carry_is_refused () -> None:
 
 def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (tmp_path: pathlib.Path, compiler: str) -> None:
 
-	"""The Pico gets SynthSync and Microdot compiled, the page gzipped, the one file it runs at power-up, and nothing a laptop alone uses."""
+	"""The Pico gets SynthSync and Microdot compiled with their licences, the page gzipped, the one file it runs at power-up, and nothing a laptop alone uses."""
 
 	top = tools.stage.stage_for_pico(tmp_path, compiler)
 	laid_out = names(tmp_path)
@@ -136,6 +138,7 @@ def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (
 	expected |= {"microdot/" + pathlib.Path(part).stem + ".mpy" for part in tools.stage.MICRODOT_PARTS}
 	expected.add("synthsync/web/static/index.html.gz")
 	expected.add(tools.stage.MAIN)
+	expected |= {"synthsync/" + tools.stage.LICENCE, "microdot/" + tools.stage.LICENCE}
 
 	assert laid_out == expected
 	assert sorted(top) == sorted({name.split("/")[0] for name in expected})
@@ -154,6 +157,39 @@ def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (
 
 	assert scheduler[2] >> 2 != 0
 	assert plain[2] >> 2 == 0
+
+
+def test_each_licence_goes_to_the_pico_beside_the_code_it_covers (tmp_path: pathlib.Path) -> None:
+
+	"""SynthSync's own licence goes whole, and so does the MIT notice Microdot has to be copied with."""
+
+	tools.stage.copy_synthsync(tmp_path)
+	tools.stage.copy_microdot(tmp_path)
+	tools.stage.copy_licences(tmp_path)
+
+	assert (tmp_path / "synthsync" / "LICENSE").read_bytes() == (ROOT / "LICENSE").read_bytes()
+
+	microdot = (tmp_path / "microdot" / "LICENSE").read_text()
+
+	assert "Miguel Grinberg" in microdot and "Permission is hereby granted" in microdot
+
+
+def test_a_copy_is_refused_when_microdots_licence_cant_be_told_apart (tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+	"""Without its licence Microdot may not be passed on, so finding none stops the layout instead of leaving it out."""
+
+	class Nothing:
+
+		"""A package that lists no files."""
+
+		files: list[pathlib.PurePath] = []
+
+	tools.stage.copy_synthsync(tmp_path)
+	tools.stage.copy_microdot(tmp_path)
+	monkeypatch.setattr(importlib.metadata, "distribution", lambda name: Nothing())
+
+	with pytest.raises(ValueError, match="Microdot's licence"):
+		tools.stage.copy_licences(tmp_path)
 
 
 def test_every_function_the_second_core_runs_is_native () -> None:

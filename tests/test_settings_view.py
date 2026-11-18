@@ -670,6 +670,23 @@ def test_the_own_networks_password_can_be_changed (phone: "playwright.sync_api.P
 	assert phone.input_value("#own-password") == ""
 
 
+def test_about_gives_the_copyright_the_licence_no_warranty_and_the_source (phone: "playwright.sync_api.Page") -> None:
+
+	"""What the licence asks a program with a screen to show is there, and its links open beside the page, which stays connected to SynthSync."""
+
+	notice = text(phone, "#licence")
+
+	for words in ("Copyright 2026 Simon Holliday", "you may use, change and share it", "GNU Affero General Public License, version 3 or later", "no warranty", "source code"):
+		assert words in notice
+
+	links = phone.eval_on_selector_all("#licence a", "links => links.map(link => [link.href, link.target, link.rel])")
+
+	assert links == [
+		["https://github.com/simonholliday/SynthSync/blob/main/LICENSE", "_blank", "noopener"],
+		["https://github.com/simonholliday/SynthSync", "_blank", "noopener"],
+	]
+
+
 def test_its_name_on_wifi_can_be_changed (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
 	"""The name SynthSync answers to is set as typed, tidied, and a name that can't be one is refused."""
@@ -679,7 +696,7 @@ def test_its_name_on_wifi_can_be_changed (phone: "playwright.sync_api.Page", sta
 
 	assert tests.pages.eventually(lambda: stand.now("network")["host_name"] == "drum-clock")
 
-	phone.locator("#about").tap()
+	phone.locator("#about-title").tap()
 
 	assert tests.pages.eventually(lambda: phone.input_value("#host-name") == "drum-clock")
 

@@ -9,6 +9,7 @@ Nothing here writes anywhere but the folder it is given.
 
 import base64
 import gzip
+import importlib.metadata
 import pathlib
 import re
 import shutil
@@ -51,6 +52,10 @@ MAIN = "main.py"
 # The file that says how many outputs are wired, as SynthSync comes with it. It
 # is the musician's to change, so it is never copied over one already there.
 CONFIG = "config.txt"
+
+# What each licence is called, in the repository and beside the code it covers
+# on a Pico. A copy has to carry the licences of what is in it.
+LICENCE = "LICENSE"
 
 # The line of SynthSync's `__init__.py` that a Pico's copy has its version written into.
 UNSTAMPED = 'LAID_OUT = ""'
@@ -100,6 +105,19 @@ def copy_microdot (folder: pathlib.Path, test_client: bool = False) -> None:
 
 	for part in MICRODOT_PARTS + ((MICRODOT_TEST_CLIENT,) if test_client else ()):
 		shutil.copy(source / part, folder / "microdot" / part)
+
+
+def copy_licences (folder: pathlib.Path) -> None:
+
+	"""Put SynthSync's licence and Microdot's beside their code in a folder both have been copied into."""
+
+	shutil.copy(ROOT / LICENCE, folder / "synthsync" / LICENCE)
+	found = [file for file in importlib.metadata.distribution("microdot").files or [] if file.name.upper().startswith("LICEN")]
+
+	if len(found) != 1:
+		raise ValueError("Microdot's licence has to go with its code, and %d files look like it." % len(found))
+
+	shutil.copy(pathlib.Path(str(found[0].locate())), folder / "microdot" / LICENCE)
 
 
 def compile_one (compiler: str, folder: pathlib.Path, name: str) -> None:
@@ -243,12 +261,13 @@ def stage_for_pico (folder: pathlib.Path, compiler: str) -> list[str]:
 
 	"""Lay out everything a Pico needs to run SynthSync, and name what is at the top of it.
 
-	That is SynthSync's code and Microdot, compiled, the page gzipped, and
-	the program that runs at power-up.
+	That is SynthSync's code and Microdot, compiled, with their licences, the
+	page gzipped, and the program that runs at power-up.
 	"""
 
 	copy_synthsync(folder)
 	copy_microdot(folder)
+	copy_licences(folder)
 
 	top = ["synthsync", "microdot"]
 
