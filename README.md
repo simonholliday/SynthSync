@@ -369,6 +369,16 @@ SynthSync runs four outputs unless you tell it otherwise, so the page will show 
 
 **The tempo** is at the top of the page. Turn the knob, or tap the number and type one.
 
+**The strip above it** flashes on every beat while the clock is playing, so you can see the tempo at a glance. The page keeps count of the beat itself, so over WiFi the flash can sit slightly off the outputs.
+
+**Tap tempo** is the bar under play and stop. It starts locked, so a stray touch can't change the tempo:
+
+1. Touch **Tap tempo** to open the pad.
+2. Tap the pad in time. The tempo changes from your fourth tap, and follows the average of your last eight, to the nearest whole BPM.
+3. Stop tapping. After ten seconds it locks itself, or you can touch the padlock.
+
+A pause of more than about three seconds starts the count again. The outputs keep their places as the tempo changes.
+
 **Play/pause and stop** are under it, and work as a media player's do:
 
 - The left button shows what a tap will do next: ❚❚ to pause while the clock is running, and ▶ to play.

@@ -194,9 +194,9 @@ def one_page () -> str:
 	"""Write the page as one file: `index.html`, with the style sheet, its fonts and every script inside it.
 
 	A phone then opens the page with one request over one connection, where
-	the six files take six. The scripts are modules: each one `page.js`
+	the seven files take seven. The scripts are modules: each one `page.js`
 	imports is wrapped in a function of its own, so its names stay its own,
-	and hands over what it exports. The page's source stays as six plain
+	and hands over what it exports. The page's source stays as seven plain
 	files, which the laptop stand-in serves as they are.
 	"""
 

@@ -8,6 +8,7 @@ control back when the Pico refuses what it was set to.
 
 The one thing the page works out for itself is the lights. The Pico says where
 the clock has got to four times a second, and the page keeps time in between.
+Tap tempo is timed here too, and what it finds is asked for as any tempo is.
 
 The Pico sends its messages in numbered batches, and the page answers each one
 with its number. That is how the Pico knows what has arrived, and it sends no
@@ -18,6 +19,7 @@ than it can take.
 import {Knob} from "./knob.js";
 import * as ratio from "./ratio.js";
 import {Settings} from "./settings.js";
+import {TapTempo} from "./tap.js";
 
 // How far a finger drags for one step of each knob, in pixels.
 const TEMPO_PIXELS = 3;
@@ -38,6 +40,13 @@ const SINGLE_FLASH = 120;
 
 // A pulse that comes round faster than this, in milliseconds, is a glow, not a blink.
 const FASTEST_BLINK = 70;
+
+// The tempo light is lit for this part of each beat, up to this many milliseconds, as the Pico's tempo LED is.
+const BEAT_PART = 1 / 4;
+const BEAT_LONGEST = 100;
+
+// Tap tempo locks itself after this long without a tap, in milliseconds.
+const TAP_LOCKS_AFTER = 10000;
 
 // What an output does, as said under its number. A multivider pulses at a
 // multiple or a division of the tempo, which is what an output's role "clock" means.
@@ -262,8 +271,16 @@ const tempoKnob = new Knob(document.getElementById("tempo-knob"), {
 const tempoText = document.getElementById("tempo-text");
 const tempoProblem = document.getElementById("tempo-problem");
 
+const beatLight = document.getElementById("beat");
+
 const playPause = document.getElementById("play-pause");
 const stopButton = document.getElementById("stop");
+
+const tapOpen = document.getElementById("tap-open");
+const tapRow = document.getElementById("tap-row");
+const tapPad = document.getElementById("tap");
+const tapReading = document.getElementById("tap-reading");
+const tapLock = document.getElementById("tap-lock");
 
 
 /* The line to the Pico has come up or gone down. */
@@ -271,6 +288,10 @@ function connected (up) {
 
 	lights.up = up;
 	document.body.classList.toggle("lost", !up);
+
+	if (!up) {
+		lockTap();
+	}
 
 	// When SynthSync has changed networks, trying again here won't find it, so the page says where it has gone instead.
 	const where = up ? [] : settings.whereNext();
@@ -295,6 +316,10 @@ function connected (up) {
 function showView () {
 
 	const inSettings = location.hash === "#settings";
+
+	if (inSettings) {
+		lockTap();
+	}
 
 	document.getElementById("main-view").hidden = inSettings;
 	document.getElementById("settings-view").hidden = !inSettings;
@@ -410,19 +435,33 @@ function showTempo () {
 }
 
 
+/* Give the nearest whole BPM the clock can play. */
+function playableBpm (bpm) {
+
+	const slowest = Math.ceil(now.fixed.slowest_tempo / 100);
+	const fastest = Math.floor(now.fixed.fastest_tempo / 100);
+
+	return Math.min(Math.max(bpm, slowest), fastest);
+}
+
+
 /* The tempo knob has turned: move to the next whole BPM that way, and on from there. */
 function turnTempo (steps) {
 
 	const whole = steps > 0 ? Math.floor(now.tempo / 100) : Math.ceil(now.tempo / 100);
-	const slowest = Math.ceil(now.fixed.slowest_tempo / 100);
-	const fastest = Math.floor(now.fixed.fastest_tempo / 100);
-	const tempo = Math.min(Math.max(whole + steps, slowest), fastest) * 100;
+
+	askForTempo(playableBpm(whole + steps) * 100);
+}
+
+
+/* Ask for a tempo in hundredths of a BPM, unless it is the tempo already. */
+function askForTempo (tempo) {
 
 	if (tempo === now.tempo) {
 		return;
 	}
 
-	// Shown at once, so the knob follows the finger. The Pico's answer confirms it.
+	// Shown at once, so the control follows the finger. The Pico's answer confirms it.
 	lights.hold();
 	now.tempo = tempo;
 	now.tempoText = String(tempo / 100);
@@ -454,6 +493,116 @@ tempoText.addEventListener("blur", () => {
 	// If nothing was typed, or the Pico has yet to answer, show what is known meanwhile.
 	if (tempoText.value.trim() === "") {
 		tempoText.value = now.tempoText;
+	}
+});
+
+
+// ---------------------------------------------------------------------------
+// Tap tempo. It is locked until asked for, so that a stray touch can't move the tempo.
+
+const tapCounter = new TapTempo();
+let tapTimer = 0;
+
+
+/* Say how the tapping is going, on the pad and to a screen reader. */
+function showTaps (bpm) {
+
+	const left = tapCounter.left();
+	let words = `${tapCounter.count} taps · ${bpm} BPM`;
+
+	if (tapCounter.count === 0) {
+		words = `${left} taps to set the tempo`;
+	} else if (left > 0) {
+		words = `${left} more ${left === 1 ? "tap" : "taps"}`;
+	}
+
+	tapReading.textContent = words;
+	tapPad.setAttribute("aria-label", `Tap the beat. ${words}`);
+}
+
+
+/* Give tapping another while before it locks itself. */
+function keepTapOpen () {
+
+	clearTimeout(tapTimer);
+	tapTimer = setTimeout(lockTap, TAP_LOCKS_AFTER);
+}
+
+
+/* Open the pad, with the count at nothing. */
+function unlockTap () {
+
+	tapCounter.reset();
+	showTaps(null);
+
+	tapOpen.hidden = true;
+	tapRow.hidden = false;
+	tapPad.focus({preventScroll: true});
+
+	keepTapOpen();
+}
+
+
+/* Close the pad, if it is open. */
+function lockTap () {
+
+	clearTimeout(tapTimer);
+
+	if (tapRow.hidden) {
+		return;
+	}
+
+	const hadFocus = tapRow.contains(document.activeElement);
+
+	tapRow.hidden = true;
+	tapOpen.hidden = false;
+
+	if (hadFocus) {
+		tapOpen.focus({preventScroll: true});
+	}
+}
+
+
+/* Take one tap, at the moment it landed, and ask for the tempo once there is one. */
+function tapped (moment) {
+
+	keepTapOpen();
+
+	const found = tapCounter.tap(moment);
+	const bpm = found === null ? null : playableBpm(found);
+
+	showTaps(bpm);
+
+	if (bpm !== null) {
+		showProblem("tempo", "");
+		askForTempo(bpm * 100);
+	}
+}
+
+
+tapOpen.addEventListener("click", unlockTap);
+tapLock.addEventListener("click", lockTap);
+
+// As the finger lands, which is the moment that was meant, and not when it lifts.
+tapPad.addEventListener("pointerdown", (event) => {
+
+	if (event.button === 0) {
+		tapped(event.timeStamp);
+	}
+});
+
+// A key press on the pad comes as a click that no pointer made.
+tapPad.addEventListener("click", (event) => {
+
+	if (event.detail === 0) {
+		tapped(event.timeStamp);
+	}
+});
+
+document.addEventListener("visibilitychange", () => {
+
+	if (document.visibilityState === "hidden") {
+		lockTap();
 	}
 });
 
@@ -892,10 +1041,24 @@ const lights = {
 		return into < Math.max(length, Math.min(SHORTEST_FLASH, gap / 2));
 	},
 
+	/* Say whether the tempo light is on: from the start of each beat, as the Pico's tempo LED is. */
+	beatLit (position) {
+
+		if (now.transport !== "running" || position < 0) {
+			return false;
+		}
+
+		const beat = 6000000 / now.tempo;
+
+		return (position / 1000 % 1) * beat < Math.min(beat * BEAT_PART, BEAT_LONGEST);
+	},
+
 	/* Set every light for this moment, and come back for the next. */
 	draw (moment) {
 
 		const position = this.where(moment);
+
+		beatLight.classList.toggle("on", this.up && this.beatLit(position));
 
 		for (let index = 0; index < rows.length; index++) {
 

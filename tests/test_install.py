@@ -93,7 +93,7 @@ def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () ->
 	assert page.index("<script>") < page.index("<style>") < page.index('<script type="module">')
 
 	# Every line of every part is there, apart from how the scripts named one another, and with the fonts inside the style sheet.
-	for name in ("page.css", "page.js", "settings.js", "knob.js", "ratio.js"):
+	for name in ("page.css", "page.js", "settings.js", "knob.js", "ratio.js", "tap.js"):
 		for line in tools.stage.inline_fonts((source / name).read_text(), source).splitlines():
 			if line.startswith("import "):
 				continue

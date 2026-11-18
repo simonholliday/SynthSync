@@ -4,7 +4,7 @@ This never touches a pin. It changes things through the clock, which checks
 each one and passes it to whatever engine is playing, so the same file serves
 the page from the Pico and from a laptop.
 
-    GET  /             the page: on the Pico one file, and on a laptop its six
+    GET  /             the page: on the Pico one file, and on a laptop its seven
     GET  /api/state    everything, for a page that has just opened
     GET  /api/health   how well the page's side of things has kept up
     POST /api/change   one message from the page, as JSON
@@ -241,6 +241,7 @@ PAGE_FILES = {
 	"settings.js": "text/javascript; charset=utf-8",
 	"knob.js": "text/javascript; charset=utf-8",
 	"ratio.js": "text/javascript; charset=utf-8",
+	"tap.js": "text/javascript; charset=utf-8",
 	# The fonts, which the Pico's page carries inside it instead.
 	"inter-400.woff2": "font/woff2",
 	"inter-700.woff2": "font/woff2",

@@ -33,6 +33,7 @@
 	<main id="main-view" inert>
 
 		<section class="tempo" aria-label="Tempo">
+			<div id="beat" class="beat" aria-hidden="true"></div>
 			<div id="tempo-knob"></div>
 			<div class="tempo-number">
 				<input id="tempo-text" type="text" inputmode="decimal" autocomplete="off" aria-label="Tempo in BPM" aria-describedby="tempo-problem">
@@ -44,6 +45,11 @@
 		<section class="transport" aria-label="Play, pause and stop">
 			<button id="play-pause" type="button" aria-label="Play"><svg class="icon play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"/></svg><svg class="icon pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h4.5v15H6zm7.5 0H18v15h-4.5z"/></svg></button>
 			<button id="stop" type="button" aria-label="Stop" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 5.5h13v13h-13z"/></svg></button>
+			<button id="tap-open" class="tap-bar" type="button" aria-label="Unlock tap tempo"><svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><path class="lock-bar" d="M7 11V8a5 5 0 0 1 10 0v3"/><rect x="5" y="11" width="14" height="10" rx="2"/></svg> Tap tempo</button>
+			<div id="tap-row" class="tap-row" hidden>
+				<button id="tap" class="tap-pad" type="button" aria-label="Tap the beat">Tap<span id="tap-reading" class="tap-reading" aria-hidden="true"></span></button>
+				<button id="tap-lock" class="tap-lock" type="button" aria-label="Lock tap tempo"><svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><path class="lock-bar" d="M7 11V7a5 5 0 0 1 9.6-2"/><rect x="5" y="11" width="14" height="10" rx="2"/></svg></button>
+			</div>
 		</section>
 
 		<section id="outputs" aria-label="Outputs"></section>

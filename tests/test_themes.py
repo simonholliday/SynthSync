@@ -190,7 +190,7 @@ def test_no_colour_is_written_anywhere_but_in_a_look () -> None:
 
 	assert written.findall(outside) == []
 
-	for name in ("page.js", "settings.js", "knob.js", "ratio.js"):
+	for name in ("page.js", "settings.js", "knob.js", "ratio.js", "tap.js"):
 		assert written.findall((STATIC / name).read_text()) == [], name
 
 	page = (STATIC / "index.html").read_text()

@@ -49,7 +49,7 @@ class Stand:
 		"""Start a stand-in with this many outputs, and wait until it says it is serving.
 
 		`static` is a folder to serve the page from, such as one the page has
-		been packed into as the Pico holds it. Without it the page's own six
+		been packed into as the Pico holds it. Without it the page's own seven
 		files are served. `config` is a `config.txt` for it to read, which
 		then says how many outputs it has in place of `outputs`.
 		"""

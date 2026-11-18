@@ -12,6 +12,7 @@ import urllib.request
 import pytest
 
 import synthsync.core.ratio
+import synthsync.core.timeline
 
 import tests.pages
 import tests.stand
@@ -45,10 +46,10 @@ WATCH_LIGHT = """([row, milliseconds]) => new Promise((done) => {
 })"""
 
 
-@pytest.fixture(scope="module", params=("six files", "one file"))
+@pytest.fixture(scope="module", params=("seven files", "one file"))
 def stand (request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> typing.Iterator[tests.stand.Stand]:
 
-	"""One stand-in SynthSync for all of these tests, serving the page's own six files, and then the page packed into one as the Pico holds it."""
+	"""One stand-in SynthSync for all of these tests, serving the page's own seven files, and then the page packed into one as the Pico holds it."""
 
 	stand = tests.stand.Stand(static=tests.stand.packed(tmp_path_factory.mktemp("packed")) if request.param == "one file" else None)
 
@@ -1165,16 +1166,327 @@ def test_only_the_pages_own_files_are_sent (stand: tests.stand.Stand) -> None:
 
 	if stand.packed:
 
-		# Packed, the page has everything inside it, and the other five aren't there to ask for.
-		for name in ("page.css", "page.js", "settings.js", "knob.js", "ratio.js", "index.html.gz"):
+		# Packed, the page has everything inside it, and the other six aren't there to ask for.
+		for name in ("page.css", "page.js", "settings.js", "knob.js", "ratio.js", "tap.js", "index.html.gz"):
 			assert fetch("/" + name)[0] == 404, name
 
 	else:
 
 		assert fetch("/page.css") == (200, "text/css; charset=utf-8", "max-age=0")
 
-		for name in ("page.js", "settings.js", "knob.js", "ratio.js"):
+		for name in ("page.js", "settings.js", "knob.js", "ratio.js", "tap.js"):
 			assert fetch("/" + name) == (200, "text/javascript; charset=utf-8", "max-age=0")
 
 	for path in ("/app.py", "/__init__.py", "/favicon.ico", "/..%2Fapp.py", "/static/page.js", "/page.js.gz"):
 		assert fetch(path)[0] == 404, path
+
+
+# Counts how often the tempo light comes on over a while, and how much of the while it is on for.
+WATCH_BEAT = """(milliseconds) => new Promise((done) => {
+	const light = document.getElementById("beat");
+	const began = performance.now();
+	let frames = 0, lit = 0, rises = 0, before = light.classList.contains("on");
+
+	function look (moment) {
+		const on = light.classList.contains("on");
+		frames += 1;
+		lit += on ? 1 : 0;
+		rises += on && !before ? 1 : 0;
+		before = on;
+
+		if (moment - began < milliseconds) {
+			requestAnimationFrame(look);
+		} else {
+			done({frames, lit, rises});
+		}
+	}
+
+	requestAnimationFrame(look);
+})"""
+
+# Taps the pad this many times, this many milliseconds apart, and waits that long again after the last.
+TAPS = """([count, gap]) => new Promise((done) => {
+	const pad = document.getElementById("tap");
+	let left = count;
+
+	function next () {
+		if (left === 0) {
+			done();
+			return;
+		}
+		left -= 1;
+		pad.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}));
+		setTimeout(next, gap);
+	}
+
+	next();
+})"""
+
+
+def tap_reading (page: "playwright.sync_api.Page") -> str:
+
+	"""Read what the pad says about the tapping so far."""
+
+	return page.inner_text("#tap-reading")
+
+
+def tap_locked (page: "playwright.sync_api.Page") -> bool:
+
+	"""Say whether tap tempo shows as its locked bar, with no pad to tap."""
+
+	return page.is_visible("#tap-open") and page.is_hidden("#tap-row")
+
+
+def test_the_tempo_light_flashes_on_each_beat_as_the_picos_led_does (phone: "playwright.sync_api.Page") -> None:
+
+	"""At 120 BPM it comes on twice a second, for 100 ms of each 500."""
+
+	seen = phone.evaluate(WATCH_BEAT, 3000)
+
+	assert 5 <= seen["rises"] <= 7, seen
+	assert 0.12 <= seen["lit"] / seen["frames"] <= 0.28, seen
+
+
+def test_the_tempo_light_is_lit_for_a_quarter_of_a_quick_beat (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""At 300 BPM a quarter of the beat is shorter than the longest flash, so a quarter is what it gets."""
+
+	stand.change({"do": "tempo", "value": 30000})
+
+	assert tests.pages.eventually(lambda: phone.input_value("#tempo-text") == "300")
+
+	seen = phone.evaluate(WATCH_BEAT, 2000)
+
+	assert 8 <= seen["rises"] <= 11, seen
+	assert 0.15 <= seen["lit"] / seen["frames"] <= 0.35, seen
+
+
+def test_the_tempo_light_is_no_longer_than_the_longest_flash_on_a_slow_beat (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""At 60 BPM a quarter of the beat would be 250 ms, and it stays at 100."""
+
+	stand.change({"do": "tempo", "value": 6000})
+
+	assert tests.pages.eventually(lambda: phone.input_value("#tempo-text") == "60")
+
+	seen = phone.evaluate(WATCH_BEAT, 3000)
+
+	assert 2 <= seen["rises"] <= 4, seen
+	assert 0.05 <= seen["lit"] / seen["frames"] <= 0.16, seen
+
+
+def test_the_tempo_light_keeps_to_the_longest_flash_of_the_picos_led () -> None:
+
+	"""The page's longest flash is the scheduler's, and each is a quarter of the beat."""
+
+	script = (tests.test_themes.STATIC / "page.js").read_text()
+
+	assert "const BEAT_LONGEST = %d;" % (synthsync.core.timeline.LED_LONGEST // 1000) in script
+	assert "const BEAT_PART = 1 / 4;" in script
+
+
+def test_the_tempo_light_is_drawn_in_the_lit_colour_only_while_on (phone: "playwright.sync_api.Page") -> None:
+
+	"""Across the panel's width, it is the look's lit colour when on and its quieter edge colour when off."""
+
+	shown = phone.evaluate("""() => {
+		const light = document.getElementById("beat");
+		const panel = light.parentElement;
+		const colour = (name) => {
+			const probe = document.createElement("i");
+			probe.style.color = `var(--${name})`;
+			document.body.append(probe);
+			const found = getComputedStyle(probe).color;
+			probe.remove();
+			return found;
+		};
+
+		light.classList.remove("on");
+		const off = getComputedStyle(light).backgroundColor;
+		light.classList.add("on");
+		const on = getComputedStyle(light).backgroundColor;
+
+		return {on, off, lit: colour("lit"), edge: colour("edge"), wide: light.offsetWidth / panel.offsetWidth};
+	}""")
+
+	assert shown["on"] == shown["lit"]
+	assert shown["off"] == shown["edge"]
+	assert shown["wide"] > 0.9
+
+
+def test_the_tempo_light_stays_dark_unless_the_clock_is_running (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""Neither a pause nor a stop leaves it flashing."""
+
+	phone.locator("#play-pause").tap()
+
+	assert tests.pages.eventually(lambda: transport_shown(phone) == PAUSED_SHOWN)
+
+	phone.wait_for_timeout(150)
+
+	assert phone.evaluate(WATCH_BEAT, 700)["lit"] == 0
+
+	phone.locator("#stop").tap()
+
+	assert tests.pages.eventually(lambda: transport_shown(phone) == STOPPED_SHOWN)
+
+	phone.wait_for_timeout(150)
+
+	assert phone.evaluate(WATCH_BEAT, 700)["lit"] == 0
+
+
+def test_tap_tempo_starts_locked_and_a_touch_only_opens_it (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""The bar changes nothing but itself, and the padlock shuts the pad again."""
+
+	assert tap_locked(phone)
+
+	phone.locator("#tap-open").tap()
+
+	assert phone.is_visible("#tap") and phone.is_hidden("#tap-open")
+	assert tap_reading(phone) == "4 taps to set the tempo"
+
+	phone.wait_for_timeout(100)
+
+	assert stand.now("tempo")["tempo"] == 12000
+
+	phone.locator("#tap-lock").tap()
+
+	assert tap_locked(phone)
+	assert stand.now("tempo")["tempo"] == 12000
+
+
+def test_tapping_sets_the_tempo_from_the_fourth_tap (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""Three taps say how many are still wanted and change nothing. The fourth sets a whole BPM from the time between them."""
+
+	phone.locator("#tap-open").tap()
+	phone.evaluate(TAPS, [3, 400])
+
+	assert tap_reading(phone) == "1 more tap"
+	assert stand.now("tempo")["tempo"] == 12000
+
+	phone.evaluate(TAPS, [1, 0])
+
+	assert tests.pages.eventually(lambda: stand.now("tempo")["tempo"] != 12000)
+
+	tempo = stand.now("tempo")["tempo"]
+
+	assert tempo % 100 == 0 and abs(tempo - 15000) <= 300, tempo
+	assert tap_reading(phone) == "4 taps · %d BPM" % (tempo // 100)
+	assert tests.pages.eventually(lambda: phone.input_value("#tempo-text") == str(tempo // 100))
+
+
+def test_a_real_finger_counts_once_for_each_tap_and_never_zooms_the_page (phone: "playwright.sync_api.Page") -> None:
+
+	"""Quick touches on the pad are taps, each counted once, and the page stays the size it was."""
+
+	phone.locator("#tap-open").tap()
+
+	for _ in range(3):
+		phone.locator("#tap").tap()
+
+	assert tap_reading(phone) == "1 more tap"
+	assert phone.evaluate("window.visualViewport.scale") == 1
+	assert phone.evaluate("getComputedStyle(document.getElementById('tap')).touchAction") == "manipulation"
+
+
+def test_a_key_press_on_the_pad_is_a_tap (phone: "playwright.sync_api.Page") -> None:
+
+	"""Opening the pad puts the keyboard on it, and each press counts once."""
+
+	phone.locator("#tap-open").focus()
+	phone.keyboard.press("Enter")
+
+	assert phone.evaluate("document.activeElement.id") == "tap"
+
+	phone.keyboard.press("Enter")
+
+	assert tap_reading(phone) == "3 more taps"
+	assert "3 more taps" in (phone.get_attribute("#tap", "aria-label") or "")
+
+
+def test_tapping_too_fast_sets_the_fastest_tempo_there_is (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""Taps quicker than the clock can go ask for the top of its range, which the Pico accepts."""
+
+	phone.locator("#tap-open").tap()
+	phone.evaluate(TAPS, [5, 100])
+
+	assert tests.pages.eventually(lambda: stand.now("tempo")["tempo"] == 30000)
+	assert tap_reading(phone) == "5 taps · 300 BPM"
+	assert phone.is_hidden("#tempo-problem") or phone.inner_text("#tempo-problem") == ""
+
+
+def test_tap_tempo_locks_itself_ten_seconds_after_the_last_tap (phone: "playwright.sync_api.Page") -> None:
+
+	"""Each tap gives it another ten seconds, and with none it shuts."""
+
+	phone.clock.install()
+	phone.locator("#tap-open").tap()
+	phone.clock.fast_forward(9000)
+
+	assert phone.is_visible("#tap")
+
+	phone.locator("#tap").dispatch_event("pointerdown", {"button": 0})
+	phone.clock.fast_forward(9000)
+
+	assert phone.is_visible("#tap")
+
+	phone.clock.fast_forward(1100)
+
+	assert tests.pages.eventually(lambda: tap_locked(phone))
+
+
+def test_tap_tempo_locks_when_the_page_is_left_or_hidden (phone: "playwright.sync_api.Page") -> None:
+
+	"""Going to Settings shuts it, and so does the page going out of sight, and it opens afresh."""
+
+	phone.locator("#tap-open").tap()
+	phone.evaluate(TAPS, [2, 50])
+	phone.locator("#to-settings").tap()
+	phone.locator("#to-main").tap()
+
+	assert tests.pages.eventually(lambda: tap_locked(phone))
+
+	phone.locator("#tap-open").tap()
+
+	assert tap_reading(phone) == "4 taps to set the tempo"
+
+	phone.evaluate("""() => {
+		Object.defineProperty(document, "visibilityState", {value: "hidden", configurable: true});
+		document.dispatchEvent(new Event("visibilitychange"));
+	}""")
+
+	assert tap_locked(phone)
+
+
+def test_tap_tempo_locks_when_the_pico_is_lost (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
+
+	"""With the line gone there is nothing to tap for, and it is locked when the line comes back."""
+
+	stand.as_new()
+
+	page = tests.pages.phone(chromium)
+	sockets: "list[playwright.sync_api.WebSocketRoute]" = []
+
+	def between (socket: "playwright.sync_api.WebSocketRoute") -> None:
+
+		"""Pass the first socket through, and leave any later one silent, as a Pico that has gone."""
+
+		if not sockets:
+			socket.connect_to_server()
+			sockets.append(socket)
+
+	page.route_web_socket("**/api/socket", between)
+	open_page(page, stand)
+	page.locator("#tap-open").tap()
+
+	assert page.is_visible("#tap")
+
+	sockets[0].close()
+
+	assert tests.pages.eventually(lambda: page.evaluate("document.body.classList.contains('lost')"))
+	assert tap_locked(page)
+
+	page.context.close()
