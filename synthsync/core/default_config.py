@@ -1,4 +1,10 @@
-# How your SynthSync is wired.
+"""The `config.txt` SynthSync makes on a Pico that has none, for the musician to edit.
+
+It is here, and not a file at the top of a release, so that copying a new
+release over an old one can never replace the musician's own.
+"""
+
+TEXT = b"""# How your SynthSync is wired.
 #
 # SynthSync reads this file when the Pico is switched on. After changing it,
 # save it, then unplug the Pico and plug it in again.
@@ -14,3 +20,4 @@
 # How many clock outputs are wired, from 1 to 8. Output 1 is on GP2, output 2
 # on GP3, and so on, up to output 8 on GP9.
 outputs = 4
+"""

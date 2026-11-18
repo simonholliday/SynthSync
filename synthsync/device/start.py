@@ -65,6 +65,24 @@ class Parts:
 		self.stood = ""
 
 
+def make_config (path: str = synthsync.device.board.CONFIG) -> "str | None":
+
+	"""Give a Pico with no `config.txt` SynthSync's own to edit, and say what went wrong if that couldn't be done.
+
+	This writes to flash, so it comes before there is a player to protect. The
+	clock starts as usual whatever happens here.
+	"""
+
+	try:
+		synthsync.core.config.place(path)
+
+	except Exception as problem:
+		sys.print_exception(problem)
+		return "%s couldn't be made, so SynthSync is using its own settings" % synthsync.core.config.NAME
+
+	return None
+
+
 def begin (config: str = synthsync.device.board.CONFIG) -> Parts:
 
 	"""Read how many outputs are wired and the saved settings, start the clock, and give back its parts.
@@ -273,8 +291,12 @@ def run (trial: int = 0) -> None:
 	"""
 
 	asked = time.ticks_ms()
+	unmade = make_config()
 	parts = begin()
 	took = time.ticks_diff(time.ticks_ms(), asked)
+
+	if unmade is not None:
+		parts.config.problems.append(unmade)
 
 	for problem in parts.config.problems + parts.problems:
 		print(problem)

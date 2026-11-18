@@ -49,10 +49,6 @@ NOT_FOR_THE_PICO = ("__pycache__", "sim", "static")
 # The program a Pico runs when it is switched on, once there is one.
 MAIN = "main.py"
 
-# The file that says how many outputs are wired, as SynthSync comes with it. It
-# is the musician's to change, so it is never copied over one already there.
-CONFIG = "config.txt"
-
 # What each licence is called, in the repository and beside the code it covers
 # on a Pico. A copy has to carry the licences of what is in it.
 LICENCE = "LICENSE"

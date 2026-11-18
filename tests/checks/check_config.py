@@ -1,10 +1,46 @@
 """config.txt is read the same on the Pico's Python as on a laptop's: what can be used is, and the rest is named in words fit to show."""
 
+import os
+import random
+import sys
+
 import synthsync.core.config
+import synthsync.core.default_config
 import synthsync.core.timeline
 
-# The file SynthSync comes with, at the top of the project, found from this file so it is found from any folder.
-COMES_WITH = __file__.rsplit("/", 1)[0] + "/../../config.txt"
+def new_folder () -> str:
+
+	"""Make a folder of this run's own, on either Python, and give its path."""
+
+	for _ in range(20):
+
+		folder = "/tmp/synthsync-check-config-%s-%d" % (sys.implementation.name, random.getrandbits(30))
+
+		try:
+			os.mkdir(folder)
+			return folder
+		except OSError:
+			continue
+
+	assert False, "no folder could be made in /tmp"
+
+
+def tidy (folder: str) -> None:
+
+	"""Remove a folder made by `new_folder`, with everything in it."""
+
+	for name in os.listdir(folder):
+		os.remove(folder + "/" + name)
+
+	os.rmdir(folder)
+
+
+def holds (path: str) -> bytes:
+
+	"""Give what a file holds."""
+
+	with open(path, "rb") as handle:
+		return handle.read()
 
 
 def parsed (text: str) -> synthsync.core.config.Config:
@@ -24,20 +60,91 @@ def check_a_missing_file_is_every_default_with_nothing_to_say () -> None:
 	assert config.problems == []
 
 
-def check_the_file_synthsync_comes_with_reads_cleanly_as_the_defaults () -> None:
+def check_the_file_synthsync_makes_reads_cleanly_as_the_defaults () -> None:
 
-	"""The config.txt an install puts on the Pico is read with nothing to say, holds the defaults, and is well short of the longest a file may be."""
+	"""The config.txt a Pico makes for itself is read with nothing to say, holds the defaults, and is well short of the longest a file may be."""
 
-	config = synthsync.core.config.read(COMES_WITH)
+	data = synthsync.core.default_config.TEXT
+	config = synthsync.core.config.parse(data)
 
 	assert config.problems == []
 	assert config.outputs == synthsync.core.config.DEFAULT_OUTPUTS
 
-	with open(COMES_WITH, "rb") as handle:
-		data = handle.read()
-
 	assert len(data) < synthsync.core.config.LONGEST // 2
 	assert b"\noutputs = 4\n" in data
+
+
+def check_a_pico_with_no_file_is_given_one_whole () -> None:
+
+	"""The file appears complete, with nothing left beside it, and reads as the defaults."""
+
+	folder = new_folder()
+	path = folder + "/config.txt"
+
+	try:
+		assert synthsync.core.config.place(path) is True
+		assert holds(path) == synthsync.core.default_config.TEXT
+		assert os.listdir(folder) == ["config.txt"]
+		assert synthsync.core.config.read(path).outputs == synthsync.core.config.DEFAULT_OUTPUTS
+
+	finally:
+		tidy(folder)
+
+
+def check_a_file_already_there_is_never_touched () -> None:
+
+	"""The musician's file stays exactly as it is, even one SynthSync can't make sense of."""
+
+	folder = new_folder()
+	path = folder + "/config.txt"
+
+	try:
+
+		for mine in (b"outputs = 6\n", b"", b"\x00 not a setting"):
+
+			with open(path, "wb") as handle:
+				handle.write(mine)
+
+			assert synthsync.core.config.place(path) is False
+			assert holds(path) == mine
+
+		assert os.listdir(folder) == ["config.txt"]
+
+	finally:
+		tidy(folder)
+
+
+def check_half_a_file_left_by_a_power_cut_is_written_over () -> None:
+
+	"""A power cut while the file was being made leaves only its new name, which the next start replaces."""
+
+	folder = new_folder()
+	path = folder + "/config.txt"
+
+	try:
+
+		with open(path + ".new", "wb") as handle:
+			handle.write(b"# How many")
+
+		assert synthsync.core.config.place(path) is True
+		assert holds(path) == synthsync.core.default_config.TEXT
+		assert os.listdir(folder) == ["config.txt"]
+
+	finally:
+		tidy(folder)
+
+
+def check_a_place_that_cannot_be_written_is_left_to_the_caller () -> None:
+
+	"""With no folder to write in, it says so by raising, and power-up carries on without the file."""
+
+	try:
+		synthsync.core.config.place("/no/such/folder/config.txt")
+
+	except OSError:
+		return
+
+	assert False, "nothing was said"
 
 
 def check_every_number_of_outputs_from_one_to_eight_is_taken () -> None:

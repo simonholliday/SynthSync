@@ -28,6 +28,7 @@ import time
 
 import synthsync.core.clock
 import synthsync.core.config
+import synthsync.core.default_config
 import synthsync.core.ratio
 import synthsync.core.settings
 import synthsync.core.transport
@@ -2420,6 +2421,34 @@ def _powerup_cases (load: str) -> None:
 		os.remove(path)
 	except OSError:
 		pass
+
+	# Power-up makes config.txt where there is none, whole, and leaves one that is there as it is.
+	try:
+		os.remove(_POWERUP_CONFIG)
+	except OSError:
+		pass
+
+	said = synthsync.device.start.make_config(_POWERUP_CONFIG)
+
+	with open(_POWERUP_CONFIG, "rb") as handle:
+		made = handle.read()
+
+	if said is not None or made != synthsync.core.default_config.TEXT:
+		wrong.append("config.txt wasn't made whole: %r" % (said,))
+
+	if _POWERUP_CONFIG[1:] + ".new" in os.listdir("/"):
+		wrong.append("making config.txt left its new file behind")
+
+	with open(_POWERUP_CONFIG, "wb") as handle:
+		handle.write(b"outputs = 2\n")
+
+	said = synthsync.device.start.make_config(_POWERUP_CONFIG)
+
+	with open(_POWERUP_CONFIG, "rb") as handle:
+		kept = handle.read()
+
+	if said is not None or kept != b"outputs = 2\n":
+		wrong.append("a config.txt already there was changed")
 
 	# What config.txt holds, how many outputs there should then be, and how many things should be said about it.
 	wirings = (

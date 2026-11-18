@@ -11,17 +11,19 @@ any capitals. The file is read once, when the Pico is switched on and before
 the clock starts, because it decides how many outputs the player is made with.
 
 Nothing in it can stop the clock starting. A missing file means every
-default. A line that can't be used is skipped, its setting keeps its default,
+default, and `place` makes one at power-up for the musician to edit. A line that can't be used is skipped, its setting keeps its default,
 and the page says which line it was and why, in words fit to show. Of two
 good lines for one setting, the first is used. A file that isn't text, or is
 far too long to be this one, isn't read at all.
 
 It describes the hardware, not the patch, so starting again as new leaves it
-alone, and so does an install.
+alone, and so do an install and a new release copied over the old one.
 
 It holds one setting so far: `outputs`, from 1 to 8, which is 4 unless set.
 Output 1 is on GP2, and each one after it on the next pin.
 """
+
+import os
 
 import synthsync.core.timeline
 
@@ -182,6 +184,36 @@ def parse (data: bytes) -> Config:
 		config.problems.append("%s has %d more line%s that couldn't be used" % (NAME, untold, "" if untold == 1 else "s"))
 
 	return config
+
+
+def place (path: str) -> bool:
+
+	"""Write the file SynthSync comes with at this path unless something is there already, and say whether it did.
+
+	It goes under another name first, so a power cut can't leave half a file.
+	Its text is loaded only here, because after the first power-up it is never
+	wanted again. Anything but the path being free is left for the caller.
+	"""
+
+	try:
+		os.stat(path)
+		return False
+
+	except OSError as problem:
+
+		if not problem.args or problem.args[0] != _MISSING:
+			raise
+
+	import synthsync.core.default_config
+
+	fresh = path + ".new"
+
+	with open(fresh, "wb") as handle:
+		handle.write(synthsync.core.default_config.TEXT)
+
+	os.rename(fresh, path)
+
+	return True
 
 
 def read (path: str) -> Config:

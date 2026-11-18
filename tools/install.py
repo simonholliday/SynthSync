@@ -6,8 +6,8 @@
 
 The first puts SynthSync on the Pico in place of any copy already there, and
 leaves the settings the Pico has saved alone. It leaves `config.txt`, which
-says how many outputs are wired, alone too, and puts SynthSync's own there
-only if there is none. `--wipe` empties the Pico's storage first, which also
+says how many outputs are wired, alone too, and SynthSync makes its own when
+it starts on a Pico that has none. `--wipe` empties the Pico's storage first, which also
 forgets its settings, its WiFi and its `config.txt`. `--remove` takes SynthSync
 off and stops, and with `--wipe` leaves the Pico empty.
 
@@ -73,21 +73,6 @@ for name in %r or os.listdir("/"):
 	remove("/" + name)
 
 print("REMOVED")
-"""
-
-# Run on the Pico to put SynthSync's own config.txt there if it has none, and say which.
-PLACE_CONFIG = """
-import os
-
-try:
-	os.stat(%r)
-	print("CONFIG KEPT")
-
-except OSError:
-	with open(%r, "w") as handle:
-		handle.write(%r)
-	os.rename(%r, %r)
-	print("CONFIG PLACED")
 """
 
 # Run on the Pico to load every part of SynthSync and say how much memory is left.
@@ -224,28 +209,6 @@ def remove (device: str, names: list[str]) -> bool:
 	return True
 
 
-def place_config (device: str) -> bool:
-
-	"""Put SynthSync's own `config.txt` on the Pico unless it has one, say which, and say whether that worked."""
-
-	path = "/" + tools.stage.CONFIG
-	text = (tools.stage.ROOT / tools.stage.CONFIG).read_text()
-	worked, output = on_pico(device, ["exec", PLACE_CONFIG % (path, path + ".new", text, path + ".new", path)])
-
-	if worked and "CONFIG KEPT" in output:
-		print("Kept the %s that was on the Pico." % tools.stage.CONFIG)
-		return True
-
-	if worked and "CONFIG PLACED" in output:
-		print("Put SynthSync's own %s on the Pico, which says there are %d outputs." % (tools.stage.CONFIG, synthsync.core.config.parse(text.encode()).outputs))
-		return True
-
-	print("%s couldn't be put on the Pico. It said:" % tools.stage.CONFIG)
-	print(output)
-
-	return False
-
-
 def install (device: str, wipe: bool, start: bool) -> bool:
 
 	"""Lay SynthSync out, copy it to the Pico, check that it loads, and say whether all of that worked."""
@@ -282,10 +245,6 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 
 		print("Copied.")
 
-		if not place_config(device):
-			print(NOTHING_STARTS)
-			return False
-
 		worked, output = on_pico(device, ["exec", LOAD % (modules(folder),)])
 		loaded = [line for line in output.splitlines() if line.startswith("LOADED ")]
 
@@ -320,7 +279,7 @@ def install (device: str, wipe: bool, start: bool) -> bool:
 
 		# What in config.txt the Pico couldn't use, which the page says too.
 		for line in output.splitlines():
-			if line.startswith(tools.stage.CONFIG):
+			if line.startswith(synthsync.core.config.NAME):
 				print(line)
 
 		worked, output = on_pico(device, ["fs", "cp", tools.stage.MAIN, ":"], folder)
@@ -388,7 +347,7 @@ def main (arguments: list[str] | None = None) -> int:
 		if not remove(device, [] if options.wipe else ["synthsync", "microdot", tools.stage.MAIN, JOIN_FILE] + OLD_NAMES):
 			return 1
 
-		print("Done. The Pico's storage is empty." if options.wipe else "Done. Any settings the Pico had saved, and its %s, are still there." % tools.stage.CONFIG)
+		print("Done. The Pico's storage is empty." if options.wipe else "Done. Any settings the Pico had saved, and its %s, are still there." % synthsync.core.config.NAME)
 
 		return 0
 

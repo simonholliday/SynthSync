@@ -114,7 +114,7 @@ Raspberry Pi's own guide to this, with pictures, is [here](https://www.raspberry
 
 ## Step 2: Copy SynthSync onto the Pico
 
-> **To come:** the download itself. Each release of SynthSync is to have a zip file holding everything the Pico needs, and it hasn't been made yet. The steps below are how it is meant to go, and Thonny's exact menu names still have to be checked against a real install.
+> **To come:** Thonny's exact menu names still have to be checked against a real install.
 
 [Thonny](https://thonny.org/) is a free app that can show the files on a Pico beside the files on your computer, and copy between the two.
 
@@ -124,6 +124,10 @@ Raspberry Pi's own guide to this, with pictures, is [here](https://www.raspberry
 4. **Show the files:** **View → Files**. Your computer's files are in the top half, and the Pico's are in the bottom half, which is empty for now.
 5. **In the top half, open the folder you unzipped.** Select everything inside it, right-click, and choose **Upload to /**.
 6. **Unplug the Pico and plug it in again.** Within a second, the small light on the Pico starts to flash on the beat. SynthSync is running.
+
+**To update SynthSync later,** download the new zip and repeat steps 5 and 6, letting Thonny replace the files already on the Pico. Your settings, your WiFi and your `config.txt` stay as they are, because the zip holds none of them.
+
+**If SynthSync doesn't start,** press the red Stop button in Thonny, delete `main.py` from the Pico's side, and copy the files across again.
 
 If you are at home on a command line, [For developers](#for-developers) has another way.
 
@@ -399,7 +403,7 @@ SynthSync's own network and your WiFi are never on at the same time.
 
 ## More or fewer outputs
 
-SynthSync runs four outputs out of the box, on GP2 to GP5. If you wire fewer, the spare ones do no harm. To have the page show only the outputs you built, or to add up to eight, you change one line in a small text file on the Pico, called `config.txt`:
+SynthSync runs four outputs out of the box, on GP2 to GP5. If you wire fewer, the spare ones do no harm. To have the page show only the outputs you built, or to add up to eight, you change one line in `config.txt`, a small text file SynthSync makes on the Pico the first time it starts:
 
 ```
 # How many clock outputs are wired, from 1 to 8.
@@ -469,6 +473,7 @@ SynthSync is written in MicroPython, with tests that run on an ordinary computer
 - **The tests:** `pip install -e '.[dev]'`, then `pytest` and `mypy`.
 - **The version** is the git tag's: tagging `v1.2.0` makes it 1.2.0, which the page's About shows. A Pico is given the version installed on the computer that copies SynthSync to it, so run `pip install -e '.[dev]'` again after tagging.
 - **Copying it to a Pico from the command line:** `python -m tools.install`, which needs `mpy-cross` for the same version of MicroPython.
+- **Making a release:** tag the commit, run `pip install -e '.[dev]'` again, and run `python -m tools.release FOLDER`. It makes the zip people download, and refuses anything but a clean, tagged commit. The same code always makes the same zip, so anyone can check a published one.
 - **The wiring diagrams** in this README are drawn by `python -m tools.diagrams`, which needs nothing installed. Change a pin or a value there, never in the pictures.
 - **The page's fonts** are cut down to the characters SynthSync shows, so the page stays small. After changing the page's words, run `python -m tools.fonts` to cut them again: the tests say when a character is missing.
 
