@@ -25,7 +25,7 @@ CONFIG = "/config.txt"
 # The player can drive eight outputs. The four pins after the outputs are kept
 # free for that. The player also sets the two after those, from the same words:
 # the tempo LED, which it lights on every beat, beside a ground pin, and then
-# MIDI out, which it is to send as one more pin.
+# MIDI out, sent as one more pin.
 MOST_OUTPUTS = 8
 LED_PIN = 10
 MIDI_PIN = 11

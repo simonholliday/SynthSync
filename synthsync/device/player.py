@@ -113,7 +113,8 @@ _RESUME = 8
 _STOP = 9
 _BACKLOG = 10
 _PRESS = 11
-_COMMANDS = 12
+_MIDI = 12
+_COMMANDS = 13
 
 # The buttons the second core reads: play/pause and stop, in that order.
 _BUTTONS = synthsync.core.transport.BUTTONS
@@ -218,12 +219,12 @@ class Player:
 		self._program = _program()
 		self.machine = rp2.StateMachine(0, self._program, freq=machine.freq(), out_base=machine.Pin(first_pin))
 
-		# The program takes every pin a word carries. Those of outputs not fitted,
-		# and MIDI's, which isn't sent yet, are given back as plain inputs, so the
-		# player leaves them alone. The tempo LED's, after the eighth output's, it keeps.
-		for bit in range(outputs, synthsync.core.timeline.PIN_BITS):
-			if bit != synthsync.core.timeline.MOST_OUTPUTS:
-				machine.Pin(first_pin + bit, machine.Pin.IN)
+		# The program takes every pin a word carries. Those of outputs not fitted
+		# are given back as plain inputs, so the player leaves them alone. The
+		# last two, the tempo LED's and MIDI's, it keeps. MIDI's rests low, which
+		# is how it reads with MIDI off too.
+		for bit in range(outputs, synthsync.core.timeline.MOST_OUTPUTS):
+			machine.Pin(first_pin + bit, machine.Pin.IN)
 
 		# Commands waiting for the second core: four numbers each.
 		self._queue = array.array("i", [0] * (_WAITING * 4))
@@ -260,6 +261,7 @@ class Player:
 		self._cover[_ROLE] = _COVER_ROLE
 		self._cover[_MUTE] = _COVER_SWITCH
 		self._cover[_WIDTH] = _COVER_SWITCH
+		self._cover[_MIDI] = _COVER_SWITCH
 
 		for command in (_START, _PAUSE, _RESUME, _STOP, _PRESS):
 			self._cover[command] = _COVER_TRANSPORT
@@ -297,6 +299,8 @@ class Player:
 		self._waiting = self.machine.tx_fifo
 		self._next_word = self.timeline.next_word
 		self._quiet = self.timeline.quiet
+		self._still = self.timeline.still
+		self._midi_resting = self.timeline.midi_resting
 
 		self._alive = True
 
@@ -320,7 +324,9 @@ class Player:
 		waiting = self._waiting
 		next_word = self._next_word
 		quiet = self._quiet
+		still = self._still
 		marks = self._marks
+		queue = self._queue
 		counts = self._counts
 		lows = self._lows
 		kept = self._kept
@@ -352,6 +358,13 @@ class Player:
 				self._carry_out(playing)
 
 			elif marks[0] != marks[1]:
+
+				# With only MIDI's clock going, a flash write is made as it is with
+				# nothing playing, so a press of play needn't wait for a backlog. The
+				# byte going out finishes first, and the clock takes up again after.
+				if playing and queue[(marks[1] % _WAITING) * 4] == _BACKLOG and still():
+					self._rest_midi()
+					playing = False
 
 				if playing:
 					self._take_under_cover()
@@ -506,6 +519,8 @@ class Player:
 
 			elif what == _PRESS:
 				timeline.press(first)
+			elif what == _MIDI:
+				timeline.set_midi(first)
 
 		except Exception:
 			# A value the scheduler won't take. Count it rather than end the thread.
@@ -624,6 +639,20 @@ class Player:
 		pressed = self._pressed
 		pressed[0] = (pressed[0] + 1) & _WRAP
 		pressed[1] = time.ticks_ms()
+
+	@micropython.native
+	def _rest_midi (self) -> None:
+
+		"""Feed the player until MIDI's pin is low with nothing going out, so it can be left without words. Runs on the second core."""
+
+		put = self._put
+		waiting = self._waiting
+		next_word = self._next_word
+		resting = self._midi_resting
+
+		while not resting():
+			if waiting() < _DEPTH:
+				put(next_word())
 
 	@micropython.native
 	def _ahead (self, ticks: int) -> None:
@@ -817,6 +846,12 @@ class Player:
 		"""Say what an output is for, as one of the scheduler's role numbers."""
 
 		self._send(_ROLE, output, role)
+
+	def set_midi (self, mode: int) -> None:
+
+		"""Say what MIDI out does, as one of the scheduler's MIDI numbers."""
+
+		self._send(_MIDI, mode)
 
 	def start (self) -> None:
 
@@ -1014,6 +1049,7 @@ class Player:
 
 		"""Stop the second core and the hardware player, leaving every pin low, and give back the room its program took."""
 
+		self.set_midi(synthsync.core.timeline.MIDI_OFF)
 		self.stop()
 		self.settle()
 		time.sleep_ms(120)

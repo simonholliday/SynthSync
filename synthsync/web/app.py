@@ -17,6 +17,7 @@ under "do". `FROM_PAGE` lists them all.
     {"do": "tempo", "value": 12050}            in hundredths of a BPM
     {"do": "tempo", "text": "120.5"}           as typed
     {"do": "ppqn", "value": 4}                 the clock's pulses a beat
+    {"do": "midi", "value": "always"}          "off", "playing" or "always"
     {"do": "output", "index": 1, "name": "ratio", "value": "4/3"}
     {"do": "start"}   {"do": "pause"}   {"do": "stop"}
     {"do": "reset"}                            back to how a new one is
@@ -44,6 +45,7 @@ whenever something changes, whoever changed it:
 
     {"type": "tempo", "tempo": 12050, "text": "120.5", "by": 2, "id": 31}
     {"type": "ppqn", "ppqn": 4, "fastest_ratio": "24", "by": 2, "id": 32}
+    {"type": "midi", "midi": "always", "by": 2, "id": 33}
     {"type": "output", "index": 1, "ratio": "4/3", "label": "×4/3", ...}
     {"type": "transport", "state": "running", "by": 0, "id": 0}
     {"type": "clock", "position": 12250, "faults": 0}
@@ -184,6 +186,7 @@ if TYPE_CHECKING:
 FROM_PAGE = {
 	"tempo": ("value", "text"),
 	"ppqn": ("value",),
+	"midi": ("value",),
 	"output": ("index", "name", "value"),
 	"start": (),
 	"pause": (),
@@ -206,6 +209,7 @@ TO_PAGE = {
 	"hello": ("you", "fixed", "now"),
 	"tempo": ("tempo", "text", "by", "id"),
 	"ppqn": ("ppqn", "fastest_ratio", "by", "id"),
+	"midi": ("midi", "by", "id"),
 	"output": ("index", "ratio", "label", "snap", "muted", "pulse", "role", "by", "id"),
 	"transport": ("state", "by", "id"),
 	"clock": ("position", "faults"),
@@ -304,6 +308,7 @@ PATIENCE = 5.0
 # What a page can be behind on, besides each output, which goes by its number.
 TEMPO = synthsync.core.clock.TEMPO
 PPQN = synthsync.core.clock.PPQN
+MIDI = synthsync.core.clock.MIDI
 TRANSPORT = synthsync.core.clock.TRANSPORT
 NETWORK = synthsync.core.clock.NETWORK
 CLOCK = "clock"
@@ -600,7 +605,7 @@ class App:
 
 		"""Name everything a page can be behind on."""
 
-		keys: "list[Key]" = [TEMPO, PPQN, TRANSPORT, CLOCK, NETWORK]
+		keys: "list[Key]" = [TEMPO, PPQN, MIDI, TRANSPORT, CLOCK, NETWORK]
 
 		for index in range(self.clock.settings.count):
 			keys.append(index)
@@ -640,6 +645,15 @@ class App:
 				"type": "ppqn",
 				"ppqn": settings.ppqn,
 				"fastest_ratio": synthsync.core.ratio.to_text(synthsync.core.ratio.fastest(settings.ppqn)),
+				"by": by[0],
+				"id": by[1],
+			}
+
+		if key == MIDI:
+
+			return {
+				"type": "midi",
+				"midi": settings.midi,
 				"by": by[0],
 				"id": by[1],
 			}
@@ -840,6 +854,9 @@ class App:
 		elif do == "ppqn":
 			clock.set_ppqn(message.get("value"), by)
 
+		elif do == "midi":
+			clock.set_midi(message.get("value"), by)
+
 		elif do == "output":
 			clock.set_output(message.get("index"), message.get("name"), message.get("value"), by)
 
@@ -917,6 +934,9 @@ class App:
 
 			elif do == "ppqn":
 				page.stale.add(PPQN)
+
+			elif do == "midi":
+				page.stale.add(MIDI)
 
 			elif do == "output":
 

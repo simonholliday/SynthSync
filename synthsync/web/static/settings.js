@@ -20,6 +20,13 @@ const OWN_ADDRESS = "192.168.4.1";
 const RATE_WORDS = {1: "quarters", 2: "8ths", 4: "16ths", 8: "32nds", 24: "DIN sync"};
 
 
+// What MIDI out can do, each with its name and what it means. A test holds these to the Pico's own list.
+const MIDI_MODES = [
+	["always", "Always", "also while stopped"],
+	["playing", "While playing", ""],
+	["off", "Off", ""],
+];
+
 // The looks a phone can choose, each by the name page.css knows it by and the name shown, Dark first among them
 // because it is what a phone that hasn't chosen gets. A test holds this list to the looks page.css draws.
 const LOOKS = [
@@ -130,6 +137,8 @@ export class Settings {
 			chosen = localStorage.getItem(LOOK_KEY) || FIRST_LOOK;
 		} catch (problem) {}
 
+		find("midi-modes").replaceChildren(...MIDI_MODES.map(([mode, name, more]) => this.midiMode(mode, name, more)));
+
 		find("looks").replaceChildren(...LOOKS.map(([key, name]) => {
 
 			const choice = document.createElement("label");
@@ -198,6 +207,7 @@ export class Settings {
 		}));
 
 		find("ppqn-problem").textContent = "";
+		find("midi-problem").textContent = "";
 		find("networks").replaceChildren();
 		find("scan-status").textContent = "";
 
@@ -239,6 +249,38 @@ export class Settings {
 		return choice;
 	}
 
+	/* Make the choice of one thing MIDI out can do, which asks for it as soon as it is chosen. */
+	midiMode (mode, name, more) {
+
+		const choice = document.createElement("label");
+		const box = document.createElement("input");
+		const words = document.createElement("span");
+		const title = document.createElement("b");
+
+		box.type = "radio";
+		box.name = "midi";
+		box.value = mode;
+		box.setAttribute("aria-label", "MIDI clock: " + name + (more ? ", " + more : ""));
+
+		box.addEventListener("change", () => {
+
+			find("midi-problem").textContent = "";
+			this.link.send({do: "midi", value: mode}, "midi", null);
+		});
+
+		title.textContent = name;
+		words.append(title);
+
+		if (more) {
+			words.append(" · " + more);
+		}
+
+		choice.className = "rate";
+		choice.append(box, words);
+
+		return choice;
+	}
+
 	/* Take one message from the Pico that is about this view. */
 	hear (message) {
 
@@ -246,6 +288,12 @@ export class Settings {
 
 			for (const box of find("rates").querySelectorAll("input")) {
 				box.checked = Number(box.value) === message.ppqn;
+			}
+
+		} else if (message.type === "midi") {
+
+			for (const box of find("midi-modes").querySelectorAll("input")) {
+				box.checked = box.value === message.midi;
 			}
 
 		} else if (message.type === "network") {
@@ -296,6 +344,7 @@ export class Settings {
 
 		const place = {
 			ppqn: "ppqn-problem",
+			midi: "midi-problem",
 			join: "join-problem",
 			host_name: "host-problem",
 			own_password: "own-problem",

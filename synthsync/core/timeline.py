@@ -16,6 +16,14 @@ and lights the tempo LED. Its pin comes after the eighth output's in every word,
 so the LED lights on the very cycle a beat's pulses begin, whatever the outputs
 are set to and whether or not any of them is switched on.
 
+MIDI clock comes from the same timeline, on one more pin. On the wire a MIDI
+byte is a few edges, and its 32 microsecond bit is a whole number of ticks, so
+the words carry it as they carry a pulse. A slot of its own keeps 24 clocks to
+the beat. Each clock byte starts 320 ticks before its place on that grid, so
+that it has finished arriving as the outputs' pulses begin. The pin is
+inverted, for the transistor that drives the socket: it rests low, and is high
+where the MIDI line is low.
+
 Time is counted in ticks of one microsecond. For each output the scheduler keeps
 the time to its next pulse as a whole number of ticks plus an exact part, a
 fraction that is never rounded away, so the timing can't drift however long it
@@ -39,9 +47,10 @@ FASTEST_TEMPO = 30000
 HOLD_LIMIT = 2500
 
 # The most outputs a timeline drives. A word's low bits carry their pins first,
-# then the tempo LED's, then one kept for MIDI out, which isn't sent yet.
+# then the tempo LED's, then MIDI out's.
 MOST_OUTPUTS = 8
 LED_BIT = 1 << MOST_OUTPUTS
+MIDI_BIT = 1 << (MOST_OUTPUTS + 1)
 PIN_BITS = MOST_OUTPUTS + 2
 
 # The tempo LED is lit for a quarter of each beat, so it looks the same at every
@@ -75,6 +84,39 @@ PRESS_START = 1
 PRESS_PAUSE = 2
 PRESS_STOP = 3
 PRESS_PLAY_PAUSE = 4
+
+# What MIDI out does: nothing, clock only while the clock plays, or clock all the
+# time, so that what follows it knows the tempo before it is started.
+MIDI_OFF = 0
+MIDI_PLAYING = 1
+MIDI_ALWAYS = 2
+
+# MIDI clock runs at 24 to the beat. A byte is ten bits of 32 ticks. At least
+# MIDI_GAP_TICKS must pass between the end of a Start or Continue and the next
+# clock, which is what the follower moves on.
+MIDI_PER_BEAT = 24
+MIDI_BIT_TICKS = 32
+MIDI_BYTE_TICKS = 320
+MIDI_GAP_TICKS = 1000
+
+# Each byte MIDI out sends, as how long its pin is high, then low, then high,
+# counted in bits, four bits to a count with the first at the bottom. After the
+# last count the pin goes low and stays there until the byte's ten bits are up.
+MIDI_CLOCK = 4
+MIDI_START = 2 | 1 << 4 | 1 << 8
+MIDI_CONTINUE = 1 | 2 << 4 | 1 << 8
+MIDI_STOP = 3
+
+# How many Start, Continue and Stop bytes can wait for the line.
+_MIDI_WAITING = 4
+
+# The longest a word lasts while only MIDI's clock is playing. The player is
+# eight words ahead, so this keeps a press of start as quick as it is with
+# nothing playing at all.
+MIDI_IDLE_HOLD = 400
+
+# The role of the MIDI slot while MIDI is off, which is no role at all.
+_NOT_SENT = -1
 
 # One beat lasts 6000 x 1,000,000 / tempo ticks, with the tempo in hundredths of
 # a BPM. The two factors are kept apart so no product reaches 2**30.
@@ -132,13 +174,15 @@ class Timeline:
 		if pin_bits <= MOST_OUTPUTS:
 			raise ValueError("A word needs a pin bit for each of %d outputs and the tempo LED" % MOST_OUTPUTS)
 
-		# One slot for each output, and a last one that follows the beat itself.
-		slots = outputs + 1
+		# One slot for each output, one for MIDI's clock, and a last one that
+		# follows the beat itself.
+		slots = outputs + 2
 		blank = [0] * slots
 
 		self.outputs = outputs
 		self.slots = slots
-		self.master = outputs
+		self.midi_slot = outputs
+		self.master = outputs + 1
 		self.cycles_per_tick = cycles_per_tick
 		self.overhead_cycles = overhead_cycles
 		self.pin_bits = pin_bits
@@ -176,9 +220,34 @@ class Timeline:
 		# The bit each slot drives in a word. The beat slot drives none of its own
 		# here: its `fall` times the lead, so the tempo LED it lights is timed in
 		# `led_fall` instead, the time until the LED goes out, or -1 when it is out.
-		self.bit = array.array("i", [1 << index for index in range(outputs)] + [0])
+		self.bit = array.array("i", [1 << index for index in range(outputs)] + [0, 0])
 		self.led_fall = -1
 		self.led_width = LED_LONGEST
+
+		# MIDI out. `midi_on` says there is anything for it to do, which stays true
+		# after it is switched off until the last byte has gone.
+		self.midi_mode = MIDI_OFF
+		self.midi_on = 0
+
+		# The byte going out: the time until its pin next changes, or -1 when no
+		# change is left, what is left of its counts, and the time until the line
+		# is free for another.
+		self.midi_run = -1
+		self.midi_pattern = 0
+		self.midi_free = 0
+
+		# Start, Continue and Stop bytes waiting for the line, oldest first.
+		self.midi_waiting = array.array("i", [0] * _MIDI_WAITING)
+		self.midi_queued = 0
+
+		# How many clock bytes the grid is owed: 1 for the next place on it, and
+		# more only if one could not be sent in time.
+		self.midi_due = 0
+
+		# With the clock not playing, the time until the next clock byte, or -1
+		# for none, with the exact part left over out of the slot's divisor.
+		self.midi_idle = -1
+		self.midi_idle_part = 0
 
 		# Where _muldiv leaves its answer: the whole part, then the remainder.
 		self._answer = array.array("i", [0, 0])
@@ -200,6 +269,9 @@ class Timeline:
 		# as it ends, so it is odd while a change is half-made. `position`
 		# looks at it to know whether what it has just read hangs together.
 		self.changes = 0
+
+		self.pulses[self.midi_slot] = MIDI_PER_BEAT
+		self.role[self.midi_slot] = _NOT_SENT
 
 		for slot in range(slots):
 			self._load(slot)
@@ -522,6 +594,101 @@ class Timeline:
 		elif role == RUN and not self.muted[output] and not self.paused:
 			self.mask |= self.bit[output]
 
+	def set_midi (self, mode: int) -> None:
+
+		"""Say what MIDI out does: MIDI_OFF, MIDI_PLAYING or MIDI_ALWAYS.
+
+		Switched on while the clock runs, its clock joins the grid at once, and
+		what follows it starts at the next Start. Switched off while the clock
+		plays, it says Stop first, so nothing is left waiting for clocks that
+		won't come. A byte already going out always finishes.
+		"""
+
+		if mode < MIDI_OFF or mode > MIDI_ALWAYS:
+			raise ValueError("MIDI out is off, on while playing, or always on")
+
+		if self.pin_bits <= MOST_OUTPUTS + 1:
+			raise ValueError("These words have no pin bit for MIDI out")
+
+		was = self.midi_mode
+
+		if mode == was:
+			return
+
+		slot = self.midi_slot
+		playing = self.running and not self.paused
+		waits = self.held if self.paused else self.until
+
+		self.midi_mode = mode
+
+		if mode == MIDI_OFF:
+
+			self.role[slot] = _NOT_SENT
+			self.until[slot] = -1
+			self.held[slot] = -1
+			self.until_part[slot] = 0
+			self.midi_due = 0
+			self.midi_idle = -1
+
+			if playing:
+				self._midi_queue(MIDI_STOP)
+
+			return
+
+		self.midi_on = 1
+
+		if was == MIDI_OFF:
+
+			self.role[slot] = CLOCK
+
+			if self.running:
+				waits[slot] = 0
+				self._place(slot)
+				self.midi_due = 1
+
+		if playing:
+			self.midi_idle = -1
+		else:
+			self._midi_idle_from(waits[slot])
+
+	def _midi_queue (self, byte: int) -> None:
+
+		"""Leave a byte to go out as soon as the line is free. If too many are waiting, it takes the last one's place."""
+
+		count = self.midi_queued
+
+		if count == _MIDI_WAITING:
+			count -= 1
+
+		self.midi_waiting[count] = byte
+		self.midi_queued = count + 1
+		self.midi_on = 1
+
+	def _midi_clear (self) -> int:
+
+		"""Give how long it is until everything now waiting has gone out, in ticks."""
+
+		return self.midi_free + self.midi_queued * MIDI_BYTE_TICKS
+
+	def _midi_idle_from (self, wait: int) -> None:
+
+		"""With the clock no longer playing, carry MIDI's clock on from where it was, `wait` ticks from its next place on the grid."""
+
+		self.midi_idle_part = 0
+
+		if self.midi_mode != MIDI_ALWAYS:
+			self.midi_idle = -1
+
+		elif wait < 0:
+			self.midi_idle = 0
+
+		elif not self.midi_due:
+			# The clock for that place has gone, so this is the one after it.
+			self.midi_idle = wait + self.period[self.midi_slot] - MIDI_BYTE_TICKS
+
+		else:
+			self.midi_idle = wait - MIDI_BYTE_TICKS if wait > MIDI_BYTE_TICKS else 0
+
 	def run_pins (self) -> int:
 
 		"""Give the pins of the run outputs that aren't muted, as bits.
@@ -544,12 +711,14 @@ class Timeline:
 
 		Start pulses fire and run outputs go high at once. Every clock pulses
 		together on the first beat, which is straight away, or one lead later
-		if there is a start pulse or a run output for it to follow.
+		if there is a start pulse or a run output for it to follow. With MIDI
+		on, it is long enough at least for MIDI's Start, the gap that must
+		follow it, and the first clock byte.
 		"""
 
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
-		self.mask = 0
+		self.mask &= MIDI_BIT
 		self.led_fall = -1
 		self.beat = 0
 		self.running = True
@@ -571,6 +740,17 @@ class Timeline:
 			elif self.role[slot] == RUN:
 				self.mask |= self.bit[slot]
 				lead = LEAD_TICKS
+
+		if self.midi_mode:
+
+			self._midi_queue(MIDI_START)
+			self.midi_due = 1
+			self.midi_idle = -1
+
+			needed = self._midi_clear() + MIDI_GAP_TICKS + MIDI_BYTE_TICKS
+
+			if needed > lead:
+				lead = needed
 
 		for slot in range(self.slots):
 
@@ -596,7 +776,7 @@ class Timeline:
 
 		No new pulse begins. A pulse already begun finishes as it would have,
 		and run outputs go low at once. Every output keeps its place, to the
-		exact fraction of a tick, until `resume`.
+		exact fraction of a tick, until `resume`. MIDI says Stop.
 		"""
 
 		if not self.running or self.paused:
@@ -621,6 +801,10 @@ class Timeline:
 		self.fall[self.master] = -1
 		self.paused = True
 
+		if self.midi_mode:
+			self._midi_queue(MIDI_STOP)
+			self._midi_idle_from(self.held[self.midi_slot])
+
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 	def resume (self) -> int:
@@ -629,7 +813,9 @@ class Timeline:
 
 		Every output picks up exactly where it was held, so nothing has moved
 		against anything else. Run outputs go high at once, and if there are
-		any, the clocks follow one lead later, as they do at a start.
+		any, the clocks follow one lead later, as they do at a start. MIDI says
+		Continue, and the clocks wait for it only if its next clock byte would
+		otherwise come too soon after.
 		"""
 
 		if not self.paused:
@@ -643,6 +829,18 @@ class Timeline:
 			if self.role[slot] == RUN and not self.muted[slot]:
 				self.mask |= self.bit[slot]
 				lead = LEAD_TICKS
+
+		if self.midi_mode:
+
+			self._midi_queue(MIDI_CONTINUE)
+			self.midi_idle = -1
+
+			if self.midi_due:
+
+				needed = self._midi_clear() + MIDI_GAP_TICKS + MIDI_BYTE_TICKS - self.held[self.midi_slot]
+
+				if needed > lead:
+					lead = needed
 
 		for slot in range(self.slots):
 
@@ -704,11 +902,20 @@ class Timeline:
 
 	def stop (self) -> None:
 
-		"""Set every output and the tempo LED low and forget the position. Stop pulses then fire."""
+		"""Set every output and the tempo LED low and forget the position. Stop pulses then fire.
+
+		A MIDI byte already going out finishes, and MIDI says Stop unless it has
+		already, at a pause.
+		"""
 
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
-		self.mask = 0
+		if self.midi_mode and self.running and not self.paused:
+			self._midi_queue(MIDI_STOP)
+			self._midi_idle_from(self.until[self.midi_slot])
+
+		self.midi_due = 0
+		self.mask &= MIDI_BIT
 		self.led_fall = -1
 		self.beat = 0
 		self.running = False
@@ -729,11 +936,26 @@ class Timeline:
 
 	def quiet (self) -> bool:
 
-		"""Say whether the clock is stopped or paused with nothing left to play.
+		"""Say whether the clock is stopped or paused with nothing left to play, MIDI included.
 
 		While this is true every word would be the same, with every pin low,
 		so there is nothing worth feeding the player.
 		"""
+
+		if self.midi_idle >= 0 or self.midi_run >= 0 or self.midi_queued:
+			return False
+
+		return self.still()
+
+	def midi_resting (self) -> bool:
+
+		"""Say whether MIDI's pin is low with no byte going out or waiting, so that the words can stop for a while."""
+
+		return self.midi_run < 0 and not self.midi_queued
+
+	def still (self) -> bool:
+
+		"""Say whether the clock is stopped or paused with no pulse or flash left to finish, whatever MIDI is doing."""
 
 		if self.running and not self.paused:
 			return False
@@ -809,6 +1031,8 @@ class Timeline:
 		mask = self.mask
 		hold = HOLD_LIMIT
 		led_fall = self.led_fall
+		midi_slot = self.midi_slot
+		due = self.midi_due
 
 		# The tempo LED goes out before anything rises, as each slot's pin does.
 		if led_fall == 0:
@@ -847,6 +1071,10 @@ class Timeline:
 					mask |= LED_BIT
 					led_fall = self.led_width
 
+				elif slot == midi_slot:
+					# The grid's next place wants a clock byte of its own.
+					due += 1
+
 				elif not muted[slot]:
 					if mask & bit[slot]:
 						self.merged += 1
@@ -871,6 +1099,99 @@ class Timeline:
 
 		if led_fall > 0 and led_fall < hold:
 			hold = led_fall
+
+		if self.midi_on:
+
+			run = self.midi_run
+			free = self.midi_free
+			idle = self.midi_idle
+			queued = self.midi_queued
+			wait = until[midi_slot]
+
+			# The pin's next change within the byte going out.
+			if run == 0:
+
+				mask ^= MIDI_BIT
+				pattern = self.midi_pattern
+
+				if pattern:
+					run = (pattern & 15) * MIDI_BIT_TICKS
+					self.midi_pattern = pattern >> 4
+				else:
+					run = -1
+
+			# With the line free, the next byte: whatever is waiting comes first.
+			if free == 0:
+
+				byte = 0
+
+				if queued:
+
+					waiting = self.midi_waiting
+					byte = waiting[0]
+					queued -= 1
+
+					for place in range(queued):
+						waiting[place] = waiting[place + 1]
+
+				elif due > 1 or (due == 1 and 0 <= wait <= MIDI_BYTE_TICKS):
+					byte = MIDI_CLOCK
+					due -= 1
+
+				elif idle == 0:
+
+					byte = MIDI_CLOCK
+					part = self.midi_idle_part + period_part[midi_slot]
+					idle = period[midi_slot]
+
+					if part >= divisor[midi_slot]:
+						part -= divisor[midi_slot]
+						idle += 1
+
+					self.midi_idle_part = part
+
+				if byte:
+					mask |= MIDI_BIT
+					run = (byte & 15) * MIDI_BIT_TICKS
+					self.midi_pattern = byte >> 4
+					free = MIDI_BYTE_TICKS
+
+			if run > 0 and run < hold:
+				hold = run
+
+			if free > 0 and free < hold:
+				hold = free
+
+			if due == 1 and wait > MIDI_BYTE_TICKS and wait - MIDI_BYTE_TICKS < hold:
+				hold = wait - MIDI_BYTE_TICKS
+
+			if idle >= 0:
+
+				if idle > 0 and idle < hold:
+					hold = idle
+
+				if hold > MIDI_IDLE_HOLD:
+					hold = MIDI_IDLE_HOLD
+
+				if idle > 0:
+					idle -= hold
+
+			if run > 0:
+				run -= hold
+
+			if free > 0:
+				free -= hold
+
+			self.midi_run = run
+			self.midi_free = free
+			self.midi_idle = idle
+			self.midi_queued = queued
+
+			if not self.midi_mode and run < 0 and not queued:
+				self.midi_on = 0
+				self.midi_free = 0
+
+		self.midi_due = due
 
 		for slot in range(slots):
 

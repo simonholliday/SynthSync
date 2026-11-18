@@ -8,11 +8,13 @@ view does without a Pico.
 import contextlib
 import json
 import pathlib
+import re
 import typing
 
 import pytest
 
 import synthsync
+import synthsync.core.settings
 import synthsync.sim.network
 
 import tests.pages
@@ -685,6 +687,51 @@ def test_about_gives_the_copyright_the_licence_no_warranty_and_the_source (phone
 		["https://github.com/simonholliday/SynthSync/blob/main/LICENSE", "_blank", "noopener"],
 		["https://github.com/simonholliday/SynthSync", "_blank", "noopener"],
 	]
+
+
+def test_midi_clock_is_chosen_here_and_always_is_the_first_setting (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
+
+	"""Three choices, each reaching the Pico as soon as it is tapped, and a new SynthSync sends clock all the time."""
+
+	choices = phone.locator("#midi-modes .rate")
+
+	assert [words.strip() for words in choices.all_inner_texts()] == ["Always · also while stopped", "While playing", "Off"]
+	assert tests.pages.eventually(lambda: phone.locator("#midi-modes input:checked").get_attribute("value") == "always")
+
+	choices.filter(has_text="While playing").tap()
+
+	assert tests.pages.eventually(lambda: stand.now("midi")["midi"] == "playing")
+
+	choices.filter(has_text="Off").tap()
+
+	assert tests.pages.eventually(lambda: stand.now("midi")["midi"] == "off")
+	assert phone.locator("#midi-modes input:checked").get_attribute("value") == "off"
+
+
+def test_another_phone_sees_midi_clock_change (phone: "playwright.sync_api.Page", chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
+
+	"""What one phone chooses shows on every other."""
+
+	other = tests.pages.phone(chromium)
+	other.goto(stand.address + "/#settings")
+	other.wait_for_function("document.querySelector('#midi-modes input:checked') !== null")
+
+	phone.locator("#midi-modes .rate").filter(has_text="Off").tap()
+
+	assert tests.pages.eventually(lambda: other.locator("#midi-modes input:checked").get_attribute("value") == "off")
+
+	other.context.close()
+
+
+def test_the_page_offers_exactly_what_the_pico_takes_for_midi () -> None:
+
+	"""The page's list of choices is the Pico's, so neither can offer what the other doesn't know."""
+
+	script = (pathlib.Path(synthsync.__file__).parent / "web" / "static" / "settings.js").read_text()
+	listed = re.search(r"const MIDI_MODES = \[(.*?)\n\];", script, re.DOTALL)
+
+	assert listed is not None
+	assert sorted(re.findall(r'^\s*\["([a-z]+)"', listed.group(1), re.MULTILINE)) == sorted(synthsync.core.settings.MIDI_MODES)
 
 
 def test_its_name_on_wifi_can_be_changed (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:

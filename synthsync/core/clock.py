@@ -48,6 +48,10 @@ if TYPE_CHECKING:
 
 			"""Give an output a new ratio: this many pulses to this many beats."""
 
+		def set_midi (self, mode: int) -> None:
+
+			"""Say what MIDI out does, as one of the scheduler's MIDI numbers."""
+
 		def set_mute (self, output: int, muted: bool) -> None:
 
 			"""Silence an output, or let it sound again."""
@@ -98,6 +102,7 @@ FLUSH_EVERY = 20
 # change of PPQN is told as PPQN, then as each output whose ratio it moved.
 TEMPO = "tempo"
 PPQN = "ppqn"
+MIDI = "midi"
 TRANSPORT = "transport"
 NETWORK = "network"
 EVERYTHING = "everything"
@@ -149,8 +154,9 @@ class Clock:
 		# How many times the page has asked to switch now to a network a trial join found, for the same reason.
 		self.switches = 0
 
-		# What the engine hasn't yet been given: the tempo, and parts of each output.
+		# What the engine hasn't yet been given: the tempo, MIDI out, and parts of each output.
 		self._stale_tempo = False
+		self._stale_midi = False
 		self._stale = [0] * settings.count
 
 	def watch (self, watcher: "Watcher") -> None:
@@ -158,7 +164,7 @@ class Clock:
 		"""Ask to be told of every change.
 
 		The watcher is called with what changed and the `by` the change came
-		with. What changed is TEMPO, PPQN, TRANSPORT, NETWORK, EVERYTHING, or
+		with. What changed is TEMPO, PPQN, MIDI, TRANSPORT, NETWORK, EVERYTHING, or
 		the number of an output, counted from 0.
 		"""
 
@@ -183,6 +189,7 @@ class Clock:
 		"""Note that the engine needs every setting afresh."""
 
 		self._stale_tempo = True
+		self._stale_midi = True
 
 		for index in range(self.settings.count):
 			self._stale[index] = _WHOLE_OUTPUT
@@ -203,6 +210,16 @@ class Clock:
 		self._stale_tempo = True
 		self._keep()
 		self._tell(TEMPO, by)
+
+	def set_midi (self, mode: object, by: object = None) -> None:
+
+		"""Change what MIDI out does: "off", "playing" or "always"."""
+
+		self.settings.set_midi(mode)
+
+		self._stale_midi = True
+		self._keep()
+		self._tell(MIDI, by)
 
 	def set_ppqn (self, ppqn: object, by: object = None) -> None:
 
@@ -371,6 +388,10 @@ class Clock:
 		if self._stale_tempo:
 			engine.set_tempo(settings.tempo)
 			self._stale_tempo = False
+
+		if self._stale_midi:
+			engine.set_midi(settings.midi_number())
+			self._stale_midi = False
 
 		for index in range(settings.count):
 

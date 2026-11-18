@@ -308,7 +308,7 @@ def test_the_page_is_driven_over_real_sockets () -> None:
 		status, state = await tools.page.fetch("127.0.0.1", port, "/api/state")
 
 		assert status == 200
-		assert len(state["now"]) == 9
+		assert len(state["now"]) == 10
 
 		first = tools.page.Page("127.0.0.1", port)
 		second = tools.page.Page("127.0.0.1", port)

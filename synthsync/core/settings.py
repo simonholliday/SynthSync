@@ -1,4 +1,4 @@
-"""Everything SynthSync remembers: the tempo, the clock's PPQN, each output's settings, and the network.
+"""Everything SynthSync remembers: the tempo, the clock's PPQN, MIDI out, each output's settings, and the network.
 
 One model serves the page, the saved file and the laptop stand-in. A change is
 checked as it's made and refused with a message the page can show. The saved
@@ -28,11 +28,17 @@ TYPE_CHECKING = False
 if TYPE_CHECKING:
 	import typing
 
-# Raised each time the saved form changes shape. 2 added the clock's PPQN.
-VERSION = 2
+# Raised each time the saved form changes shape. 2 added the clock's PPQN, and
+# 3 MIDI out.
+VERSION = 3
 
 # Tempo is held in hundredths of a BPM: 12000 is 120 BPM.
 DEFAULT_TEMPO = 12000
+
+# What MIDI out can do, in the order of the scheduler's numbers for them: nothing,
+# clock only while playing, or clock all the time.
+MIDI_MODES = ("off", "playing", "always")
+DEFAULT_MIDI = "always"
 
 # A pulse is this many milliseconds long, or HALF for half the gap between pulses.
 DEFAULT_PULSE = 10
@@ -132,7 +138,7 @@ class Output:
 
 class Settings:
 
-	"""The tempo, the clock's PPQN, every output's settings and the network settings, with their checks."""
+	"""The tempo, the clock's PPQN, MIDI out, every output's settings and the network settings, with their checks."""
 
 	def __init__ (self, outputs: int) -> None:
 
@@ -141,6 +147,7 @@ class Settings:
 		self.count = outputs
 		self.tempo = DEFAULT_TEMPO
 		self.ppqn = synthsync.core.ratio.DEFAULT_PPQN
+		self.midi = DEFAULT_MIDI
 		self.outputs = [Output() for _ in range(outputs)]
 
 		# The saved settings of outputs past the last one wired, as they were saved.
@@ -157,6 +164,7 @@ class Settings:
 
 		self.tempo = DEFAULT_TEMPO
 		self.ppqn = synthsync.core.ratio.DEFAULT_PPQN
+		self.midi = DEFAULT_MIDI
 		self.outputs = [Output() for _ in range(self.count)]
 		self.beyond = []
 		self.own_password = DEFAULT_PASSWORD
@@ -175,6 +183,21 @@ class Settings:
 			raise ValueError("The tempo has to be between 20 and 300 BPM")
 
 		self.tempo = tempo
+
+	def set_midi (self, mode: object) -> None:
+
+		"""Set what MIDI out does: "off", "playing" or "always"."""
+
+		if mode not in MIDI_MODES:
+			raise ValueError("MIDI clock is off, on while playing, or always on")
+
+		self.midi = mode
+
+	def midi_number (self) -> int:
+
+		"""Give what MIDI out does as the scheduler's number for it."""
+
+		return MIDI_MODES.index(self.midi)
 
 	def set_ppqn (self, ppqn: object) -> "list[int]":
 
@@ -363,6 +386,7 @@ class Settings:
 			"version": VERSION,
 			"tempo": self.tempo,
 			"ppqn": self.ppqn,
+			"midi": self.midi,
 			"outputs": outputs,
 			"own_password": self.own_password,
 			"host_name": self.host_name,
@@ -394,6 +418,10 @@ class Settings:
 		# the default clock.
 		if "ppqn" in data:
 			_attempt(problems, "ppqn", lambda: self.set_ppqn(data["ppqn"]))
+
+		# A file saved before there was MIDI out has none, and gets the default.
+		if "midi" in data:
+			_attempt(problems, "midi", lambda: self.set_midi(data["midi"]))
 
 		saved = data.get("outputs", [])
 

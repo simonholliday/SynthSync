@@ -105,17 +105,18 @@ class Capture:
 
 	"""Times the gaps between rising edges on one pin."""
 
-	def __init__ (self, pin: int, count: int) -> None:
+	def __init__ (self, pin: int, count: int, program=None) -> None:
 
-		"""Begin capturing this many gaps on a pin.
+		"""Begin capturing this many gaps on a pin, or whatever else `program` counts on it.
 
 		Make this before the state machine that drives the pin: setting a pin
 		up as an input afterwards would take it away from that state machine.
 		"""
 
 		self.count = count
+		self.halted_at = -1
 		self.counts = array.array("I", [0] * count)
-		self.machine = rp2.StateMachine(_CAPTURE_MACHINE, _capture_program, freq=SYSTEM_HZ, jmp_pin=machine.Pin(pin, machine.Pin.IN))
+		self.machine = rp2.StateMachine(_CAPTURE_MACHINE, program or _capture_program, freq=SYSTEM_HZ, jmp_pin=machine.Pin(pin, machine.Pin.IN))
 		self.dma = rp2.DMA()
 		self.control = self.dma.pack_ctrl(size=2, inc_read=False, inc_write=True, treq_sel=_CAPTURE_REQUEST)
 
@@ -138,11 +139,19 @@ class Capture:
 			self.machine.get()
 
 		self.count = min(count, len(self.counts))
+		self.halted_at = -1
 		self.dma.config(read=_RXF0 + 4 * _CAPTURE_MACHINE, write=self.counts, count=self.count, ctrl=self.control, trigger=True)
 
 	def halt (self) -> None:
 
-		"""Stop taking gaps, keeping those already taken."""
+		"""Stop taking gaps, keeping those already taken.
+
+		How many is noted first, because a stopped DMA channel says it has
+		nothing left to do, however much it had.
+		"""
+
+		if self.halted_at < 0:
+			self.halted_at = self.count - self.dma.count
 
 		self.dma.active(0)
 
@@ -150,13 +159,16 @@ class Capture:
 
 		"""Say how many gaps have been captured so far."""
 
+		if self.halted_at >= 0:
+			return self.halted_at
+
 		return self.count - self.dma.count
 
 	def full (self) -> bool:
 
 		"""Say whether every gap asked for has been captured."""
 
-		return self.dma.count == 0
+		return self.taken() == self.count
 
 	def close (self) -> None:
 
@@ -2298,6 +2310,391 @@ def test_led (load: str = "idle") -> None:
 _POWERUP_CONFIG = "/_rig_config.txt"
 
 
+# MIDI out, as a receiver sees it, with MIDI's own numbers written out so that a
+# wrong one in the scheduler shows. How many lengths of the pin's level to keep,
+# which state machine times each clock against output 1, how many cycles a bit,
+# a byte and the gap after Start or Continue last, how many clocks a beat has,
+# how many short writes to make, how far a timed length may be out, and how
+# long a start may take after a flash write made with only MIDI's clock going,
+# in microseconds: about 2 ms of the first core's work, 4 ms of words already
+# queued and the 2 ms MIDI's Start needs, where a backlog played out first would
+# take 300 ms.
+_MIDI_RUNS = 3000
+_MIDI_ALIGN_MACHINE = 2
+_MIDI_BIT = SYSTEM_HZ // 31250
+_MIDI_BYTE = 10 * _MIDI_BIT
+_MIDI_GAP = SYSTEM_HZ // 1000
+_MIDI_PER_BEAT = 24
+_MIDI_SHORT_WRITES = 300
+_MIDI_SLACK = 8
+_MIDI_ALIGN_SLACK = 16
+_MIDI_START_MOST = 10000
+_MIDI_CLOCK = 0xF8
+_MIDI_START = 0xFA
+_MIDI_CONTINUE = 0xFB
+_MIDI_STOP = 0xFC
+
+
+@rp2.asm_pio()
+def _runs_program ():
+
+	"""Give how long the jump pin stays low, then how long it stays high, over and over, two cycles to a count."""
+
+	wrap_target()
+	mov(x, invert(null))
+	label("low")
+	jmp(pin, "rose")
+	jmp(x_dec, "low")
+	label("rose")
+	mov(isr, invert(x))
+	push(noblock)
+	mov(x, invert(null))
+	label("high")
+	jmp(x_dec, "still")
+	label("still")
+	jmp(pin, "high")
+	mov(isr, invert(x))
+	push(noblock)
+	wrap()
+
+
+def _align_program (watched: int):
+
+	"""Build a program that gives, from each rise of a pin, how long until the jump pin is high, two cycles to a count."""
+
+	def align ():
+
+		"""Time from each rise of MIDI's pin to output 1 going high."""
+
+		wrap_target()
+		wait(0, gpio, watched)
+		wait(1, gpio, watched)
+		mov(x, invert(null))
+		label("waiting")
+		jmp(pin, "there")
+		jmp(x_dec, "waiting")
+		label("there")
+		mov(isr, invert(x))
+		push(noblock)
+		wrap()
+
+	return rp2.asm_pio(fifo_join=rp2.PIO.JOIN_RX)(align)
+
+
+def read_midi (capture: Capture) -> tuple:
+
+	"""Read what a capture of MIDI's pin holds as a receiver would, and give each byte's first cycle and value, how many runs broke the framing, and the furthest any edge was from its bit.
+
+	The pin is inverted. It is read from the first long stretch at rest, so a
+	capture may begin part of the way through a byte. The last stretch at rest
+	has no edge to end it and so was never timed: past the end of the capture,
+	the pin counts as still resting. A byte the capture stopped inside is left
+	out.
+	"""
+
+	found = []
+	wrong = 0
+	worst = 0
+	taken = capture.taken()
+	counts = capture.counts
+	place = 0
+	at = 0
+
+	while place < taken and 2 * counts[place] + 4 < 5 * _MIDI_BIT:
+		place += 1
+
+	if place < taken:
+		at = 2 * counts[place] + 4
+		place += 1
+
+	def bits (index: int) -> tuple:
+
+		"""Give one run's length in cycles, in whole bits, and how far it is from that many."""
+
+		cycles = 2 * counts[index] + 4 if index < taken else 10 * _MIDI_BIT
+		whole = (cycles + _MIDI_BIT // 2) // _MIDI_BIT
+
+		return cycles, whole, abs(cycles - whole * _MIDI_BIT)
+
+	while place < taken:
+
+		start = at
+		first, high, off = bits(place)
+		second, low, off_low = bits(place + 1)
+		value = 0
+
+		if place + 1 == taken and high != 4 and high != 3:
+			break
+
+		worst = max(worst, off)
+
+		if high == 4 or high == 3:
+
+			value = _MIDI_CLOCK if high == 4 else _MIDI_STOP
+			rest = 10 - high
+			at += first + second
+			place += 2
+
+		elif (high == 2 and low == 1) or (high == 1 and low == 2):
+
+			if place + 2 >= taken:
+				break
+
+			third, again, off_third = bits(place + 2)
+			fourth, _, _ = bits(place + 3)
+			worst = max(worst, off_low, off_third)
+
+			if again != 1:
+				wrong += 1
+
+			value = _MIDI_START if high == 2 else _MIDI_CONTINUE
+			rest = 6
+			second = fourth
+			at += first + bits(place + 1)[0] + third + fourth
+			place += 4
+
+		else:
+			wrong += 1
+			at += first + second
+			place += 2
+			continue
+
+		if second < rest * _MIDI_BIT - _MIDI_SLACK:
+			wrong += 1
+
+		found.append((start, value))
+
+	return found, wrong, worst
+
+
+def test_midi (load: str = "idle") -> None:
+
+	"""Read MIDI out off its pin: every byte's framing, the clock's gaps, each clock against output 1, the transport bytes and their gaps, the clock while stopped, and flash writes made with only that clock going."""
+
+	board = synthsync.device.board
+	transport = synthsync.core.transport
+	cycles = SYSTEM_HZ // 1000000
+	capture = Capture(board.MIDI_PIN, _MIDI_RUNS, _runs_program)
+	aligner = rp2.StateMachine(_MIDI_ALIGN_MACHINE, _align_program(board.MIDI_PIN), freq=SYSTEM_HZ, jmp_pin=machine.Pin(board.FIRST_OUTPUT_PIN))
+	player = synthsync.device.player.Player(board.FIRST_OUTPUT_PIN, 4)
+	settings = synthsync.core.settings.Settings(4)
+	clock = synthsync.core.clock.Clock(settings, player)
+	never = Never()
+	result = {"clocks": 0, "wrong": 0, "bit": 0, "gap": 0, "align": 0, "aligned": 0, "order": 0, "after": 0, "idle": 0, "start": 0, "writes": 0, "short_writes": 0}
+	aligning = [False]
+
+	# At 24 PPQN output 1 pulses with every MIDI clock, and the others keep the words busy across the bytes.
+	for index in range(4):
+		clock.set_output(index, "snap", False)
+
+	clock.set_ppqn(24)
+	clock.set_output(1, "ratio", "7/3")
+	clock.set_output(2, "ratio", "3")
+	clock.set_output(3, "ratio", "1/3")
+	clock.load()
+	capture.halt()
+	aligner.active(1)
+
+	def take () -> None:
+
+		"""Take how far each clock began ahead of output 1's pulse."""
+
+		while aligner.rx_fifo():
+
+			count = aligner.get()
+
+			if aligning[0]:
+				result["aligned"] += 1
+				result["align"] = max(result["align"], abs(2 * count + 6 - _MIDI_BYTE))
+
+	def read () -> list:
+
+		"""Stop capturing, read what was captured, and add what it shows to the result."""
+
+		capture.halt()
+
+		found, wrong, worst = read_midi(capture)
+
+		result["wrong"] += wrong
+		result["bit"] = max(result["bit"], worst)
+
+		return found
+
+	def judge_gaps (clocks: list, tempo: int, key: str) -> None:
+
+		"""Hold the gaps between clock bytes to the two lengths this tempo allows."""
+
+		short, long = synthsync.core.timeline.gap_ticks(tempo, _MIDI_PER_BEAT, 1)
+
+		for index in range(len(clocks) - 1):
+			gap = clocks[index + 1] - clocks[index]
+			result[key] = max(result[key], min(abs(gap - short * cycles), abs(gap - long * cycles)))
+
+	def press (command: str) -> None:
+
+		"""Press start, pause or stop, and wait for the player to have taken it."""
+
+		clock.press(command)
+		clock.flush()
+		player.settle()
+
+	def script ():
+
+		"""Work through each stage, giving back how long to wait before the next step."""
+
+		# The clock while playing, at tempos with whole gaps and without.
+		clock.set_midi("playing")
+
+		for tempo in (12000, 17400, 30000):
+
+			clock.set_tempo(tempo)
+			clock.flush()
+			player.settle()
+			press(transport.START)
+			yield 200
+
+			take()
+			aligning[0] = True
+			capture.again(_MIDI_RUNS)
+			yield 1500
+
+			aligning[0] = False
+			found = read()
+			clocks = [start for start, value in found if value == _MIDI_CLOCK]
+			result["clocks"] += len(clocks)
+			result["order"] += len(found) - len(clocks)
+			judge_gaps(clocks, tempo, "gap")
+			press(transport.STOP)
+			yield 60
+
+		# Start, pause, carry on and stop, in order, each with the gap it must leave.
+		clock.set_tempo(12000)
+		clock.flush()
+		player.settle()
+		yield 60
+
+		capture.again(_MIDI_RUNS)
+		press(transport.START)
+		yield 200
+		press(transport.PAUSE)
+		yield 100
+		press(transport.START)
+		yield 200
+		press(transport.STOP)
+		yield 100
+
+		found = read()
+		values = [value for _, value in found]
+		runs = []
+
+		for value in values:
+			if not runs or runs[-1] != value:
+				runs.append(value)
+
+		if runs != [_MIDI_START, _MIDI_CLOCK, _MIDI_STOP, _MIDI_CONTINUE, _MIDI_CLOCK, _MIDI_STOP]:
+			result["order"] += 1
+
+		for index in range(len(found) - 1):
+			if found[index][1] in (_MIDI_START, _MIDI_CONTINUE):
+				result["after"] = max(result["after"], _MIDI_BYTE + _MIDI_GAP - (found[index + 1][0] - found[index][0]))
+
+		# The clock while stopped, on its own.
+		clock.set_midi("always")
+		clock.flush()
+		player.settle()
+		yield 100
+
+		capture.again(_MIDI_RUNS)
+		yield 1000
+
+		found = read()
+		clocks = [start for start, value in found if value == _MIDI_CLOCK]
+		result["clocks"] += len(clocks)
+		result["order"] += len(found) - len(clocks)
+		judge_gaps(clocks, 12000, "idle")
+
+		# A flash write with only that clock going: no byte is cut, and a start straight after it is quick.
+		capture.again(_MIDI_RUNS)
+
+		for _ in range(5):
+
+			player.protect(lambda: time.sleep_ms(60))
+			result["writes"] += 1
+			began = time.ticks_us()
+			clock.press(transport.START)
+			clock.flush()
+
+			while not (machine.mem32[_GPIO_IN] >> board.FIRST_OUTPUT_PIN) & 1:
+				if time.ticks_diff(time.ticks_us(), began) > 1000000:
+					break
+
+			result["start"] = max(result["start"], time.ticks_diff(time.ticks_us(), began))
+			yield 60
+			press(transport.STOP)
+			yield 60
+
+		read()
+
+		# Many short writes, landing anywhere against the bytes, with the clock at its quickest: the byte going out is finished first every time.
+		clock.set_tempo(30000)
+		clock.flush()
+		player.settle()
+		yield 60
+
+		capture.again(_MIDI_RUNS)
+
+		for index in range(_MIDI_SHORT_WRITES):
+
+			player.protect(lambda: time.sleep_us(300))
+			result["short_writes"] += 1
+			yield 1 + index % 5
+
+		read()
+		never.over = True
+		yield 0
+
+	steps = script()
+	due = [time.ticks_ms()]
+
+	def meanwhile () -> None:
+
+		"""Take what has been timed and move the script on when its wait is over."""
+
+		clock.flush()
+		take()
+
+		if never.over or time.ticks_diff(time.ticks_ms(), due[0]) < 0:
+			return
+
+		due[0] = time.ticks_add(time.ticks_ms(), next(steps))
+
+	described = run_load(load, never, 90, meanwhile)
+	status = player.status()
+
+	aligner.active(0)
+	capture.close()
+	player.close()
+
+	passed = (
+		never.over
+		and result["clocks"] >= 100
+		and result["aligned"] >= 60
+		and result["wrong"] == 0
+		and result["order"] == 0
+		and result["bit"] <= _MIDI_SLACK
+		and result["gap"] <= _MIDI_SLACK
+		and result["idle"] <= _MIDI_SLACK
+		and result["align"] <= _MIDI_ALIGN_SLACK
+		and result["after"] <= _MIDI_SLACK
+		and result["start"] <= _MIDI_START_MOST
+		and result["writes"] == 5
+		and result["short_writes"] == _MIDI_SHORT_WRITES
+		and sound(status)
+	)
+
+	report("midi", passed, "clocks=%d aligned=%d framing_wrong=%d order_wrong=%d worst_bit_cycles=%d worst_gap_cycles=%d worst_idle_gap_cycles=%d worst_align_cycles=%d short_after_start_cycles=%d slowest_start_us=%d short_writes=%d faults=%d empty=%d one_left=%d fewest_waiting=%d load=%s" % (result["clocks"], result["aligned"], result["wrong"], result["order"], result["bit"], result["gap"], result["idle"], result["align"], result["after"], result["start"], result["short_writes"], status["faults"], status["empty"], status["one_left"], status["fewest_waiting"], described))
+
+
 def test_powerup (load: str = "idle") -> None:
 
 	"""Start the clock as switching on does, from missing, damaged and good settings and config.txt files, with the board's own settings put back whatever happens."""
@@ -3195,7 +3592,7 @@ def test_page (load: str = "idle") -> None:
 
 		response = await client.get("/api/state", headers={"Host": "192.168.4.1"})
 
-		expect("a new page wasn't given everything", response.status_code == 200 and len(response.json["now"]) == 9 and response.json["fixed"]["roles"] == list(synthsync.core.settings.ROLES))
+		expect("a new page wasn't given everything", response.status_code == 200 and len(response.json["now"]) == 10 and response.json["fixed"]["roles"] == list(synthsync.core.settings.ROLES))
 
 	async def change () -> None:
 
@@ -3820,6 +4217,7 @@ TESTS = {
 	"freerun": test_freerun,
 	"inputs": test_inputs,
 	"led": test_led,
+	"midi": test_midi,
 	"network": test_network,
 	"page": test_page,
 	"player": test_player,

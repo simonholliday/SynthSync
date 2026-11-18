@@ -344,7 +344,7 @@ def test_the_header_and_every_panel_sit_one_gap_apart_with_the_title_centred (ch
 			page.evaluate("window.scrollTo(0, 0)")
 			found = page.evaluate(GAPS, view)
 
-			assert len(found["gaps"]) == (6 if view == "main" else 7), (width, view, found)
+			assert len(found["gaps"]) == (6 if view == "main" else 8), (width, view, found)
 			assert all(abs(gap - 12) < 0.5 for gap in found["gaps"]), (width, view, found)
 			assert abs(found["side"] - (8 if width < 375 else 12)) < 0.5, (width, view, found)
 			assert abs(found["above"] - found["below"]) < 0.5, (width, view, found)

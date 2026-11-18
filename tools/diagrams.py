@@ -24,19 +24,29 @@ import sys
 IMAGES = pathlib.Path(__file__).parent.parent / "docs" / "images"
 
 # The Pico's header pin for each GPIO that SynthSync uses, as the official pinout numbers them.
-HEADER_PIN = {2: 4, 3: 5, 4: 6, 5: 7, 6: 9, 7: 10, 8: 11, 9: 12, 10: 14, 21: 27, 22: 29}
+HEADER_PIN = {2: 4, 3: 5, 4: 6, 5: 7, 6: 9, 7: 10, 8: 11, 9: 12, 10: 14, 11: 15, 21: 27, 22: 29}
+
+# The header pin of the Pico's own 3.3 V supply.
+SUPPLY_PIN = 36
 
 # Where each thing is wired, which must match `synthsync/device/board.py`.
 FIRST_OUTPUT = 2
 PLAY_PAUSE = 21
 STOP = 22
 TEMPO_LED = 10
+MIDI_OUT = 11
 
 # The part values, as the wiring guide gives them.
 INTO_BASE = "10 kΩ"
 PULL_UP = "10 kΩ"
 TO_JACK = "1 kΩ"
 FOR_LED = "1 kΩ"
+
+# MIDI out's, which are the MIDI standard's for a 3.3 V supply.
+MIDI_SUPPLY = "33 Ω, 0.5 W"
+MIDI_SINK = "10 Ω"
+MIDI_BASE = "1 kΩ"
+MIDI_BASE_DOWN = "4.7 kΩ"
 
 # The colours: ink for the circuit, a quieter grey for notes, and the Pico's pins in the green its pinout uses.
 INK = "#1f2328"
@@ -408,6 +418,52 @@ def tempo_led () -> Sheet:
 	return sheet
 
 
+def midi () -> Sheet:
+
+	"""Draw MIDI out: the transistor that GP11 switches, and the three wires to a TRS socket."""
+
+	sheet = Sheet(780, 410, "The MIDI out socket", "The 3.3 volt pin goes through 33 ohms to the ring of a TRS jack. GP11 goes through 1 kilohm to the base of an NPN transistor, with 4.7 kilohms from base to emitter and the emitter to ground. The collector goes through 10 ohms to the tip. The sleeve goes to ground.")
+	socket = 520
+
+	# The supply, through its resistor to the ring.
+	ring = sheet.tag((150, 110), "3V3", SUPPLY_PIN)
+	sheet.wire(sheet.resistor(ring, MIDI_SUPPLY), (socket, ring[1]))
+
+	# GP11 switches the transistor, which joins the tip to ground through its resistor.
+	at = sheet.pin((150, 260), MIDI_OUT)
+	base = sheet.resistor(at, MIDI_BASE)
+	meet = (base[0] + 30, at[1])
+
+	sheet.wire(base, meet)
+	sheet.joint(meet)
+
+	collector, emitter = sheet.transistor(meet)
+	floor = (emitter[0], at[1] + 90)
+
+	sheet.words(emitter[0] + 28, at[1] + 5, "NPN", kind="name")
+	sheet.wire(sheet.resistor(meet, MIDI_BASE_DOWN, down=True), (meet[0], floor[1]), floor)
+	sheet.wire(emitter, floor)
+	sheet.joint(floor)
+	sheet.ground(floor)
+
+	tip = (collector[0], 170)
+
+	sheet.wire(collector, tip)
+	sheet.wire(sheet.resistor(tip, MIDI_SINK), (socket, tip[1]))
+
+	# The socket, with each contact named for what it carries.
+	sheet.parts.append('<rect class="shape" x="%g" y="52" width="240" height="216" rx="8"/>' % socket)
+	sheet.words(socket + 120, 78, "3.5 mm TRS jack, Type A", anchor="middle", kind="name")
+	sheet.words(socket + 14, ring[1] + 5, "Ring: MIDI pin 4")
+	sheet.words(socket + 14, tip[1] + 5, "Tip: MIDI pin 5")
+	sheet.words(socket + 14, 235, "Sleeve: MIDI pin 2")
+	sheet.wire((socket, 230), (socket - 30, 230), (socket - 30, 250))
+	sheet.ground((socket - 30, 250))
+	sheet.words(24, 396, "A 5-pin DIN socket takes the same three wires, by the MIDI pin numbers.", kind="note")
+
+	return sheet
+
+
 def direct () -> Sheet:
 
 	"""Draw the quick way to try a module: a jack straight from a pin, with one resistor and nothing to protect the Pico."""
@@ -458,6 +514,7 @@ DIAGRAMS = {
 	"output-led": lambda: output(True),
 	"buttons": buttons,
 	"tempo-led": tempo_led,
+	"midi": midi,
 	"direct": direct,
 	"example": example,
 }

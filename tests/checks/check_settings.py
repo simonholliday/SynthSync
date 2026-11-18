@@ -443,7 +443,7 @@ def check_the_ppqn_is_saved_and_loaded_before_the_ratios_it_allows () -> None:
 	saved = settings.to_text()
 
 	assert json.loads(saved)["ppqn"] == 1
-	assert json.loads(saved)["version"] == 2
+	assert json.loads(saved)["version"] == 3
 
 	again = synthsync.core.settings.Settings(2)
 
@@ -624,3 +624,95 @@ def check_starting_again_forgets_outputs_not_wired_too () -> None:
 	saved = four.to_dict()["outputs"]
 
 	assert isinstance(saved, list) and len(saved) == 4
+
+
+def check_midi_out_sends_clock_always_unless_told_otherwise () -> None:
+
+	"""A new SynthSync keeps clock going while stopped, and starting again as new goes back to that."""
+
+	settings = synthsync.core.settings.Settings(1)
+
+	assert settings.midi == "always"
+
+	settings.set_midi("off")
+	settings.reset()
+
+	assert settings.midi == "always"
+
+
+def check_midi_out_numbers_are_the_schedulers () -> None:
+
+	"""Each setting gives the number the scheduler has for it."""
+
+	settings = synthsync.core.settings.Settings(1)
+	numbers = {"off": synthsync.core.timeline.MIDI_OFF, "playing": synthsync.core.timeline.MIDI_PLAYING, "always": synthsync.core.timeline.MIDI_ALWAYS}
+
+	assert sorted(numbers.keys()) == sorted(synthsync.core.settings.MIDI_MODES)
+
+	for mode in synthsync.core.settings.MIDI_MODES:
+		settings.set_midi(mode)
+		assert settings.midi_number() == numbers[mode]
+
+
+def check_only_the_three_midi_settings_are_taken () -> None:
+
+	"""Anything else is refused and leaves the setting as it was."""
+
+	settings = synthsync.core.settings.Settings(1)
+
+	for wrong in ("sometimes", "", None, 1, True, ["off"]):
+
+		try:
+			settings.set_midi(wrong)
+
+		except ValueError:
+			assert settings.midi == "always"
+			continue
+
+		assert False, "%r was taken" % (wrong,)
+
+
+def check_midi_out_is_saved_and_loaded () -> None:
+
+	"""What was chosen comes back after a restart."""
+
+	settings = synthsync.core.settings.Settings(1)
+	settings.set_midi("playing")
+
+	again = synthsync.core.settings.Settings(1)
+
+	assert again.load_text(settings.to_text()) == []
+	assert again.midi == "playing"
+
+
+def check_a_file_saved_before_midi_out_gets_the_default_and_no_complaint () -> None:
+
+	"""An older SynthSync's settings load as they were, with MIDI out as a new one has it."""
+
+	data = json.loads(synthsync.core.settings.Settings(1).to_text())
+
+	del data["midi"]
+	data["version"] = 2
+
+	settings = synthsync.core.settings.Settings(1)
+	settings.set_midi("off")
+
+	assert settings.load_text(json.dumps(data)) == []
+	assert settings.midi == "always"
+
+
+def check_a_midi_setting_that_cannot_be_used_is_named_and_defaulted () -> None:
+
+	"""A damaged value doesn't cost the rest of the file."""
+
+	data = json.loads(synthsync.core.settings.Settings(1).to_text())
+
+	data["midi"] = "sometimes"
+	data["tempo"] = 9000
+
+	settings = synthsync.core.settings.Settings(1)
+	problems = settings.load_text(json.dumps(data))
+
+	assert len(problems) == 1 and problems[0].startswith("midi")
+	assert settings.midi == "always"
+	assert settings.tempo == 9000

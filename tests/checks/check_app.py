@@ -19,6 +19,7 @@ import synthsync
 import synthsync.core.clock
 import synthsync.core.ratio
 import synthsync.core.settings
+import synthsync.core.timeline
 import synthsync.web.app
 
 import tests.checks.check_clock
@@ -329,7 +330,7 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 		for message in now:
 			assert fits(message), message
 
-		assert len(now) == 9
+		assert len(now) == 10
 		assert len(by_type(now, "output")) == 4
 
 		# The clock's pulses a beat come with the fastest ratio they allow.
@@ -643,7 +644,7 @@ def check_a_page_is_greeted_with_its_number_and_everything () -> None:
 		assert hello["you"] == 1
 		assert second.sent[0]["you"] == 2
 		assert hello["fixed"] == app.state()["fixed"]
-		assert len(hello["now"]) == 9
+		assert len(hello["now"]) == 10
 
 		for message in hello["now"]:
 			assert fits(message), message
@@ -678,7 +679,7 @@ def check_what_config_txt_could_not_use_goes_with_what_never_changes () -> None:
 
 		assert hello["type"] == "hello"
 		assert hello["fixed"]["config_problems"] == told
-		assert len(hello["now"]) == 7
+		assert len(hello["now"]) == 8
 
 		await close_pages(app, page)
 
@@ -960,7 +961,7 @@ def check_a_reset_sends_every_page_everything_afresh () -> None:
 
 		for socket in (first, second):
 
-			assert len(socket.sent) == 9
+			assert len(socket.sent) == 10
 
 			for message in socket.sent:
 				assert fits(message), message
@@ -1278,8 +1279,8 @@ def check_messages_come_in_numbered_batches_and_a_page_answers_each () -> None:
 		for socket in (first, second):
 
 			assert [batch["batch"] for batch in socket.batches] == [1, 2, 3]
-			assert [message["type"] for message in socket.batches[2]["messages"]] == ["tempo", "ppqn", "transport", "clock", "network", "output", "output", "output", "output"]
-			assert [message["index"] for message in socket.batches[2]["messages"][5:]] == [0, 1, 2, 3]
+			assert [message["type"] for message in socket.batches[2]["messages"]] == ["tempo", "ppqn", "midi", "transport", "clock", "network", "output", "output", "output", "output"]
+			assert [message["index"] for message in socket.batches[2]["messages"][6:]] == [0, 1, 2, 3]
 
 		# An answer for one page alone comes before the news it goes with.
 		first.say({"do": "tempo", "text": "999", "id": 7})
@@ -1302,7 +1303,7 @@ def check_messages_come_in_numbered_batches_and_a_page_answers_each () -> None:
 
 		assert [batch["batch"] for batch in page.batches] == [1, 2, 3, 4]
 		assert len(json.dumps(page.batches[2])) <= synthsync.web.app.MOST_BATCH
-		assert len(page.batches[2]["messages"]) + len(page.batches[3]["messages"]) == 13
+		assert len(page.batches[2]["messages"]) + len(page.batches[3]["messages"]) == 14
 		assert [message["index"] for message in page.of("output")] == [0, 1, 2, 3, 4, 5, 6, 7]
 
 		await close_pages(big, page)
@@ -1894,6 +1895,7 @@ def check_the_app_takes_every_message_its_table_lists_and_no_other () -> None:
 	examples: "dict[str, dict[str, typing.Any]]" = {
 		"tempo": {"value": 12100},
 		"ppqn": {"value": 24},
+		"midi": {"value": "playing"},
 		"output": {"index": 1, "name": "snap", "value": False},
 		"join": {"name": "Studio", "password": "a password"},
 		"own_password": {"value": "a password"},
@@ -2148,6 +2150,62 @@ def check_a_request_for_another_site_is_sent_to_the_page_only_while_the_own_netw
 			response = await elsewhere.get("/api/health")
 
 			assert response.status_code == 200, mode
+
+	tests.checks.check_clock.run(work())
+
+
+def check_midi_out_from_a_page_reaches_the_engine_and_every_page () -> None:
+
+	"""Every page hears the new setting, said to be from the page that chose it, and the engine is told."""
+
+	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
+
+		app, engine, network = make()
+		first = await open_page(app)
+		second = await open_page(app)
+
+		first.say({"do": "midi", "value": "off", "id": 7})
+		await settle(app)
+		app.clock.flush()
+
+		assert app.clock.settings.midi == "off"
+		assert engine.named("set_midi")[-1] == ("set_midi", synthsync.core.timeline.MIDI_OFF)
+
+		for socket in (first, second):
+
+			told = socket.of("midi")[-1]
+
+			assert told["midi"] == "off"
+			assert (told["by"], told["id"]) == (1, 7)
+
+		await close_pages(app, first, second)
+
+	tests.checks.check_clock.run(work())
+
+
+def check_a_midi_setting_refused_puts_that_page_right () -> None:
+
+	"""The page is told why, and how things really stand, so it doesn't go on showing what it asked for."""
+
+	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
+
+		app, engine, network = make()
+		page = await open_page(app)
+		before = len(page.of("midi"))
+
+		page.say({"do": "midi", "value": "sometimes", "id": 9})
+		await settle(app)
+
+		assert page.of("error")[-1]["do"] == "midi"
+		assert page.of("error")[-1]["id"] == 9
+		assert len(page.of("midi")) == before + 1
+		assert page.of("midi")[-1]["midi"] == "always"
+
+		await close_pages(app, page)
 
 	tests.checks.check_clock.run(work())
 

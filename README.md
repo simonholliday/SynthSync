@@ -40,6 +40,7 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 	- [Why not straight from the pin?](#why-not-straight-from-the-pin)
 	- [The play/pause and stop buttons](#the-playpause-and-stop-buttons)
 	- [The tempo LED](#the-tempo-led)
+	- [MIDI out](#midi-out)
 	- [Power](#power)
 	- [Parts list](#parts-list)
 	- [Choosing the transistors](#choosing-the-transistors)
@@ -243,6 +244,30 @@ It goes dark while the clock is paused or stopped. It keeps flashing when output
 
 Unlike the output LEDs, it needs no transistors: just a resistor from the pin. The resistor can be anything from 330 Ω to 1 kΩ, and a smaller one makes the LED brighter. For a blue, white or bright green LED, use 330 Ω: [Choosing LEDs](#choosing-leds) says why. The light on the Pico itself flashes on the beat too, but it is hidden once the board is in a case.
 
+### MIDI out
+
+**Optional.** One socket that sends MIDI clock, so that drum machines, sequencers and effects with a MIDI input can follow SynthSync.
+
+![MIDI out: 3.3 V through 33 ohms to the ring, and GP11 switching the tip to ground through a transistor and 10 ohms.](docs/images/midi.svg)
+
+It sends 24 clocks a beat, and Start, Continue and Stop as you press play, pause and stop. Each clock finishes arriving as the matching pulse leaves the outputs. No Song Position or notes are sent.
+
+- **The socket is a 3.5 mm stereo (TRS) jack, wired Type A,** the MIDI standard. Gear made for Type B, including some from Arturia, Novation and Erica Synths, needs an adapter or a setting of its own.
+- **A 5-pin DIN socket works too.** Wire it by the MIDI pin numbers on the diagram.
+- **Use a half-watt 33 Ω resistor.** A patch cable plugged in by mistake shorts it across the supply, and half a watt takes that. The transistor keeps whatever that cable carries away from the Pico.
+
+**To choose what it sends,** open **Settings** and look under **MIDI clock**:
+
+| Choice | What it sends |
+| --- | --- |
+| **Always** | Clock all the time, so that other gear knows the tempo before you press play. This is how it starts. |
+| **While playing** | Clock only while SynthSync is playing. Try this if something misbehaves with a clock running while stopped. |
+| **Off** | Nothing. |
+
+MIDI needs a millisecond between Start and the first clock, so with it on the outputs begin a little later: within 8 ms of pressing play, against about 2 ms with **Off**.
+
+> **To come:** this circuit hasn't yet been built and tried with real MIDI gear.
+
 ### Power
 
 **SynthSync runs on 5 V through the Pico's USB socket.** A phone charger, a power bank or a computer's USB port all do.
@@ -268,6 +293,7 @@ The clock outputs take their 5 V from the Pico's VSYS pin, pin 39, as the diagra
 | Push button, for play/pause | Optional | 1 |
 | Tempo LED, and a resistor of 330 Ω to 1 kΩ | Optional, and the most useful LED | 1 of each |
 | Output LED, and a 1 kΩ resistor | Optional | 1 of each, for each output you want one on |
+| For [MIDI out](#midi-out): NPN transistor, 33 Ω 0.5 W, 10 Ω, 1 kΩ and 4.7 kΩ resistors, 3.5 mm stereo jack socket | Optional | 1 of each |
 | Breadboard and jumper wires | To build it on | |
 
 Ordinary quarter-watt resistors are fine. Start with output 1, and add outputs in order: 2, then 3, and so on. The next two sections help you find the transistors and LEDs in a shop.
@@ -360,6 +386,8 @@ Output 1 is always the main clock, so its row has no ratio to set. It says how m
 - The tempo LED and the Pico's own light flash fast while the stop button is held down for a reset.
 
 ## Matching your other gear
+
+**Gear with a MIDI input** can follow SynthSync through its [MIDI socket](#midi-out). It gets 24 clocks a beat, whatever the outputs are set to, with Start, Continue and Stop to match the play and stop buttons.
 
 **Clocks don't agree on how many pulses make a beat.** The usual measure is PPQN, pulses per quarter note. A step sequencer such as a Moog DFAM takes one step for each pulse it gets. Fed one pulse a beat, it plays quarter notes. Fed four, it plays 16th notes, which is what most people expect. So if a module plays at a quarter of the speed you expect, or four times it, this is almost always why.
 
@@ -460,7 +488,7 @@ SynthSync stops while it measures, and starts again by itself at the end, with y
 ## What it doesn't do
 
 - **It doesn't follow another clock.** SynthSync is a master clock only.
-- **It doesn't send MIDI clock.** That is planned.
+- **It doesn't send MIDI notes, or take MIDI in.** Its [MIDI socket](#midi-out) sends clock, Start, Continue and Stop.
 - **It doesn't make 10 V gates.** The outputs are 5 V.
 - **It hasn't been tested on any board but the Pico 2 W.**
 - **The page can stop answering on a poor WiFi signal,** for a few seconds or occasionally longer. The clock and the buttons carry on regardless.

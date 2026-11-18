@@ -24,10 +24,12 @@ def test_the_diagrams_show_the_pins_the_board_uses () -> None:
 	assert tools.diagrams.PLAY_PAUSE == board.PLAY_PAUSE_PIN
 	assert tools.diagrams.STOP == board.STOP_PIN
 	assert tools.diagrams.TEMPO_LED == board.LED_PIN
+	assert tools.diagrams.MIDI_OUT == board.MIDI_PIN
 
 	# The player lights the tempo LED from the bit after the eighth output's, and MIDI out is to have the one after that.
 	assert board.LED_PIN == board.FIRST_OUTPUT_PIN + synthsync.core.timeline.MOST_OUTPUTS
 	assert board.MIDI_PIN == board.LED_PIN + 1
+	assert board.MIDI_PIN in tools.diagrams.HEADER_PIN
 	assert board.MOST_OUTPUTS == synthsync.core.timeline.MOST_OUTPUTS
 	assert board.MIDI_PIN - board.FIRST_OUTPUT_PIN < synthsync.core.timeline.PIN_BITS
 

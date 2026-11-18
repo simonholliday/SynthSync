@@ -860,6 +860,11 @@ are open, the usual sign for a panel that opens where it is.
 	gap: 0.4rem;
 }
 
+/* MIDI clock's choices say more each, so they take a line apiece. */
+.rates.single {
+	grid-template-columns: 1fr;
+}
+
 .rate {
 	display: flex;
 	align-items: center;

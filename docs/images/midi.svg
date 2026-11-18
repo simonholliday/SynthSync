@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 410" width="780" height="410" role="img" aria-labelledby="title about">
+<title id="title">The MIDI out socket</title><desc id="about">The 3.3 volt pin goes through 33 ohms to the ring of a TRS jack. GP11 goes through 1 kilohm to the base of an NPN transistor, with 4.7 kilohms from base to emitter and the emitter to ground. The collector goes through 10 ohms to the tip. The sleeve goes to ground.</desc>
+<style>
+	.wire { fill: none; stroke: #1f2328; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.shape { fill: #ffffff; stroke: #1f2328; stroke-width: 2; stroke-linejoin: round; }
+	.solid { fill: #1f2328; stroke: none; }
+	.pin { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.5; }
+	.maybe { fill: none; stroke: #59636e; stroke-width: 1.5; stroke-dasharray: 6 5; }
+	text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; }
+	.label { font-size: 14px; }
+	.name { font-size: 14px; font-weight: 600; }
+	.title { font-size: 17px; font-weight: 600; }
+	.note { font-size: 13px; fill: #59636e; }
+</style>
+<rect x="1" y="1" width="778" height="408" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
+<text class="title" x="24" y="36" text-anchor="start">The MIDI out socket</text>
+<rect class="pin" x="26" y="96" width="124" height="28" rx="6"/>
+<text class="name" x="88" y="115" text-anchor="middle">3V3 · pin 36</text>
+<path class="wire" d="M150 110 L166 110 L170 103 L178 117 L186 103 L194 117 L202 103 L210 117 L214 110 L230 110"/>
+<text class="label" x="190" y="96" text-anchor="middle">33 Ω, 0.5 W</text>
+<path class="wire" d="M230 110 L520 110"/>
+<rect class="pin" x="26" y="246" width="124" height="28" rx="6"/>
+<text class="name" x="88" y="265" text-anchor="middle">GP11 · pin 15</text>
+<path class="wire" d="M150 260 L166 260 L170 253 L178 267 L186 253 L194 267 L202 253 L210 267 L214 260 L230 260"/>
+<text class="label" x="190" y="246" text-anchor="middle">1 kΩ</text>
+<path class="wire" d="M230 260 L260 260"/>
+<circle class="solid" cx="260" cy="260" r="3.5"/>
+<circle class="shape" cx="296" cy="260" r="25"/>
+<path class="wire" d="M260 260 L284 260"/>
+<path class="wire" style="stroke-width: 3.5" d="M284 245 L284 275"/>
+<path class="wire" d="M284 254 L306 240 L306 220"/>
+<path class="wire" d="M284 266 L306 280 L306 300"/>
+<path class="solid" d="M304.0 278.7 L294.0 277.7 L298.8 270.1 Z"/>
+<text class="name" x="334" y="265" text-anchor="start">NPN</text>
+<path class="wire" d="M260 260 L260 276 L253 280 L267 288 L253 296 L267 304 L253 312 L267 320 L260 324 L260 340"/>
+<text class="label" x="244" y="305" text-anchor="end">4.7 kΩ</text>
+<path class="wire" d="M260 340 L260 350 L306 350"/>
+<path class="wire" d="M306 300 L306 350"/>
+<circle class="solid" cx="306" cy="350" r="3.5"/>
+<path class="wire" d="M292 350 L320 350"/>
+<path class="wire" d="M297 356 L315 356"/>
+<path class="wire" d="M302 362 L310 362"/>
+<path class="wire" d="M306 220 L306 170"/>
+<path class="wire" d="M306 170 L322 170 L326 163 L334 177 L342 163 L350 177 L358 163 L366 177 L370 170 L386 170"/>
+<text class="label" x="346" y="156" text-anchor="middle">10 Ω</text>
+<path class="wire" d="M386 170 L520 170"/>
+<rect class="shape" x="520" y="52" width="240" height="216" rx="8"/>
+<text class="name" x="640" y="78" text-anchor="middle">3.5 mm TRS jack, Type A</text>
+<text class="label" x="534" y="115" text-anchor="start">Ring: MIDI pin 4</text>
+<text class="label" x="534" y="175" text-anchor="start">Tip: MIDI pin 5</text>
+<text class="label" x="534" y="235" text-anchor="start">Sleeve: MIDI pin 2</text>
+<path class="wire" d="M520 230 L490 230 L490 250"/>
+<path class="wire" d="M476 250 L504 250"/>
+<path class="wire" d="M481 256 L499 256"/>
+<path class="wire" d="M486 262 L494 262"/>
+<text class="note" x="24" y="396" text-anchor="start">A 5-pin DIN socket takes the same three wires, by the MIDI pin numbers.</text>
+</svg>

@@ -349,6 +349,12 @@ function hear (message) {
 		rows.forEach((row, index) => showOutput(index));
 		settings.hear(message);
 
+	} else if (message.type === "midi") {
+
+		if (!link.stale(message, "midi")) {
+			settings.hear(message);
+		}
+
 	} else if (message.type === "output") {
 
 		if (link.stale(message, "output" + message.index)) {

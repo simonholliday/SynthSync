@@ -6,6 +6,7 @@ import sys
 import synthsync.core.clock
 import synthsync.core.ratio
 import synthsync.core.settings
+import synthsync.core.timeline
 import synthsync.core.transport
 
 # mypy treats this name as true, and nothing else does, so `typing` is never
@@ -49,6 +50,12 @@ class Engine:
 			raise OSError("The clock isn't taking commands")
 
 		self.calls.append(call)
+
+	def set_midi (self, mode: int) -> None:
+
+		"""Note what MIDI out was told to do."""
+
+		self._note(("set_midi", mode))
 
 	def set_tempo (self, tempo: int) -> None:
 
@@ -177,6 +184,66 @@ def run (work: "typing.Coroutine[typing.Any, typing.Any, None]") -> None:
 	asyncio.run(work)
 
 
+def check_midi_out_is_told_to_every_watcher_kept_and_given_to_the_engine () -> None:
+
+	"""A change of MIDI out reaches the engine as the scheduler's number, once, at the next flush."""
+
+	clock, engine, storage = make(2)
+	said: list[object] = []
+
+	clock.watch(lambda what, by: said.append((what, by)))
+	clock.set_midi("playing", "page")
+
+	assert clock.settings.midi == "playing"
+	assert said == [(synthsync.core.clock.MIDI, "page")]
+	assert storage.changes == 1
+	assert engine.calls == []
+
+	clock.flush()
+	clock.flush()
+
+	assert engine.calls == [("set_midi", synthsync.core.timeline.MIDI_PLAYING)]
+
+
+def check_midi_out_the_engine_could_not_take_is_given_again () -> None:
+
+	"""An engine too busy to listen is told again at the next flush."""
+
+	clock, engine, storage = make(1)
+
+	clock.set_midi("off")
+	engine.refuse = 1
+
+	try:
+		clock.flush()
+
+	except OSError:
+		pass
+
+	clock.flush()
+
+	assert engine.calls == [("set_midi", synthsync.core.timeline.MIDI_OFF)]
+
+
+def check_a_midi_setting_that_does_not_exist_changes_nothing () -> None:
+
+	"""It is refused, nothing is told or saved, and the engine hears nothing."""
+
+	clock, engine, storage = make(1)
+
+	try:
+		clock.set_midi("sometimes")
+
+	except ValueError:
+		assert clock.settings.midi == "always"
+		assert storage.changes == 0
+		clock.flush()
+		assert engine.calls == []
+		return
+
+	assert False, "it was taken"
+
+
 def check_loading_gives_the_engine_every_setting () -> None:
 
 	"""At power-up the engine is given the tempo and all four parts of every output."""
@@ -196,14 +263,15 @@ def check_loading_gives_the_engine_every_setting () -> None:
 	assert engine.named("set_width") == [("set_width", 0, 10000), ("set_width", 1, 0), ("set_width", 2, 10000)]
 	assert engine.named("set_role") == [("set_role", 0, 0), ("set_role", 1, 0), ("set_role", 2, 3)]
 	assert engine.named("set_mute") == [("set_mute", 0, False), ("set_mute", 1, False), ("set_mute", 2, True)]
-	assert len(engine.calls) == 13
+	assert engine.named("set_midi") == [("set_midi", synthsync.core.timeline.MIDI_ALWAYS)]
+	assert len(engine.calls) == 14
 
 	# Loading is not a change, so nothing is saved and nothing more is owed.
 	assert storage.changes == 0
 
 	clock.flush()
 
-	assert len(engine.calls) == 13
+	assert len(engine.calls) == 14
 
 
 def check_a_change_is_checked_saved_told_and_then_given_to_the_engine () -> None:
@@ -493,7 +561,8 @@ def check_a_reset_brings_back_the_defaults_and_forgets_what_was_saved () -> None
 	# Back to the default clock, of four pulses a beat, which output 1 sends and output 2 at ×1 too.
 	assert ("set_tempo", 12000) in given
 	assert ("set_ratio", 1, 4, 1) in given
-	assert len(given) == 9
+	assert ("set_midi", synthsync.core.timeline.MIDI_ALWAYS) in given
+	assert len(given) == 10
 	assert engine.named("stop") == []
 
 

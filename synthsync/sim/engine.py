@@ -44,6 +44,7 @@ class Engine:
 		self.timeline = synthsync.core.timeline.Timeline(outputs)
 		self.pulses = [0] * outputs
 		self.pins = 0
+		self.midi = synthsync.core.timeline.MIDI_OFF
 
 		self._now = now
 
@@ -62,6 +63,12 @@ class Engine:
 		"""Give an output a new ratio: this many pulses to this many beats."""
 
 		self.timeline.set_ratio(output, pulses, beats)
+
+	def set_midi (self, mode: int) -> None:
+
+		"""Note what MIDI out is to do. There is no socket here, so nothing is sent."""
+
+		self.midi = mode
 
 	def set_mute (self, output: int, muted: bool) -> None:
 

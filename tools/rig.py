@@ -62,7 +62,7 @@ import tools.stage
 
 ROOT = pathlib.Path(__file__).parent.parent
 
-TESTS = ("freerun", "player", "cluster", "sweep", "burst", "collect", "pause", "startstop", "position", "inputs", "led", "powerup", "network", "page", "air", "save", "saved", "stopsave", "shortfall")
+TESTS = ("freerun", "player", "cluster", "sweep", "burst", "collect", "pause", "startstop", "position", "inputs", "led", "midi", "powerup", "network", "page", "air", "save", "saved", "stopsave", "shortfall")
 
 # The test that needs the Pico's address on a network, and how long to give a round of
 # requests that failed to be seen as the end of the test, in seconds.
