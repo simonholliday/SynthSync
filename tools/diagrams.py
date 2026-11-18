@@ -48,6 +48,18 @@ MIDI_SINK = "10 Ω"
 MIDI_BASE = "1 kΩ"
 MIDI_BASE_DOWN = "4.7 kΩ"
 
+# Which contact of each kind of MIDI socket takes what: the supply's resistor,
+# which is MIDI's pin 4, the transistor's resistor, which is its pin 5, and
+# ground, its pin 2. Type B is Type A with the first two swapped.
+MIDI_SOCKETS = (
+	("3.5 mm TRS jack, Type A", "Ring", "Tip", "Sleeve"),
+	("3.5 mm TRS jack, Type B", "Tip", "Ring", "Sleeve"),
+	("5-pin DIN socket", "Pin 4", "Pin 5", "Pin 2"),
+)
+
+# How far either side of a crossing a wire leaves the straight, to hop over the other.
+HOP = 6
+
 # The colours: ink for the circuit, a quieter grey for notes, and the Pico's pins in the green its pinout uses.
 INK = "#1f2328"
 QUIET = "#59636e"
@@ -96,6 +108,23 @@ class Sheet:
 		"""Draw a wire through these points."""
 
 		self.parts.append('<path class="wire" d="M%s"/>' % " L".join("%g %g" % point for point in points))
+
+	def over (self, start: Point, end: Point, at: Point, size: float = HOP) -> None:
+
+		"""Draw a straight wire that hops over another where it crosses it at `at`, so the two can't be taken for joined."""
+
+		length = math.hypot(end[0] - start[0], end[1] - start[1])
+		along = ((end[0] - start[0]) / length, (end[1] - start[1]) / length)
+		before = (at[0] - along[0] * size, at[1] - along[1] * size)
+		after = (at[0] + along[0] * size, at[1] + along[1] * size)
+
+		self.parts.append('<path class="wire" d="M%g %g L%.1f %.1f A%g %g 0 0 1 %.1f %.1f L%g %g"/>' % (start + before + (size, size) + after + end))
+
+	def terminal (self, at: Point) -> None:
+
+		"""Draw one of a switch's tags."""
+
+		self.parts.append('<circle class="shape" cx="%g" cy="%g" r="5"/>' % at)
 
 	def joint (self, at: Point) -> None:
 
@@ -418,48 +447,146 @@ def tempo_led () -> Sheet:
 	return sheet
 
 
-def midi () -> Sheet:
+def midi_stage (sheet: Sheet, y: float) -> Point:
 
-	"""Draw MIDI out: the transistor that GP11 switches, and the three wires to a TRS socket."""
+	"""Draw GP11 switching MIDI's transistor, level with this height, and give where its collector ends."""
 
-	sheet = Sheet(780, 410, "The MIDI out socket", "The 3.3 volt pin goes through 33 ohms to the ring of a TRS jack. GP11 goes through 1 kilohm to the base of an NPN transistor, with 4.7 kilohms from base to emitter and the emitter to ground. The collector goes through 10 ohms to the tip. The sleeve goes to ground.")
-	socket = 520
-
-	# The supply, through its resistor to the ring.
-	ring = sheet.tag((150, 110), "3V3", SUPPLY_PIN)
-	sheet.wire(sheet.resistor(ring, MIDI_SUPPLY), (socket, ring[1]))
-
-	# GP11 switches the transistor, which joins the tip to ground through its resistor.
-	at = sheet.pin((150, 260), MIDI_OUT)
+	at = sheet.pin((150, y), MIDI_OUT)
 	base = sheet.resistor(at, MIDI_BASE)
-	meet = (base[0] + 30, at[1])
+	meet = (base[0] + 30, y)
 
 	sheet.wire(base, meet)
 	sheet.joint(meet)
 
 	collector, emitter = sheet.transistor(meet)
-	floor = (emitter[0], at[1] + 90)
+	floor = (emitter[0], y + 90)
 
-	sheet.words(emitter[0] + 28, at[1] + 5, "NPN", kind="name")
+	sheet.words(meet[0] + 38, y - 31, "NPN", anchor="end", kind="name")
 	sheet.wire(sheet.resistor(meet, MIDI_BASE_DOWN, down=True), (meet[0], floor[1]), floor)
 	sheet.wire(emitter, floor)
 	sheet.joint(floor)
 	sheet.ground(floor)
 
-	tip = (collector[0], 170)
+	return collector
 
-	sheet.wire(collector, tip)
-	sheet.wire(sheet.resistor(tip, MIDI_SINK), (socket, tip[1]))
 
-	# The socket, with each contact named for what it carries.
-	sheet.parts.append('<rect class="shape" x="%g" y="52" width="240" height="216" rx="8"/>' % socket)
-	sheet.words(socket + 120, 78, "3.5 mm TRS jack, Type A", anchor="middle", kind="name")
-	sheet.words(socket + 14, ring[1] + 5, "Ring: MIDI pin 4")
-	sheet.words(socket + 14, tip[1] + 5, "Tip: MIDI pin 5")
-	sheet.words(socket + 14, 235, "Sleeve: MIDI pin 2")
-	sheet.wire((socket, 230), (socket - 30, 230), (socket - 30, 250))
-	sheet.ground((socket - 30, 250))
-	sheet.words(24, 396, "A 5-pin DIN socket takes the same three wires, by the MIDI pin numbers.", kind="note")
+def midi () -> Sheet:
+
+	"""Draw MIDI out with a socket of each kind: one transistor, and two resistors of their own for each socket."""
+
+	sheet = Sheet(780, 526, "MIDI out, with a socket of each kind", "The 3.3 volt pin feeds a 33 ohm resistor for each socket. GP11 goes through 1 kilohm to the base of an NPN transistor, with 4.7 kilohms from base to emitter and the emitter to ground. The collector feeds a 10 ohm resistor for each socket. On a Type A jack the 33 ohms goes to the ring and the 10 ohms to the tip. On a Type B jack they are the other way round. On a 5-pin DIN socket they go to pins 4 and 5. The sleeve, or pin 2, goes to ground.")
+	socket = 500
+	sink_bus = 330
+	feed_bus = 356
+	resistors = 380
+	tops = [56 + 140 * index for index in range(len(MIDI_SOCKETS))]
+	feeds = [top + 46 for top in tops]
+	sinks = [top + 84 for top in tops]
+
+	# The supply runs along the top and down past every socket's resistor.
+	supply = sheet.tag((150, feeds[0]), "3V3", SUPPLY_PIN)
+
+	sheet.wire(supply, (resistors, feeds[0]))
+	sheet.wire((feed_bus, feeds[0]), (feed_bus, feeds[-1]))
+	sheet.joint((feed_bus, feeds[0]))
+
+	# The collector joins a line running down past every socket's other resistor.
+	collector = midi_stage(sheet, 300)
+
+	sheet.wire(collector, (sink_bus, collector[1]))
+	sheet.wire((sink_bus, sinks[0]), (sink_bus, sinks[-1]))
+	sheet.joint((sink_bus, collector[1]))
+
+	for index, (name, feed, sink, ground) in enumerate(MIDI_SOCKETS):
+
+		top = tops[index]
+		across = feeds[index]
+		below = sinks[index]
+		earth = top + 112
+
+		if index:
+			sheet.wire((feed_bus, across), (resistors, across))
+
+		if 0 < index < len(MIDI_SOCKETS) - 1:
+			sheet.joint((feed_bus, across))
+			sheet.joint((sink_bus, below))
+
+		# Every line from the collector but the last hops over the supply's on its way.
+		if index < len(MIDI_SOCKETS) - 1:
+			sheet.over((sink_bus, below), (resistors, below), (feed_bus, below))
+		else:
+			sheet.wire((sink_bus, below), (resistors, below))
+
+		sheet.wire(sheet.resistor((resistors, across), MIDI_SUPPLY), (socket, across))
+		sheet.wire(sheet.resistor((resistors, below), MIDI_SINK), (socket, below))
+
+		sheet.parts.append('<rect class="shape" x="%g" y="%g" width="256" height="128" rx="8"/>' % (socket, top))
+		sheet.words(socket + 128, top + 24, name, anchor="middle", kind="name")
+
+		for at, contact, number in ((across, feed, 4), (below, sink, 5), (earth, ground, 2)):
+			sheet.words(socket + 14, at + 5, contact if contact.startswith("Pin") else "%s: MIDI pin %d" % (contact, number))
+
+		sheet.wire((socket, earth), (socket - 24, earth), (socket - 24, earth + 10))
+		sheet.ground((socket - 24, earth + 10))
+
+	sheet.words(24, 490, "Fit any of them, or all. One transistor serves every socket, and each socket has its own two resistors.", kind="note")
+	sheet.words(24, 510, "On a 5-pin DIN socket, go by the numbers moulded on it: they don't run in order.", kind="note")
+
+	return sheet
+
+
+def midi_switch () -> Sheet:
+
+	"""Draw one TRS jack behind a two-pole, two-way switch, which swaps its tip and ring for Type A or Type B."""
+
+	sheet = Sheet(780, 436, "One jack, with a switch for Type A or Type B", "The transistor's 10 ohm resistor goes to the switch's Type A tag on its upper row and its Type B tag on its lower row. The 33 ohm resistor from the 3.3 volt pin goes to the Type A tag on the lower row and the Type B tag on the upper row. The upper middle tag goes to the jack's tip, and the lower middle tag to its ring. The sleeve goes to ground.")
+	left = 400
+	middle = 470
+	right = 540
+	upper = 150
+	lower = 250
+	centre = (middle, (upper + lower) / 2)
+	jack = 600
+	tip = 104
+	ring = 296
+	sleeve = 340
+
+	sheet.parts.append('<rect class="shape" x="356" y="118" width="228" height="164" rx="8"/>')
+	sheet.words(left, 136, "Type A", anchor="middle", kind="name")
+	sheet.words(right, 136, "Type B", anchor="middle", kind="name")
+
+	# The transistor's resistor along the top row, and the supply's along the bottom.
+	sheet.words(24, upper + 5, "Transistor's collector", kind="name")
+	sheet.wire((206, upper), (215, upper))
+	sheet.wire(sheet.resistor((215, upper), MIDI_SINK), (left, upper))
+
+	supply = sheet.tag((150, lower), "3V3", SUPPLY_PIN)
+
+	sheet.wire(supply, (215, lower))
+	sheet.wire(sheet.resistor((215, lower), MIDI_SUPPLY), (left, lower))
+
+	# Each also goes across to the far tag of the other row, which is what swaps them.
+	sheet.wire((left, upper), (right, lower))
+	sheet.over((left, lower), (right, upper), centre, 11)
+
+	# The two middle tags go to the jack.
+	sheet.wire((middle, upper), (middle, tip), (jack, tip))
+	sheet.wire((middle, lower), (middle, ring), (jack, ring))
+
+	for x in (left, middle, right):
+		for y in (upper, lower):
+			sheet.terminal((x, y))
+
+	sheet.parts.append('<rect class="shape" x="%g" y="64" width="156" height="300" rx="8"/>' % jack)
+	sheet.words(jack + 78, 84, "3.5 mm TRS jack", anchor="middle", kind="name")
+	sheet.words(jack + 14, tip + 5, "Tip")
+	sheet.words(jack + 14, ring + 5, "Ring")
+	sheet.words(jack + 14, sleeve + 5, "Sleeve")
+	sheet.wire((jack, sleeve), (jack - 24, sleeve), (jack - 24, sleeve + 10))
+	sheet.ground((jack - 24, sleeve + 10))
+
+	sheet.words(24, 396, "Any two-pole, two-way (DPDT) switch will do, with the jack on its two middle tags.", kind="note")
+	sheet.words(24, 416, "Check which way is which with a meter: a toggle joins the tags on the side away from its lever.", kind="note")
 
 	return sheet
 
@@ -515,6 +642,7 @@ DIAGRAMS = {
 	"buttons": buttons,
 	"tempo-led": tempo_led,
 	"midi": midi,
+	"midi-switch": midi_switch,
 	"direct": direct,
 	"example": example,
 }

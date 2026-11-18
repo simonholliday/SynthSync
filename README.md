@@ -246,15 +246,28 @@ Unlike the output LEDs, it needs no transistors: just a resistor from the pin. T
 
 ### MIDI out
 
-**Optional.** One socket that sends MIDI clock, so that drum machines, sequencers and effects with a MIDI input can follow SynthSync.
+**Optional.** Sockets that send MIDI clock, so that drum machines, sequencers and effects with a MIDI input can follow SynthSync.
 
-![MIDI out: 3.3 V through 33 ohms to the ring, and GP11 switching the tip to ground through a transistor and 10 ohms.](docs/images/midi.svg)
+MIDI comes on three kinds of socket: 3.5 mm TRS jacks wired **Type A** or **Type B**, and the older 5-pin DIN. Check which your gear has. Type A is the MIDI standard, and some gear from Arturia, Novation and Erica Synths is Type B. The wrong type shouldn't harm anything, but nothing will follow. There are two ways to wire it, and both start with one transistor.
+
+**A socket for each type you want.** Fit any of them, or all three, and they all work at once. Each socket needs its own 33 Ω and 10 Ω resistors.
+
+![MIDI out with three sockets: 3.3 V feeds a 33 ohm resistor for each socket, and GP11 switches a transistor whose collector feeds a 10 ohm resistor for each socket.](docs/images/midi.svg)
+
+| Socket | 33 Ω, from 3.3 V | 10 Ω, from the transistor | Ground |
+| --- | --- | --- | --- |
+| 3.5 mm TRS jack, Type A | Ring | Tip | Sleeve |
+| 3.5 mm TRS jack, Type B | Tip | Ring | Sleeve |
+| 5-pin DIN socket | Pin 4 | Pin 5 | Pin 2 |
+
+**Or one jack with a switch.** A two-pole, two-way switch swaps the tip and ring, so one jack serves both types. Build the transistor as above, and use one 33 Ω and one 10 Ω resistor.
+
+![One TRS jack behind a two-pole switch: its middle tags go to the tip and ring, and the two resistors are cross-wired to the outer tags.](docs/images/midi-switch.svg)
 
 It sends 24 clocks a beat, and Start, Continue and Stop as you press play, pause and stop. Each clock finishes arriving as the matching pulse leaves the outputs. No Song Position or notes are sent.
 
-- **The socket is a 3.5 mm stereo (TRS) jack, wired Type A,** the MIDI standard. Gear made for Type B, including some from Arturia, Novation and Erica Synths, needs an adapter or a setting of its own.
-- **A 5-pin DIN socket works too.** Wire it by the MIDI pin numbers on the diagram.
-- **Use a half-watt 33 Ω resistor.** A patch cable plugged in by mistake shorts it across the supply, and half a watt takes that. The transistor keeps whatever that cable carries away from the Pico.
+- **Use half-watt 33 Ω resistors.** A patch cable plugged in by mistake shorts that socket's resistor across the supply, and half a watt takes that. The transistor keeps whatever that cable carries away from the Pico.
+- **Don't leave patch cables in MIDI sockets.** Each one draws about 100 mA from the Pico's 3.3 V pin, which can give about 300 mA.
 
 **To choose what it sends,** open **Settings** and look under **MIDI clock**:
 
@@ -266,7 +279,7 @@ It sends 24 clocks a beat, and Start, Continue and Stop as you press play, pause
 
 MIDI needs a millisecond between Start and the first clock, so with it on the outputs begin a little later: within 8 ms of pressing play, against about 2 ms with **Off**.
 
-> **To come:** this circuit hasn't yet been built and tried with real MIDI gear.
+> **To come:** neither way of wiring it has yet been built and tried with real MIDI gear.
 
 ### Power
 
@@ -293,7 +306,9 @@ The clock outputs take their 5 V from the Pico's VSYS pin, pin 39, as the diagra
 | Push button, for play/pause | Optional | 1 |
 | Tempo LED, and a resistor of 330 Ω to 1 kΩ | Optional, and the most useful LED | 1 of each |
 | Output LED, and a 1 kΩ resistor | Optional | 1 of each, for each output you want one on |
-| For [MIDI out](#midi-out): NPN transistor, 33 Ω 0.5 W, 10 Ω, 1 kΩ and 4.7 kΩ resistors, 3.5 mm stereo jack socket | Optional | 1 of each |
+| For [MIDI out](#midi-out): NPN transistor, 1 kΩ and 4.7 kΩ resistors | Optional | 1 of each |
+| For each MIDI socket: 3.5 mm stereo jack or 5-pin DIN socket, 33 Ω 0.5 W and 10 Ω resistors | Optional | 1 of each |
+| For one MIDI jack that serves both types: two-pole, two-way (DPDT) switch | Optional | 1 |
 | Breadboard and jumper wires | To build it on | |
 
 Ordinary quarter-watt resistors are fine. Start with output 1, and add outputs in order: 2, then 3, and so on. The next two sections help you find the transistors and LEDs in a shop.

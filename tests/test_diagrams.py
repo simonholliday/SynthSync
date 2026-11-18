@@ -37,6 +37,30 @@ def test_the_diagrams_show_the_pins_the_board_uses () -> None:
 		assert pin in tools.diagrams.HEADER_PIN, pin
 
 
+def test_each_midi_socket_takes_the_contacts_the_standard_gives_it () -> None:
+
+	"""The supply's resistor is MIDI's pin 4 and the transistor's its pin 5, and Type B is Type A with those two swapped."""
+
+	assert [each[1:] for each in tools.diagrams.MIDI_SOCKETS] == [
+		("Ring", "Tip", "Sleeve"),
+		("Tip", "Ring", "Sleeve"),
+		("Pin 4", "Pin 5", "Pin 2"),
+	]
+
+
+def test_the_readme_wires_midi_as_the_diagrams_do () -> None:
+
+	"""The guide's table has a row for each socket with the diagram's contacts, and it shows both ways of wiring one."""
+
+	readme = (pathlib.Path(tools.diagrams.__file__).parent.parent / "README.md").read_text(encoding="utf-8")
+
+	for name, feed, sink, ground in tools.diagrams.MIDI_SOCKETS:
+		assert "| %s | %s | %s | %s |" % (name, feed, sink, ground) in readme, name
+
+	assert "(docs/images/midi.svg)" in readme
+	assert "(docs/images/midi-switch.svg)" in readme
+
+
 def test_every_diagram_is_a_whole_picture_with_words_for_a_screen_reader () -> None:
 
 	"""Each one reads as an SVG file, and says what it is and what it shows."""
