@@ -25,8 +25,8 @@ not even that one if it still took far longer than the server's best.
 It needs SynthSync installed on a Pico on a USB port, and a computer with
 Python 3.10 or newer, mpremote and the internet: nothing else. It stops
 SynthSync while it runs and restarts the Pico at the end. Meanwhile the
-outputs play the tempos being measured, so anything patched to them will hear
-it. Keep the computer awake throughout.
+outputs and MIDI play the tempos being measured, so anything patched to them
+will hear it. Keep the computer awake throughout.
 
 Everything is written to a log as it happens, so a run that was cut short can
 still be worked out afterwards with --analyse. The results go in a file beside
@@ -419,6 +419,7 @@ class Run (typing.NamedTuple):
 	end: dict[str, int] | None
 	broke: list[str]
 	other: list[str]
+	midi: int = 0
 
 
 class Fit (typing.NamedTuple):
@@ -458,6 +459,7 @@ def read_log (lines: typing.Iterable[str]) -> Run:
 
 	hz = 0
 	stretch_s = 0
+	midi = 0
 	reports: list[tuple[float, float]] = []
 	stretches: list[Stretch] = []
 	timed: list[dict[str, int]] = []
@@ -491,6 +493,7 @@ def read_log (lines: typing.Iterable[str]) -> Run:
 		if kind == "begin":
 			hz = found.get("hz", 0)
 			stretch_s = found.get("stretch_s", 0)
+			midi = found.get("midi", 0)
 		elif kind == "stalled" or kind == "overrun":
 			broke.append(" ".join(said[1:]))
 		elif kind == "at" and hz and {"edges", "cycles", "since_us"} <= found.keys():
@@ -502,7 +505,7 @@ def read_log (lines: typing.Iterable[str]) -> Run:
 		elif kind == "end":
 			end = found
 
-	return Run(hz, stretch_s, reports, stretches, timed, samples, end, broke, other)
+	return Run(hz, stretch_s, reports, stretches, timed, samples, end, broke, other, midi)
 
 
 def quickest (samples: list[tuple[str, Sample]], window: float = WINDOW) -> list[tuple[str, Sample]]:
@@ -777,6 +780,9 @@ def analyse (run: Run) -> dict[str, typing.Any]:
 		"hour_by_hour": hours,
 		"tempos": tempos,
 		"player": end,
+		"midi_on": run.midi != 0,
+		"midi_seen_stretches": sum(each.get("midi_seen", 0) for each in run.timed),
+		"stretches_timed": len(run.timed),
 		"other_lines": run.other[:20],
 	}
 
@@ -802,6 +808,13 @@ def describe (result: dict[str, typing.Any]) -> str:
 		lines.append("The run was cut short, before the Pico gave the player's own counts. Of the %d pulses timed, every one came exactly where its tempo puts it, to the microsecond, and no tempo drifted." % result["pulses"])
 	else:
 		lines.append("Every pulse was on time: all %d of them came exactly where their tempo puts them, to the microsecond, and no tempo drifted." % result["pulses"])
+
+	if not result["midi_on"]:
+		lines.append("MIDI out was off for this run.")
+	elif result["midi_seen_stretches"] == result["stretches_timed"]:
+		lines.append("MIDI clock was going out throughout: it was seen at the end of all %d stretches." % result["stretches_timed"])
+	else:
+		lines.append("MIDI clock was meant to be going out, but it was seen at the end of only %d of the %d stretches." % (result["midi_seen_stretches"], result["stretches_timed"]))
 
 	lines.append("")
 	lines.append("    BPM    stretches     pulses   furthest gap   drift   against network time")
@@ -1057,7 +1070,7 @@ def main (arguments: list[str] | None = None) -> int:
 		log.note("time server %s is at %s" % (name, servers[name]) if name in servers else "time server %s didn't answer, so it isn't asked" % name)
 
 	print("Measuring SynthSync's accuracy at output 1 for %g hours, at %s BPM in turn, %d minutes each." % (options.hours, options.tempos, stretch // 60), flush=True)
-	print("SynthSync is stopped meanwhile, and the outputs play the tempos being measured. The log is %s." % path, flush=True)
+	print("SynthSync is stopped meanwhile, and the outputs and MIDI play the tempos being measured. The log is %s." % path, flush=True)
 
 	# A stop asked for from outside ends the run as one that finished does, with
 	# the Pico restarted, and what it measured so far is worked out.

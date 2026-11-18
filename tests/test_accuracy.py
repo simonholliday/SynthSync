@@ -4,6 +4,7 @@ The measuring itself needs a Pico and a night, and is done by hand.
 """
 
 import ast
+import itertools
 import json
 import math
 import pathlib
@@ -14,6 +15,8 @@ import struct
 import subprocess
 import sys
 import threading
+import types
+import typing
 
 import pytest
 
@@ -755,6 +758,192 @@ def test_the_picos_half_works_out_gaps_as_the_scheduler_does () -> None:
 	for tempo in (2000, 3000, 10001, 12000, 17400, 29999, 30000):
 		for pulses, beats in ((4, 1), (96, 1), (1, 128), (3, 2), (7, 12)):
 			assert gap_lengths(tempo, pulses, beats) == tuple(150 * ticks for ticks in synthsync.core.timeline.gap_ticks(tempo, pulses, beats)), (tempo, pulses, beats)  # type: ignore[operator]
+
+
+class PretendPlayer:
+
+	"""Stands in for the Pico's player, noting what it is told in order."""
+
+	def __init__ (self, first_pin: int, outputs: int) -> None:
+
+		"""Begin with nothing told."""
+
+		self.told: list[tuple[typing.Any, ...]] = []
+
+	def __getattr__ (self, name: str) -> typing.Callable[..., None]:
+
+		"""Note any call to the player that needs no answer."""
+
+		if name not in ("set_tempo", "set_ratio", "set_midi", "settle", "start", "close"):
+			raise AttributeError(name)
+
+		return lambda *given: self.told.append((name, *given))
+
+	def status (self) -> dict[str, int]:
+
+		"""Give the counts the end of a run prints."""
+
+		return {"faults": 0, "refused": 0, "fewest_waiting": 6, "slowest_command": 1800, "empty": 0, "one_left": 0}
+
+
+class PlayerWithoutMidi (PretendPlayer):
+
+	"""Stands in for the player of an install from before MIDI."""
+
+	def __getattr__ (self, name: str) -> typing.Callable[..., None]:
+
+		"""Know nothing of MIDI."""
+
+		if name == "set_midi":
+			raise AttributeError(name)
+
+		return super().__getattr__(name)
+
+
+class PretendRing:
+
+	"""Stands in for the timing, with one more gap timed each time it is asked."""
+
+	def __init__ (self, pin: int) -> None:
+
+		"""Begin with no gaps."""
+
+		self.count = 0
+
+	def done (self) -> int:
+
+		"""Say how many gaps have been timed."""
+
+		self.count += 1
+
+		return self.count
+
+	def gap (self, number: int) -> int:
+
+		"""Give every gap the same length."""
+
+		return 18750000
+
+	def close (self) -> None:
+
+		"""Nothing to give back."""
+
+
+def run_the_picos_half (player: type[PretendPlayer], pin_levels: typing.Iterable[int]) -> tuple[PretendPlayer, list[dict[str, int]], dict[str, int]]:
+
+	"""Run the Pico's half on a laptop for three stretches, with stand-ins for the hardware and the clock, and give the player, the stretches' lines and the first line."""
+
+	tree = ast.parse((ROOT / "tools" / "board" / "accuracy.py").read_text(encoding="utf-8"))
+	kept = [node for node in tree.body if not isinstance(node, (ast.Import, ast.Try))]
+	now = [0]
+	levels = iter(pin_levels)
+	made: list[PretendPlayer] = []
+
+	def ticks_ms () -> int:
+
+		"""Move the pretend clock on a little with each look at it."""
+
+		now[0] += 1
+
+		return now[0]
+
+	def sleep_ms (milliseconds: int) -> None:
+
+		"""Move the pretend clock on."""
+
+		now[0] += milliseconds
+
+	def make_player (first_pin: int, outputs: int) -> PretendPlayer:
+
+		"""Make the player, and keep it to look at afterwards."""
+
+		made.append(player(first_pin, outputs))
+
+		return made[-1]
+
+	space: dict[str, typing.Any] = {
+		"__name__": "accuracy",
+		"_OUTPUTS": 2,
+		"machine": types.SimpleNamespace(freq=lambda: 150000000, Pin=lambda number: types.SimpleNamespace(value=lambda: next(levels))),
+		"rp2": types.SimpleNamespace(asm_pio=lambda: lambda program: program),
+		"time": types.SimpleNamespace(ticks_ms=ticks_ms, ticks_us=lambda: now[0] * 1000, ticks_diff=lambda later, earlier: later - earlier, sleep_ms=sleep_ms),
+		"synthsync": types.SimpleNamespace(device=types.SimpleNamespace(board=types.SimpleNamespace(FIRST_OUTPUT_PIN=2, MIDI_PIN=11), player=types.SimpleNamespace(Player=make_player))),
+	}
+
+	exec(compile(ast.Module(body=kept, type_ignores=[]), "accuracy", "exec"), space)
+	space["Ring"] = PretendRing
+
+	said: list[str] = []
+	space["print"] = said.append
+	space["measure"]((12000, 6000), 1, 1, 3)
+
+	timed = [tools.accuracy.fields(line.split()[2:]) for line in said if line.startswith("ACCURACY timed")]
+	begin = [tools.accuracy.fields(line.split()[2:]) for line in said if line.startswith("ACCURACY begin")]
+
+	return made[0], timed, begin[0]
+
+
+def test_the_picos_half_sends_midi_clock_from_before_the_clock_starts () -> None:
+
+	"""MIDI goes on as SynthSync's default has it, before the player settles and starts, and the first line says so."""
+
+	player, timed, begin = run_the_picos_half(PretendPlayer, itertools.cycle((0, 1)))
+	names = [each[0] for each in player.told]
+
+	assert ("set_midi", synthsync.core.timeline.MIDI_ALWAYS) in player.told
+	assert names.index("set_midi") < names.index("settle") < names.index("start")
+	assert begin["midi"] == synthsync.core.timeline.MIDI_ALWAYS
+	assert [each["midi_seen"] for each in timed] == [1, 1, 1]
+
+
+@pytest.mark.parametrize("levels", [(0,), (1,)])
+def test_the_picos_half_says_when_midis_pin_never_rises (levels: tuple[int, ...]) -> None:
+
+	"""A pin resting low or stuck high carries no byte, so neither counts as MIDI going out."""
+
+	_, timed, _ = run_the_picos_half(PretendPlayer, itertools.cycle(levels))
+
+	assert [each["midi_seen"] for each in timed] == [0, 0, 0]
+
+
+def test_the_picos_half_still_runs_on_an_install_from_before_midi () -> None:
+
+	"""With no MIDI to send, it says so and doesn't touch the pin."""
+
+	player, timed, begin = run_the_picos_half(PlayerWithoutMidi, ())
+
+	assert "set_midi" not in [each[0] for each in player.told]
+	assert begin["midi"] == 0
+	assert [each["midi_seen"] for each in timed] == [0, 0, 0]
+
+
+@pytest.mark.parametrize("begin, seen_in, expected", [
+	(" midi=2", "every stretch", "MIDI clock was going out throughout: it was seen at the end of all %d stretches."),
+	(" midi=2", "the first stretch", "MIDI clock was meant to be going out, but it was seen at the end of only 1 of the %d stretches."),
+	(" midi=0", "no stretch", "MIDI out was off for this run."),
+	("", "no stretch", "MIDI out was off for this run."),
+])
+def test_a_result_says_what_midi_did (tmp_path: pathlib.Path, begin: str, seen_in: str, expected: str) -> None:
+
+	"""The result says whether MIDI was on and seen, and a log from before MIDI counts as off."""
+
+	stretches = 0
+	lines = []
+
+	for line in make_run(tmp_path / "run.log", 2.0, 0.0).read_text(encoding="utf-8").splitlines():
+
+		if "ACCURACY begin" in line:
+			line += begin
+		elif "ACCURACY timed" in line:
+			line += " midi_seen=%d" % (seen_in == "every stretch" or (seen_in == "the first stretch" and stretches == 0))
+			stretches += 1
+
+		lines.append(line)
+
+	said = tools.accuracy.describe(tools.accuracy.analyse(tools.accuracy.read_log(lines)))
+
+	assert stretches > 1
+	assert (expected % stretches if "%d" in expected else expected) in said
 
 
 def test_a_pico_that_goes_quiet_ends_the_run_and_a_spoiled_byte_does_not (tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:

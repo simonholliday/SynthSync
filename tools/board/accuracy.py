@@ -9,8 +9,8 @@ A state machine times the gap between each rising edge of output 1 and the
 next, to a cycle of the 150 MHz clock, and DMA puts every gap in a ring that
 the first core empties several times a second. So every pulse of the run is
 timed, and the gaps add up to how long output 1 has been playing, by the
-Pico's own crystal. The other outputs play too, so the player is as busy as in
-use.
+Pico's own crystal. The other outputs play too, and MIDI's clock goes out, so
+the player is as busy as in use.
 
 Every few seconds this waits for a pulse, and says how many pulses have come,
 what their gaps add up to and how long ago that pulse was. The computer notes
@@ -18,8 +18,8 @@ when each report arrives, against network time, and the difference between
 the two is how far the Pico's tempo is from true.
 
 At the end of each tempo's stretch it says how that tempo's pulses kept time:
-the gap furthest from what the tempo asks for, and how far all the stretch's
-gaps together came from the stretch's ideal length.
+the gap furthest from what the tempo asks for, how far all the stretch's gaps
+together came from the stretch's ideal length, and whether MIDI was going out.
 """
 
 import array
@@ -77,6 +77,14 @@ _PULSE_PATIENCE = 3000
 # The pulses a beat of every output after the first, which play to keep the
 # player as busy as in use.
 _OTHERS = ((24, 1), (3, 2), (1, 4), (6, 1), (2, 1), (1, 2), (3, 1))
+
+# The scheduler's number for sending MIDI's clock all the time, which is what
+# SynthSync does unless told otherwise. A test holds it to the scheduler's.
+_MIDI_ALWAYS = 2
+
+# How long to watch MIDI's pin for a byte, in milliseconds. At 20 BPM a clock
+# goes out every 125 ms.
+_MIDI_PATIENCE = 200
 
 
 @rp2.asm_pio()
@@ -203,11 +211,31 @@ class Stretch:
 
 		return (self.cycles * scale - self.timed * self.beats * _UNITS * _CYCLES_PER_TICK) // scale
 
-	def say (self) -> None:
+	def say (self, midi_seen: int) -> None:
 
-		"""Print how the stretch went."""
+		"""Print how the stretch went, and whether MIDI was seen going out at its end, as 1 or 0."""
 
-		print("ACCURACY timed stretch=%d tempo=%d pulses=%d worst_cycles=%d drift_cycles=%d" % (self.number, self.tempo, self.timed, self.worst, self.drift()))
+		print("ACCURACY timed stretch=%d tempo=%d pulses=%d worst_cycles=%d drift_cycles=%d midi_seen=%d" % (self.number, self.tempo, self.timed, self.worst, self.drift(), midi_seen))
+
+
+def midi_going () -> int:
+
+	"""Watch MIDI's pin and say whether a byte began, as 1 or 0. The pin rests low and rises for a byte's first bit, and asking leaves it with the player."""
+
+	pin = machine.Pin(synthsync.device.board.MIDI_PIN)
+	began = time.ticks_ms()
+	was = pin.value()
+
+	while time.ticks_diff(time.ticks_ms(), began) < _MIDI_PATIENCE:
+
+		now = pin.value()
+
+		if now and not was:
+			return 1
+
+		was = now
+
+	return 0
 
 
 def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: int = 4, beats: int = 1) -> None:
@@ -215,7 +243,7 @@ def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: 
 	"""Play output 1 at `pulses` to `beats` beats, through these tempos in turn, for `total_s` seconds, a stretch of `stretch_s` each, and report every `every_s` seconds.
 
 	Tempos are in hundredths of a BPM. Output 1 is timed; the others play
-	ratios of their own.
+	ratios of their own, and MIDI's clock goes out, on an install that has it.
 	"""
 
 	first_pin = synthsync.device.board.FIRST_OUTPUT_PIN
@@ -229,10 +257,15 @@ def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: 
 	for output in range(1, outputs):
 		player.set_ratio(output, _OTHERS[output - 1][0], _OTHERS[output - 1][1])
 
+	midi = _MIDI_ALWAYS if hasattr(player, "set_midi") else 0
+
+	if midi:
+		player.set_midi(midi)
+
 	player.settle()
 	player.start()
 
-	print("ACCURACY begin hz=%d pulses=%d beats=%d outputs=%d every_s=%d stretch_s=%d total_s=%d tempos=%s" % (_HZ, pulses, beats, outputs, every_s, stretch_s, total_s, ",".join(str(tempo) for tempo in tempos)))
+	print("ACCURACY begin hz=%d pulses=%d beats=%d outputs=%d midi=%d every_s=%d stretch_s=%d total_s=%d tempos=%s" % (_HZ, pulses, beats, outputs, midi, every_s, stretch_s, total_s, ",".join(str(tempo) for tempo in tempos)))
 
 	# How many gaps have been read from the ring, how many of them count
 	# towards the total and what they add up to in cycles, and whether the
@@ -303,7 +336,7 @@ def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: 
 
 		if elapsed >= change_due:
 
-			stretch.say()
+			stretch.say(midi_going() if midi else 0)
 
 			number = stretch.number + 1
 			tempo = tempos[number % len(tempos)]
@@ -316,7 +349,7 @@ def measure (tempos: tuple, stretch_s: int, every_s: int, total_s: int, pulses: 
 
 		time.sleep_ms(20)
 
-	stretch.say()
+	stretch.say(midi_going() if midi else 0)
 
 	status = player.status()
 	player.close()

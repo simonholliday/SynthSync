@@ -509,7 +509,7 @@ A separate twelve-hour test kept the page in constant use and saved the settings
 
 You can find out how true your own SynthSync's tempo is, with nothing but the Pico on its USB cable and a computer on the internet. Leave it running overnight: the longer it runs, the closer the answer.
 
-1. **Unplug anything patched to SynthSync's outputs.** For the whole run, output 1 plays 30, 60, 120, 174 and 300 BPM in turn, and the other outputs play along.
+1. **Unplug anything patched to SynthSync's outputs or MIDI out.** For the whole run, output 1 plays 30, 60, 120, 174 and 300 BPM in turn, and the other outputs and MIDI clock play along.
 2. **Install Python** (3.10 or newer) on the computer, and then mpremote, which talks to the Pico over USB: `python -m pip install mpremote`
 3. **In a copy of SynthSync's source code,** from its GitHub page rather than the ready-made folder for the Pico, **run** `python -m tools.accuracy`
 
