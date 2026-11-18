@@ -1,6 +1,6 @@
 /*
 The page's second view, for the things that are set once: how many pulses the
-clock sends a beat, how the page looks on this phone, which WiFi SynthSync is
+clock sends a beat, how the page looks on this device, which WiFi SynthSync is
 on, the password of its own network, starting again as new, and how it is
 doing. At its top, and only when
 there is something to say, it says what in config.txt couldn't be used.
@@ -27,15 +27,15 @@ const MIDI_MODES = [
 	["off", "Off", ""],
 ];
 
-// The looks a phone can choose, each by the name page.css knows it by and the name shown, Dark first among them
-// because it is what a phone that hasn't chosen gets. A test holds this list to the looks page.css draws.
+// The looks a device can choose, each by the name page.css knows it by and the name shown, Dark first among them
+// because it is what a device that hasn't chosen gets. A test holds this list to the looks page.css draws.
 const LOOKS = [
-	["system", "Match phone"], ["dark", "Dark"], ["light", "Light"],
+	["system", "Match device"], ["dark", "Dark"], ["light", "Light"],
 	["modular", "Modular"], ["phosphor", "Phosphor"], ["phaedra", "Phaedra"], ["constructor", "Constructor"],
 	["aluminium", "Aluminium"], ["airports", "Airports"], ["oxygene", "Oxygène"], ["workbench", "Workbench"],
 ];
 
-// The look a phone has until it chooses one, and where this phone keeps its choice. index.html reads it too,
+// The look a device has until it chooses one, and where this device keeps its choice. index.html reads it too,
 // before the page is first drawn.
 const FIRST_LOOK = "dark";
 const LOOK_KEY = "synthsync.look";
@@ -127,7 +127,7 @@ export class Settings {
 		});
 	}
 
-	/* Offer every look, with this phone's choice ticked, and wear it. Nothing about it is sent to the Pico. */
+	/* Offer every look, with this device's choice ticked, and wear it. Nothing about it is sent to the Pico. */
 	showLooks () {
 
 		let chosen = FIRST_LOOK;
@@ -169,7 +169,7 @@ export class Settings {
 		this.wear(chosen);
 	}
 
-	/* Put a look on the page, and colour the phone's own bar to match it. */
+	/* Put a look on the page, and colour the browser's own bar to match it. */
 	wear (key) {
 
 		document.documentElement.dataset.theme = key;

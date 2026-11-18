@@ -392,7 +392,7 @@ Output 1 is always the main clock, so its row has no ratio to set. It says how m
 
 **Settings,** at the top of the page, has how many pulses a beat the main clock sends, how the page looks, the WiFi, a button that puts every setting back as new, and a count of timing faults, which should always read zero.
 
-**The page is dark** unless you choose another look under **Look**: light, one that follows your phone's own setting, or one of eight others. Each phone keeps its own choice, so a phone on the stage can stay dark while one in daylight is light.
+**The page is dark** unless you choose another look under **Look**: light, one that follows your device's own setting, or one of eight others. Each device keeps its own choice, so a phone on the stage can stay dark while a tablet in daylight is light.
 
 **The lights on the hardware:**
 

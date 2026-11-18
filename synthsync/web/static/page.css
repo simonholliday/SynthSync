@@ -47,7 +47,7 @@ attribute is, so each swatch in Settings paints itself in its own look.
 	--wrong: #ff8787;
 }
 
-/* Match phone: Dark or Light, whichever the phone is set to. */
+/* Match device: Dark or Light, whichever the device is set to. */
 [data-theme="system"] {
 	color-scheme: dark;
 
@@ -1049,7 +1049,7 @@ are open, the usual sign for a panel that opens where it is.
 	}
 }
 
-/* The looks a phone can choose, two to a line, each with a swatch drawn in its own look. */
+/* The looks a device can choose, two to a line, each with a swatch drawn in its own look. */
 
 .looks {
 	display: grid;

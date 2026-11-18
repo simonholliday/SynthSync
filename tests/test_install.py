@@ -87,7 +87,7 @@ def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () ->
 	assert "import " not in page.split("<script", 1)[1]
 	assert page.count("<style>") == 1
 
-	# Two scripts: a few lines in the head that put this phone's look on before the page is first drawn,
+	# Two scripts: a few lines in the head that put this device's look on before the page is first drawn,
 	# ahead of the style sheet, and the module that is everything else.
 	assert page.count("<script") == 2 and page.count("<script>") == 1 and page.count('<script type="module">') == 1
 	assert page.index("<script>") < page.index("<style>") < page.index('<script type="module">')

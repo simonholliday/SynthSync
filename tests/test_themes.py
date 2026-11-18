@@ -35,7 +35,7 @@ def looks () -> list[tuple[str, str, dict[str, str]]]:
 
 	"""Read every look's block out of the style sheet: its key, its colour scheme and its tokens.
 
-	Match phone has two, its dark half and its light half.
+	Match device has two, its dark half and its light half.
 	"""
 
 	css = (STATIC / "page.css").read_text()
@@ -74,7 +74,7 @@ def rgb (colour: str) -> str:
 
 def token (key: str, name: str, scheme: str = "") -> str:
 
-	"""Give one token's value in one look, or in the given half of Match phone."""
+	"""Give one token's value in one look, or in the given half of Match device."""
 
 	return [values for found, kind, values in looks() if found == key and scheme in ("", kind)][0][name]
 
@@ -122,7 +122,7 @@ def test_every_look_sets_every_colour_the_page_uses () -> None:
 
 def test_settings_offers_exactly_the_looks_the_style_sheet_draws () -> None:
 
-	"""Every look offered is drawn, every look drawn is offered, Match phone has a dark half and a light half, and the rest one of either."""
+	"""Every look offered is drawn, every look drawn is offered, Match device has a dark half and a light half, and the rest one of either."""
 
 	found = looks()
 	keys = [key for key, _, _ in found]
@@ -166,7 +166,7 @@ def test_the_page_puts_a_kept_look_on_before_it_is_first_drawn () -> None:
 @pytest.mark.parametrize("first, second, floor", PAIRS)
 def test_every_look_can_be_read (first: str, second: str, floor: float) -> None:
 
-	"""Each pairing the page draws clears its floor in every look, Match phone's light half included."""
+	"""Each pairing the page draws clears its floor in every look, Match device's light half included."""
 
 	short = []
 

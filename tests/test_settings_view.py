@@ -910,7 +910,7 @@ def test_the_look_is_dark_until_this_phone_chooses_another_and_the_choice_is_kep
 	choices = phone.locator(".look")
 
 	assert choices.count() == 11
-	assert choices.all_inner_texts()[:3] == ["Match phone", "Dark", "Light"]
+	assert choices.all_inner_texts()[:3] == ["Match device", "Dark", "Light"]
 	assert phone.locator('.look input:checked').get_attribute("value") == "dark"
 	assert wearing(phone) == ("dark", ground("dark"), tests.test_themes.token("dark", "ground"))
 
@@ -930,12 +930,12 @@ def test_the_look_is_dark_until_this_phone_chooses_another_and_the_choice_is_kep
 	assert wearing(phone)[:2] == ("workbench", ground("workbench"))
 
 
-def test_match_phone_follows_the_phone_from_dark_to_light (phone: "playwright.sync_api.Page") -> None:
+def test_match_device_follows_the_device_from_dark_to_light (phone: "playwright.sync_api.Page") -> None:
 
-	"""Matching the phone, the page is Light's colours while the phone is set light and Dark's while it is set dark, without being chosen again."""
+	"""Matching the device, the page is Light's colours while the device is set light and Dark's while it is set dark, without being chosen again."""
 
 	phone.emulate_media(color_scheme="dark")
-	phone.locator(".look").filter(has_text="Match phone").tap()
+	phone.locator(".look").filter(has_text="Match device").tap()
 
 	assert tests.pages.eventually(lambda: wearing(phone)[:2] == ("system", ground("system", "dark")))
 
