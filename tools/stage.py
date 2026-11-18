@@ -7,6 +7,7 @@ is written down, so the three can't drift apart.
 Nothing here writes anywhere but the folder it is given.
 """
 
+import base64
 import gzip
 import pathlib
 import re
@@ -150,11 +151,33 @@ _SCRIPT = '<script type="module" src="page.js"></script>'
 _IMPORT_NAMES = re.compile(r'^import \{([A-Za-z, ]+)\} from "\./([a-z]+)\.js";$', re.MULTILINE)
 _IMPORT_ALL = re.compile(r'^import \* as ([A-Za-z]+) from "\./([a-z]+)\.js";$', re.MULTILINE)
 _EXPORT = re.compile(r'^export (?:class|function|const|let) ([A-Za-z]+)', re.MULTILINE)
+_FONT = re.compile(r'url\("([a-z0-9-]+\.woff2)"\)')
+
+
+def inline_fonts (style: str, source: pathlib.Path) -> str:
+
+	"""Put each font the style sheet names by file inside it, so the page needs no file but itself."""
+
+	def inline (found: re.Match[str]) -> str:
+
+		name = found.group(1)
+
+		if name not in synthsync.web.app.PAGE_FILES:
+			raise ValueError("page.css names %s, which isn't one of the page's files" % name)
+
+		return 'url("data:font/woff2;base64,%s")' % base64.b64encode((source / name).read_bytes()).decode()
+
+	inlined = _FONT.sub(inline, style)
+
+	if re.search(r'url\((?!"data:)', inlined):
+		raise ValueError("page.css names a file one_page can't put inside the page")
+
+	return inlined
 
 
 def one_page () -> str:
 
-	"""Write the page as one file: `index.html`, with the style sheet and every script inside it.
+	"""Write the page as one file: `index.html`, with the style sheet, its fonts and every script inside it.
 
 	A phone then opens the page with one request over one connection, where
 	the six files take six. The scripts are modules: each one `page.js`
@@ -165,7 +188,7 @@ def one_page () -> str:
 
 	source = ROOT / "synthsync" / "web" / "static"
 	page = (source / "index.html").read_text()
-	style = (source / "page.css").read_text()
+	style = inline_fonts((source / "page.css").read_text(), source)
 	main = (source / "page.js").read_text()
 	parts = []
 

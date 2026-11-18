@@ -237,6 +237,10 @@ PAGE_FILES = {
 	"settings.js": "text/javascript; charset=utf-8",
 	"knob.js": "text/javascript; charset=utf-8",
 	"ratio.js": "text/javascript; charset=utf-8",
+	# The fonts, which the Pico's page carries inside it instead.
+	"inter-400.woff2": "font/woff2",
+	"inter-700.woff2": "font/woff2",
+	"lexend-600.woff2": "font/woff2",
 }
 
 # What `/api/health` answers with.

@@ -470,6 +470,7 @@ SynthSync is written in MicroPython, with tests that run on an ordinary computer
 - **The version** is the git tag's: tagging `v1.2.0` makes it 1.2.0, which the page's About shows. A Pico is given the version installed on the computer that copies SynthSync to it, so run `pip install -e '.[dev]'` again after tagging.
 - **Copying it to a Pico from the command line:** `python -m tools.install`, which needs `mpy-cross` for the same version of MicroPython.
 - **The wiring diagrams** in this README are drawn by `python -m tools.diagrams`, which needs nothing installed. Change a pin or a value there, never in the pictures.
+- **The page's fonts** are cut down to the characters SynthSync shows, so the page stays small. After changing the page's words, run `python -m tools.fonts` to cut them again: the tests say when a character is missing.
 
 > **To come:** a guide to the code, and to the rig that measures the timing on a real board.
 
@@ -478,3 +479,5 @@ SynthSync is written in MicroPython, with tests that run on an ordinary computer
 > **To come:** the licence.
 
 SynthSync runs on [MicroPython](https://micropython.org/), and its page is served by [Microdot](https://github.com/miguelgrinberg/microdot).
+
+The page is set in [Inter](https://github.com/rsms/inter) and [Lexend](https://github.com/googlefonts/lexend), both under the [SIL Open Font Licence](https://openfontlicense.org/), whose text is beside each font in `fonts/`.

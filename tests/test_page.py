@@ -252,6 +252,108 @@ def test_a_narrow_phone_still_shows_every_number_whole (chromium: "playwright.sy
 		page.context.close()
 
 
+# The widths of a few tempos in the tempo's own font.
+TEMPO_WIDTHS = """() => {
+	const box = document.getElementById("tempo-text");
+	const style = getComputedStyle(box);
+	const probe = document.createElement("span");
+	for (const name of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing", "fontVariantNumeric"]) probe.style[name] = style[name];
+	document.body.append(probe);
+	const widths = ["111.11", "888.88", "120.25"].map(text => { probe.textContent = text; return probe.getBoundingClientRect().width; });
+	probe.remove();
+	return widths;
+}"""
+
+
+def test_the_title_is_drawn_in_lexend_and_everything_else_in_inter (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
+
+	"""Every font the page carries is drawn, from its own files and from the one file the Pico sends, which asks for none, and the tempo's figures are all one width."""
+
+	stand.as_new()
+
+	page = tests.pages.phone(chromium)
+	asked: list[str] = []
+
+	page.on("request", lambda request: asked.append(request.url.rsplit("/", 1)[-1]))
+
+	problems = open_page(page, stand)
+	loaded = "document.fonts.ready.then(() => [...document.fonts].map(face => [face.family.replaceAll('\"', ''), face.weight, face.status].join(' ')).sort().join(', '))"
+
+	assert tests.pages.eventually(lambda: page.evaluate(loaded) == "Inter 400 loaded, Inter 700 loaded, Lexend 600 loaded"), page.evaluate(loaded)
+	assert page.evaluate("document.fonts.check('600 16px Lexend', 'SynthSync') && document.fonts.check('16px Inter') && document.fonts.check('600 16px Inter')")
+
+	families = page.evaluate("['h1', 'body', '#tempo-text', '.output .name', 'button'].map(found => getComputedStyle(document.querySelector(found)).fontFamily.split(',')[0].replaceAll('\"', ''))")
+
+	assert families == ["Lexend", "Inter", "Inter", "Inter", "Inter"]
+
+	# From the page's own files each font is a file of its own. Packed, they are inside the page.
+	fonts = sorted(name for name in asked if name.endswith(".woff2"))
+
+	assert fonts == (["inter-400.woff2", "inter-700.woff2", "lexend-600.woff2"] if "page.css" in asked else [])
+
+	# Every figure is one width, so the tempo doesn't shift as it changes.
+	widths = page.evaluate(TEMPO_WIDTHS)
+
+	assert widths[0] == widths[1] == widths[2], widths
+
+	assert problems == []
+
+	page.context.close()
+
+
+# Down one view: the space above the header, then between each box and the
+# next, the space at the side, and the room above and below the title. The
+# tempo and play/stop are one panel, and only the panels showing count.
+GAPS = """(view) => {
+	const box = found => found.getBoundingClientRect();
+	const header = box(document.querySelector("header"));
+	const panels = view === "main"
+		? [{top: box(document.querySelector(".tempo")).top, bottom: box(document.querySelector(".transport")).bottom, left: box(document.querySelector(".tempo")).left}, ...[...document.querySelectorAll(".output")].map(box)]
+		: [...document.querySelectorAll("#settings-view .panel")].filter(found => found.offsetParent !== null).map(box);
+	const boxes = [header, ...panels];
+	const title = box(document.querySelector("h1"));
+	return {
+		gaps: [header.top, ...panels.map((found, place) => found.top - boxes[place].bottom)],
+		side: panels[0].left,
+		above: title.top,
+		below: panels[0].top - title.bottom,
+	};
+}"""
+
+
+def test_the_header_and_every_panel_sit_one_gap_apart_with_the_title_centred (chromium: "playwright.sync_api.Browser", stand: tests.stand.Stand) -> None:
+
+	"""From the top of the screen to the header, to the tempo's panel and between every output, the space is the same 12 px, the title has as much room above as below, and the settings' panels are spaced alike.
+
+	The sides have the same 12 px, but for the narrowest phones, which give the outputs' rows 4 px more.
+	"""
+
+	stand.as_new()
+
+	for width in (320, 380, 390):
+
+		page = tests.pages.phone(chromium, width)
+		problems = open_page(page, stand)
+
+		for view in ("main", "settings"):
+
+			if view == "settings":
+				page.goto(stand.address + "/#settings")
+				page.wait_for_function("!document.getElementById('settings-view').hidden && document.getElementById('wifi-status').textContent !== ''")
+
+			page.evaluate("window.scrollTo(0, 0)")
+			found = page.evaluate(GAPS, view)
+
+			assert len(found["gaps"]) == (6 if view == "main" else 7), (width, view, found)
+			assert all(abs(gap - 12) < 0.5 for gap in found["gaps"]), (width, view, found)
+			assert abs(found["side"] - (8 if width < 375 else 12)) < 0.5, (width, view, found)
+			assert abs(found["above"] - found["below"]) < 0.5, (width, view, found)
+
+		assert problems == []
+
+		page.context.close()
+
+
 def test_typing_a_tempo_sets_it (phone: "playwright.sync_api.Page", stand: tests.stand.Stand) -> None:
 
 	"""A tempo typed with decimals reaches the clock exactly, and the knob follows."""

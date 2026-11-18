@@ -46,6 +46,11 @@ dev = [
 	# a Chromium of its own, which `playwright install chromium` fetches. Where
 	# either is missing those tests are skipped.
 	"playwright",
+	# Cuts the page's fonts down to the characters SynthSync shows
+	# (`python -m tools.fonts`), and lets the tests check that every one is
+	# still there after the page's words change. The `woff` extra brings
+	# brotli, without which it can't read or write a .woff2 file.
+	"fonttools[woff]",
 ]
 
 [tool.hatch.version]
@@ -91,3 +96,9 @@ exclude = ["^synthsync/device/", "^tools/board/"]
 # stale in ways that abort the run with an internal error rather than a type
 # error. Keep the cache on local disk. It is disposable and never committed.
 cache_dir = "/tmp/mypy-cache-synthsync"
+
+# fontTools has no type hints of its own, and only `tools/fonts.py` and its
+# tests use it.
+[[tool.mypy.overrides]]
+module = ["fontTools", "fontTools.*"]
+ignore_missing_imports = true

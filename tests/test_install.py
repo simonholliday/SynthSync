@@ -5,6 +5,7 @@ and what it lays out is checked as files on this machine.
 """
 
 import ast
+import base64
 import gzip
 import pathlib
 import re
@@ -89,17 +90,39 @@ def test_the_packed_page_holds_every_part_of_the_page_and_asks_for_nothing () ->
 	assert page.count("<script") == 2 and page.count("<script>") == 1 and page.count('<script type="module">') == 1
 	assert page.index("<script>") < page.index("<style>") < page.index('<script type="module">')
 
-	# Every line of every part is there, apart from how the scripts named one another.
+	# Every line of every part is there, apart from how the scripts named one another, and with the fonts inside the style sheet.
 	for name in ("page.css", "page.js", "settings.js", "knob.js", "ratio.js"):
-		for line in (source / name).read_text().splitlines():
+		for line in tools.stage.inline_fonts((source / name).read_text(), source).splitlines():
 			if line.startswith("import "):
 				continue
 			assert line.removeprefix("export ") in page, (name, line)
+
+	# Each font is there whole, and the style sheet names no file.
+	fonts = [name for name, kind in synthsync.web.app.PAGE_FILES.items() if kind == "font/woff2"]
+
+	assert len(fonts) == 3
+	assert re.findall(r"url\((?!\"data:)", page) == []
+
+	for name in fonts:
+		assert page.count('url("data:font/woff2;base64,%s")' % base64.b64encode((source / name).read_bytes()).decode()) == 1, name
 
 	# Each module's names stay inside a function of its own, and only what it exports is handed over.
 	assert "const {Knob} = (() => {" in page
 	assert "const ratio = (() => {" in page
 	assert "const {Settings} = (() => {" in page
+
+
+def test_a_style_sheet_naming_a_file_the_page_cant_carry_is_refused () -> None:
+
+	"""A font that isn't one of the page's files, or any other file, would be asked for by a phone and never come, so the packing says so."""
+
+	source = ROOT / "synthsync" / "web" / "static"
+
+	with pytest.raises(ValueError, match="other.woff2"):
+		tools.stage.inline_fonts('src: url("other.woff2");', source)
+
+	with pytest.raises(ValueError, match="can't put inside"):
+		tools.stage.inline_fonts("background: url(ground.png);", source)
 
 
 def test_what_is_laid_out_is_compiled_code_and_a_gzipped_page_and_nothing_else (tmp_path: pathlib.Path, compiler: str) -> None:

@@ -103,5 +103,8 @@ def test_every_file_the_page_asks_for_is_one_the_app_sends () -> None:
 
 	index = (STATIC / "index.html").read_text()
 	asked = set(re.findall(r'(?:href|src)="([\w.]+)"', index)) | set(re.findall(r'from "\./([\w.]+)"', scripts()))
+	asked |= set(re.findall(r'url\("([\w.-]+)"\)', (STATIC / "page.css").read_text()))
+
+	assert {"inter-400.woff2", "inter-700.woff2", "lexend-600.woff2"} <= asked
 
 	assert asked <= set(synthsync.web.app.PAGE_FILES), asked
