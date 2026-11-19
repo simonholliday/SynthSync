@@ -18,7 +18,8 @@ TEXT = b"""# How your SynthSync is wired.
 # it is.
 
 # How many clock outputs are wired, from 1 to 8. Output 1 is on GP2, output 2
-# on GP3, and so on, up to output 8 on GP9.
+# on GP3, and so on, up to output 8 on GP9. More than 4 carries a risk for now:
+# read "More or fewer outputs" in SynthSync's instructions first.
 outputs = 4
 
 # The tempo range, for the page and for a tempo knob alike, from 1 to 1000 BPM.

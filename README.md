@@ -57,7 +57,7 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 ## What it does
 
 - **Sets the tempo for your system,** from 20 to 300 BPM, in steps as fine as 0.01 BPM. You can [choose another range](#choosing-the-tempo-range), anywhere from 1 to 1000 BPM.
-- **Has up to eight clock outputs,** four of them out of the box. Each is a 3.5 mm jack that pulses at about 5 V.
+- **Has up to eight clock outputs,** four of them out of the box. Each is a 3.5 mm jack that pulses at about 5 V. For now, read [More or fewer outputs](#more-or-fewer-outputs) before using more than four.
 - **Output 1 is the main clock.** Out of the box it sends four pulses a beat, one for each 16th note, which is what most step sequencers want. You can change that to suit your gear: [Matching your other gear](#matching-your-other-gear) says how.
 - **Every other output is a multivider:** a clock multiplier and divider in one, named the way an attenuverter is. Each has its own ratio of the main clock: ×2 is twice as fast, and ÷4 a quarter as fast. The slowest is ÷128. The fastest is ×24 at four pulses a beat, because no output goes faster than 96 pulses a beat.
 - **Keeps every output locked to the others.** They all count from the same start, so outputs that should land together do. Change a ratio while the clock runs and that output moves straight onto its new grid, without a restart.
@@ -507,9 +507,16 @@ Open the file with Thonny, as in [step 2](#step-2-copy-synthsync-onto-the-pico),
 
 Eight is the most there can be. Outputs 5 to 8 are on GP6 to GP9, pins 9 to 12.
 
-Eight outputs keep exact time too. In every test with eight, no pulse came late, even with all of them as busy as the page can set them, MIDI's clock going and the page in hard use.
+**More than four outputs carry a risk, for now.** In every test with up to eight, no pulse came late. But with eight, SynthSync has much less to spare than with four:
 
-> **To come:** the twelve-hour tests in [How accurate is it?](#how-accurate-is-it) were made with four outputs, and haven't yet been repeated with eight. With all eight as busy as they can be, SynthSync has less time in hand than it has with four, and more room for eight is being worked on.
+- **SynthSync works out every pulse a moment before it plays it.** The busier the outputs, the less time that leaves it. With four, it has always had plenty in hand.
+- **With all eight as fast as the page allows,** at 300 BPM with MIDI's clock going, it has sometimes come down to its very last moment to spare, most often while the page was in hard use. Every close call so far has been with all eight that busy.
+- **If it ever ran out, a pulse would come late,** and every pulse after it by the same amount. The outputs would stay in step with each other, but SynthSync would be that much behind any other clock running by itself, and a MIDI message going out at that moment could be garbled.
+- **The twelve-hour tests** in [How accurate is it?](#how-accurate-is-it) were all made with four outputs.
+
+So for a gig or a recording, keep to four for now.
+
+> **To come:** more to spare with eight outputs, so that they are as safe as four, and the twelve-hour tests repeated with eight.
 
 ## Choosing the tempo range
 
