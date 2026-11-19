@@ -183,7 +183,7 @@ def test_a_long_run_of_random_changes_stays_exact () -> None:
 				follower.ignore(output)
 
 		# A muted output, and a start or stop pulse while the clock runs, are always low.
-		pins = timeline.mask
+		pins = timeline.table[synthsync.core.timeline.CELL_MASK]
 
 		for output in range(count):
 			if timeline.muted[output] or timeline.role[output] in (synthsync.core.timeline.START_PULSE, synthsync.core.timeline.STOP_PULSE):
@@ -209,8 +209,8 @@ def test_a_long_run_of_random_changes_stays_exact () -> None:
 
 	# A line passed over without an edge is only ever one the scheduler counted as
 	# running into the pulse before it, and with pulses cut short that is rare.
-	assert follower.skipped == timeline.merged
-	assert timeline.merged < 20
+	assert follower.skipped == timeline.table[synthsync.core.timeline.CELL_MERGED]
+	assert timeline.table[synthsync.core.timeline.CELL_MERGED] < 20
 
 
 def test_the_densest_pattern_never_emits_a_word_too_long_or_too_short () -> None:

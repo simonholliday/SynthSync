@@ -145,17 +145,18 @@ def test_every_word_looks_up_only_a_few_names () -> None:
 
 	"""Each name looked up costs every word time, and more when it shares an entry in MicroPython's lookup cache.
 
-	Which names share one depends on what else is loaded, so the fewer a word
-	needs, the less the player's margin at its busiest depends on that. Before
-	these were gathered into `parts`, loading more code took the player from
-	four words to spare to none. A change here is timed on the board first.
+	Which names share one depends on what else is loaded. Before these were
+	gathered into `parts`, loading more code took the player from four words
+	to spare to none. The Pico's words now come from the viper word maker,
+	which looks up nothing, and `next_word` is the definition it is held to,
+	so this keeps the definition as close to it as Python allows.
 	"""
 
 	source = ast.parse(inspect.getsource(synthsync.core.timeline))
 	timeline = next(node for node in source.body if isinstance(node, ast.ClassDef) and node.name == "Timeline")
 	next_word = next(node for node in timeline.body if isinstance(node, ast.FunctionDef) and node.name == "next_word")
 
-	assert looked_up_every_word(next_word.body) == {"parts", "mask", "led_fall", "midi_due", "midi_on"}
+	assert looked_up_every_word(next_word.body) == {"parts", "table", "CELL_MASK", "CELL_LED_FALL", "CELL_MIDI_DUE", "CELL_MIDI_ON"}
 
 
 def test_what_every_word_takes_at_once_stays_what_the_timeline_holds () -> None:

@@ -133,6 +133,50 @@ _LARGEST_PART = 9600
 _SLOWEST_BEATS = 128
 _FASTEST_PULSES = 96
 
+# Everything a word needs is kept in one table, which the player's fast word
+# maker reads as well as `next_word` does: these places first, then the bytes
+# waiting for MIDI's line, then a row of each slot's numbers for each of the
+# nine things below. `synthsync/device/word.py` has the same numbers.
+#
+# The numbers in the places are read and written as `table[CELL_...]`
+# everywhere, not as attributes made to look into the table. On the Pico a
+# property costs about 18 microseconds a use against 2, and while a class has
+# one, every attribute written to its objects costs about 23. The commands
+# the second core carries out while the clock plays must be quick, since the
+# words put by to cover each are sized to how long it takes.
+CELL_SLOTS = 0
+CELL_MIDI_SLOT = 1
+CELL_CYCLES_PER_TICK = 2
+CELL_OVERHEAD_CYCLES = 3
+CELL_PIN_BITS = 4
+CELL_MASK = 5
+CELL_LED_FALL = 6
+CELL_LED_WIDTH = 7
+CELL_BEAT = 8
+CELL_MERGED = 9
+CELL_MIDI_ON = 10
+CELL_MIDI_MODE = 11
+CELL_MIDI_RUN = 12
+CELL_MIDI_PATTERN = 13
+CELL_MIDI_FREE = 14
+CELL_MIDI_QUEUED = 15
+CELL_MIDI_DUE = 16
+CELL_MIDI_IDLE = 17
+CELL_MIDI_IDLE_PART = 18
+CELL_MIDI_WAITING = 19
+TABLE_HEAD = 24
+
+ROW_UNTIL = 0
+ROW_UNTIL_PART = 1
+ROW_FALL = 2
+ROW_PERIOD = 3
+ROW_PERIOD_PART = 4
+ROW_DIVISOR = 5
+ROW_WIDTH = 6
+ROW_MUTED = 7
+ROW_BIT = 8
+TABLE_ROWS = 9
+
 
 def gap_ticks (tempo: int, pulses: int, beats: int) -> "tuple[int, int]":
 
@@ -160,7 +204,7 @@ class Timeline:
 	at any time, running or not.
 	"""
 
-	def __init__ (self, outputs: int, cycles_per_tick: int = 150, overhead_cycles: int = 4, pin_bits: int = PIN_BITS, limits: "typing.Any" = None) -> None:  # type: ignore[name-defined]
+	def __init__(self, outputs: int, cycles_per_tick: int = 150, overhead_cycles: int = 4, pin_bits: int = PIN_BITS, limits: "typing.Any" = None) -> None:  # type: ignore[name-defined]
 
 		"""Make a stopped timeline for this many outputs, at 120 BPM with every ratio at one pulse a beat.
 
@@ -183,6 +227,28 @@ class Timeline:
 		slots = outputs + 2
 		blank = [0] * slots
 
+		# Everything a word needs, in one table, with the numbers that never
+		# change once it is made. The arrays below are rows of it.
+		self.table = array.array("i", [0] * (TABLE_HEAD + TABLE_ROWS * slots))
+		self.table[CELL_SLOTS] = slots
+		self.table[CELL_MIDI_SLOT] = outputs
+		self.table[CELL_CYCLES_PER_TICK] = cycles_per_tick
+		self.table[CELL_OVERHEAD_CYCLES] = overhead_cycles
+		self.table[CELL_PIN_BITS] = pin_bits
+		cells = memoryview(self.table)
+
+		def row (number: int, values: "list[int]") -> "typing.Any":  # type: ignore[name-defined]
+
+			"""Give one of the table's rows, filled with these values, to be used as an array of its own."""
+
+			start = TABLE_HEAD + number * slots
+			view = cells[start:start + slots]
+
+			for index in range(slots):
+				view[index] = values[index]
+
+			return view
+
 		self.outputs = outputs
 		self.slots = slots
 		self.midi_slot = outputs
@@ -197,61 +263,61 @@ class Timeline:
 
 		# The gap between a slot's pulses: `period` whole ticks plus `period_part`
 		# out of `divisor`.
-		self.period = array.array("i", blank)
-		self.period_part = array.array("i", blank)
-		self.divisor = array.array("i", blank)
+		self.period = row(ROW_PERIOD, blank)
+		self.period_part = row(ROW_PERIOD_PART, blank)
+		self.divisor = row(ROW_DIVISOR, blank)
 
 		# The time to a slot's next pulse: `until` whole ticks plus `until_part`
 		# out of `divisor`. An `until` of -1 means the slot isn't running.
-		self.until = array.array("i", [-1] * slots)
-		self.until_part = array.array("i", blank)
+		self.until = row(ROW_UNTIL, [-1] * slots)
+		self.until_part = row(ROW_UNTIL_PART, blank)
 
 		# Where the waits are kept while the clock is paused, so `until` can read
 		# as "not running" and nothing new begins.
 		self.held = array.array("i", [-1] * slots)
 
 		# The time until a slot's pin goes low again, or -1 when it's already low.
-		self.fall = array.array("i", [-1] * slots)
+		self.fall = row(ROW_FALL, [-1] * slots)
 
 		# How long a slot's pulse lasts in ticks, or 0 for half the gap.
-		self.width = array.array("i", [PULSE_TICKS] * slots)
+		self.width = row(ROW_WIDTH, [PULSE_TICKS] * slots)
 
 		# What each slot is for, and whether it is silenced. A muted clock keeps
 		# its place and simply doesn't raise its pin.
 		self.role = array.array("i", [CLOCK] * slots)
-		self.muted = array.array("i", blank)
+		self.muted = row(ROW_MUTED, blank)
 
 		# The bit each slot drives in a word. The beat slot drives none of its own
 		# here: its `fall` times the lead, so the tempo LED it lights is timed in
 		# `led_fall` instead, the time until the LED goes out, or -1 when it is out.
-		self.bit = array.array("i", [1 << index for index in range(outputs)] + [0, 0])
-		self.led_fall = -1
-		self.led_width = LED_LONGEST
+		self.bit = row(ROW_BIT, [1 << index for index in range(outputs)] + [0, 0])
+		self.table[CELL_LED_FALL] = -1
+		self.table[CELL_LED_WIDTH] = LED_LONGEST
 
 		# MIDI out. `midi_on` says there is anything for it to do, which stays true
 		# after it is switched off until the last byte has gone.
-		self.midi_mode = MIDI_OFF
-		self.midi_on = 0
+		self.table[CELL_MIDI_MODE] = MIDI_OFF
+		self.table[CELL_MIDI_ON] = 0
 
 		# The byte going out: the time until its pin next changes, or -1 when no
 		# change is left, what is left of its counts, and the time until the line
 		# is free for another.
-		self.midi_run = -1
-		self.midi_pattern = 0
-		self.midi_free = 0
+		self.table[CELL_MIDI_RUN] = -1
+		self.table[CELL_MIDI_PATTERN] = 0
+		self.table[CELL_MIDI_FREE] = 0
 
 		# Start, Continue and Stop bytes waiting for the line, oldest first.
-		self.midi_waiting = array.array("i", [0] * _MIDI_WAITING)
-		self.midi_queued = 0
+		self.midi_waiting = cells[CELL_MIDI_WAITING:CELL_MIDI_WAITING + _MIDI_WAITING]
+		self.table[CELL_MIDI_QUEUED] = 0
 
 		# How many clock bytes the grid is owed: 1 for the next place on it, and
 		# more only if one could not be sent in time.
-		self.midi_due = 0
+		self.table[CELL_MIDI_DUE] = 0
 
 		# With the clock not playing, the time until the next clock byte, or -1
 		# for none, with the exact part left over out of the slot's divisor.
-		self.midi_idle = -1
-		self.midi_idle_part = 0
+		self.table[CELL_MIDI_IDLE] = -1
+		self.table[CELL_MIDI_IDLE_PART] = 0
 
 		# Where _muldiv leaves its answer: the whole part, then the remainder.
 		#
@@ -273,8 +339,8 @@ class Timeline:
 		self.parts = (self.until, self.until_part, self.fall, self.period, self.period_part, self.divisor, self.width, self.muted, self.bit, slots, self.midi_slot, cycles_per_tick, overhead_cycles, pin_bits, HOLD_LIMIT, LED_BIT)
 
 		self.tempo = 12000
-		self.mask = 0
-		self.beat = 0
+		self.table[CELL_MASK] = 0
+		self.table[CELL_BEAT] = 0
 		self.running = False
 		self.paused = False
 
@@ -283,7 +349,7 @@ class Timeline:
 
 		# How many pulses began while the one before was still high, and so made
 		# no edge. It should stay at zero: see _trim.
-		self.merged = 0
+		self.table[CELL_MERGED] = 0
 
 		# Counts every change to where the clock is, once as it begins and once
 		# as it ends, so it is odd while a change is half-made. `position`
@@ -304,7 +370,7 @@ class Timeline:
 
 		width = self.period[self.master] >> 2
 
-		self.led_width = width if width < LED_LONGEST else LED_LONGEST
+		self.table[CELL_LED_WIDTH] = width if width < LED_LONGEST else LED_LONGEST
 
 	def _muldiv (self, count: int, each: int, extra: int, divisor: int) -> None:
 
@@ -394,7 +460,7 @@ class Timeline:
 		whole = waits[master] - lead
 		part = self.until_part[master] * pulses
 
-		if self.beat == 0:
+		if self.table[CELL_BEAT] == 0:
 			# Nothing has played yet, so the first pulse is on the first beat.
 			waits[slot] = whole + lead
 			self.until_part[slot] = part
@@ -402,7 +468,7 @@ class Timeline:
 
 		# How far the next beat is past this slot's last grid line, in units of
 		# 1 / pulses of a beat. Reduced first so the product stays small.
-		offset = ((self.beat % beats) * (pulses % beats)) % beats
+		offset = ((self.table[CELL_BEAT] % beats) * (pulses % beats)) % beats
 
 		# Step back from the next beat to that grid line.
 		self._muldiv(offset * _BEAT_FACTOR, _MILLION, 0, divisor)
@@ -537,7 +603,7 @@ class Timeline:
 
 		"""Set one slot's pin low at once and forget any pulse it was in."""
 
-		self.mask &= ~self.bit[slot]
+		self.table[CELL_MASK] &= ~self.bit[slot]
 		self.fall[slot] = -1
 
 	def _pulse (self, slot: int) -> None:
@@ -550,7 +616,7 @@ class Timeline:
 		if length == 0:
 			length = PULSE_TICKS
 
-		self.mask |= self.bit[slot]
+		self.table[CELL_MASK] |= self.bit[slot]
 		self.fall[slot] = length
 
 	def set_mute (self, output: int, muted: bool) -> None:
@@ -570,7 +636,7 @@ class Timeline:
 			self._lower(output)
 
 		elif self.running and not self.paused and self.role[output] == RUN:
-			self.mask |= self.bit[output]
+			self.table[CELL_MASK] |= self.bit[output]
 
 	def set_width (self, output: int, ticks: int) -> None:
 
@@ -616,7 +682,7 @@ class Timeline:
 			self._place(output)
 
 		elif role == RUN and not self.muted[output] and not self.paused:
-			self.mask |= self.bit[output]
+			self.table[CELL_MASK] |= self.bit[output]
 
 	def set_midi (self, mode: int) -> None:
 
@@ -634,7 +700,8 @@ class Timeline:
 		if self.pin_bits <= MOST_OUTPUTS + 1:
 			raise ValueError("These words have no pin bit for MIDI out")
 
-		was = self.midi_mode
+		table = self.table
+		was = table[CELL_MIDI_MODE]
 
 		if mode == was:
 			return
@@ -643,7 +710,7 @@ class Timeline:
 		playing = self.running and not self.paused
 		waits = self.held if self.paused else self.until
 
-		self.midi_mode = mode
+		table[CELL_MIDI_MODE] = mode
 
 		if mode == MIDI_OFF:
 
@@ -651,15 +718,15 @@ class Timeline:
 			self.until[slot] = -1
 			self.held[slot] = -1
 			self.until_part[slot] = 0
-			self.midi_due = 0
-			self.midi_idle = -1
+			table[CELL_MIDI_DUE] = 0
+			table[CELL_MIDI_IDLE] = -1
 
 			if playing:
 				self._midi_queue(MIDI_STOP)
 
 			return
 
-		self.midi_on = 1
+		table[CELL_MIDI_ON] = 1
 
 		if was == MIDI_OFF:
 
@@ -668,10 +735,10 @@ class Timeline:
 			if self.running:
 				waits[slot] = 0
 				self._place(slot)
-				self.midi_due = 1
+				table[CELL_MIDI_DUE] = 1
 
 		if playing:
-			self.midi_idle = -1
+			table[CELL_MIDI_IDLE] = -1
 		else:
 			self._midi_idle_from(waits[slot])
 
@@ -679,39 +746,43 @@ class Timeline:
 
 		"""Leave a byte to go out as soon as the line is free. If too many are waiting, it takes the last one's place."""
 
-		count = self.midi_queued
+		table = self.table
+		count = table[CELL_MIDI_QUEUED]
 
 		if count == _MIDI_WAITING:
 			count -= 1
 
 		self.midi_waiting[count] = byte
-		self.midi_queued = count + 1
-		self.midi_on = 1
+		table[CELL_MIDI_QUEUED] = count + 1
+		table[CELL_MIDI_ON] = 1
 
 	def _midi_clear (self) -> int:
 
 		"""Give how long it is until everything now waiting has gone out, in ticks."""
 
-		return self.midi_free + self.midi_queued * MIDI_BYTE_TICKS
+		table = self.table
+
+		return table[CELL_MIDI_FREE] + table[CELL_MIDI_QUEUED] * MIDI_BYTE_TICKS
 
 	def _midi_idle_from (self, wait: int) -> None:
 
 		"""With the clock no longer playing, carry MIDI's clock on from where it was, `wait` ticks from its next place on the grid."""
 
-		self.midi_idle_part = 0
+		table = self.table
+		table[CELL_MIDI_IDLE_PART] = 0
 
-		if self.midi_mode != MIDI_ALWAYS:
-			self.midi_idle = -1
+		if table[CELL_MIDI_MODE] != MIDI_ALWAYS:
+			table[CELL_MIDI_IDLE] = -1
 
 		elif wait < 0:
-			self.midi_idle = 0
+			table[CELL_MIDI_IDLE] = 0
 
-		elif not self.midi_due:
+		elif not table[CELL_MIDI_DUE]:
 			# The clock for that place has gone, so this is the one after it.
-			self.midi_idle = wait + self.period[self.midi_slot] - MIDI_BYTE_TICKS
+			table[CELL_MIDI_IDLE] = wait + self.period[self.midi_slot] - MIDI_BYTE_TICKS
 
 		else:
-			self.midi_idle = wait - MIDI_BYTE_TICKS if wait > MIDI_BYTE_TICKS else 0
+			table[CELL_MIDI_IDLE] = wait - MIDI_BYTE_TICKS if wait > MIDI_BYTE_TICKS else 0
 
 	def run_pins (self) -> int:
 
@@ -742,9 +813,10 @@ class Timeline:
 
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
-		self.mask &= MIDI_BIT
-		self.led_fall = -1
-		self.beat = 0
+		table = self.table
+		table[CELL_MASK] &= MIDI_BIT
+		table[CELL_LED_FALL] = -1
+		table[CELL_BEAT] = 0
 		self.running = True
 		self.paused = False
 
@@ -762,14 +834,14 @@ class Timeline:
 				lead = LEAD_TICKS
 
 			elif self.role[slot] == RUN:
-				self.mask |= self.bit[slot]
+				table[CELL_MASK] |= self.bit[slot]
 				lead = LEAD_TICKS
 
-		if self.midi_mode:
+		if table[CELL_MIDI_MODE]:
 
 			self._midi_queue(MIDI_START)
-			self.midi_due = 1
-			self.midi_idle = -1
+			table[CELL_MIDI_DUE] = 1
+			table[CELL_MIDI_IDLE] = -1
 
 			needed = self._midi_clear() + MIDI_GAP_TICKS + MIDI_BYTE_TICKS
 
@@ -825,7 +897,7 @@ class Timeline:
 		self.fall[self.master] = -1
 		self.paused = True
 
-		if self.midi_mode:
+		if self.table[CELL_MIDI_MODE]:
 			self._midi_queue(MIDI_STOP)
 			self._midi_idle_from(self.held[self.midi_slot])
 
@@ -848,18 +920,19 @@ class Timeline:
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
 		lead = self.owed
+		table = self.table
 
 		for slot in range(self.outputs):
 			if self.role[slot] == RUN and not self.muted[slot]:
-				self.mask |= self.bit[slot]
+				table[CELL_MASK] |= self.bit[slot]
 				lead = LEAD_TICKS
 
-		if self.midi_mode:
+		if table[CELL_MIDI_MODE]:
 
 			self._midi_queue(MIDI_CONTINUE)
-			self.midi_idle = -1
+			table[CELL_MIDI_IDLE] = -1
 
-			if self.midi_due:
+			if table[CELL_MIDI_DUE]:
 
 				needed = self._midi_clear() + MIDI_GAP_TICKS + MIDI_BYTE_TICKS - self.held[self.midi_slot]
 
@@ -933,15 +1006,16 @@ class Timeline:
 		"""
 
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
+		table = self.table
 
-		if self.midi_mode and self.running and not self.paused:
+		if table[CELL_MIDI_MODE] and self.running and not self.paused:
 			self._midi_queue(MIDI_STOP)
 			self._midi_idle_from(self.until[self.midi_slot])
 
-		self.midi_due = 0
-		self.mask &= MIDI_BIT
-		self.led_fall = -1
-		self.beat = 0
+		table[CELL_MIDI_DUE] = 0
+		table[CELL_MASK] &= MIDI_BIT
+		table[CELL_LED_FALL] = -1
+		table[CELL_BEAT] = 0
 		self.running = False
 		self.paused = False
 		self.owed = 0
@@ -966,7 +1040,9 @@ class Timeline:
 		so there is nothing worth feeding the player.
 		"""
 
-		if self.midi_idle >= 0 or self.midi_run >= 0 or self.midi_queued:
+		table = self.table
+
+		if table[CELL_MIDI_IDLE] >= 0 or table[CELL_MIDI_RUN] >= 0 or table[CELL_MIDI_QUEUED]:
 			return False
 
 		return self.still()
@@ -975,7 +1051,9 @@ class Timeline:
 
 		"""Say whether MIDI's pin is low with no byte going out or waiting, so that the words can stop for a while."""
 
-		return self.midi_run < 0 and not self.midi_queued
+		table = self.table
+
+		return table[CELL_MIDI_RUN] < 0 and not table[CELL_MIDI_QUEUED]
 
 	def still (self) -> bool:
 
@@ -985,7 +1063,7 @@ class Timeline:
 			return False
 
 		# A flash of the tempo LED begun before a pause finishes, as a pulse does.
-		if self.led_fall >= 0:
+		if self.table[CELL_LED_FALL] >= 0:
 			return False
 
 		for slot in range(self.slots):
@@ -1011,7 +1089,7 @@ class Timeline:
 		for _ in range(4):
 
 			mark = self.changes
-			beat = self.beat
+			beat = self.table[CELL_BEAT]
 			answer = -1
 
 			if self.running and beat > 0:
@@ -1027,7 +1105,7 @@ class Timeline:
 				if 0 <= left <= gap:
 					answer = (beat - 1) * 1000 + (gap - left) * 1000 // gap
 
-			if not mark & 1 and self.changes == mark and self.beat == beat:
+			if not mark & 1 and self.changes == mark and self.table[CELL_BEAT] == beat:
 				return answer
 
 		return -1
@@ -1042,10 +1120,11 @@ class Timeline:
 		"""
 
 		until, until_part, fall, period, period_part, divisor, width, muted, bit, slots, midi_slot, cycles_per_tick, overhead_cycles, pin_bits, hold, led_bit = self.parts
+		table = self.table
 		last = slots - 1
-		mask = self.mask
-		led_fall = self.led_fall
-		due = self.midi_due
+		mask = table[CELL_MASK]
+		led_fall = table[CELL_LED_FALL]
+		due = table[CELL_MIDI_DUE]
 
 		# The tempo LED goes out before anything rises, as each slot's pin does.
 		if led_fall == 0:
@@ -1079,11 +1158,11 @@ class Timeline:
 				until[slot] = wait
 
 				if slot == last:
-					self.beat += 1
+					table[CELL_BEAT] += 1
 
 					# Every beat lights the tempo LED, whatever the outputs are doing.
 					mask |= led_bit
-					led_fall = self.led_width
+					led_fall = table[CELL_LED_WIDTH]
 
 				elif slot == midi_slot:
 					# The grid's next place wants a clock byte of its own.
@@ -1094,7 +1173,7 @@ class Timeline:
 					pin = bit[slot]
 
 					if mask & pin:
-						self.merged += 1
+						table[CELL_MERGED] += 1
 
 					mask |= pin
 					drop = width[slot]
@@ -1117,23 +1196,23 @@ class Timeline:
 		if led_fall > 0 and led_fall < hold:
 			hold = led_fall
 
-		if self.midi_on:
+		if table[CELL_MIDI_ON]:
 
-			run = self.midi_run
-			free = self.midi_free
-			idle = self.midi_idle
-			queued = self.midi_queued
+			run = table[CELL_MIDI_RUN]
+			free = table[CELL_MIDI_FREE]
+			idle = table[CELL_MIDI_IDLE]
+			queued = table[CELL_MIDI_QUEUED]
 			wait = until[midi_slot]
 
 			# The pin's next change within the byte going out.
 			if run == 0:
 
 				mask ^= MIDI_BIT
-				pattern = self.midi_pattern
+				pattern = table[CELL_MIDI_PATTERN]
 
 				if pattern:
 					run = (pattern & 15) * MIDI_BIT_TICKS
-					self.midi_pattern = pattern >> 4
+					table[CELL_MIDI_PATTERN] = pattern >> 4
 				else:
 					run = -1
 
@@ -1158,19 +1237,19 @@ class Timeline:
 				elif idle == 0:
 
 					byte = MIDI_CLOCK
-					part = self.midi_idle_part + period_part[midi_slot]
+					part = table[CELL_MIDI_IDLE_PART] + period_part[midi_slot]
 					idle = period[midi_slot]
 
 					if part >= divisor[midi_slot]:
 						part -= divisor[midi_slot]
 						idle += 1
 
-					self.midi_idle_part = part
+					table[CELL_MIDI_IDLE_PART] = part
 
 				if byte:
 					mask |= MIDI_BIT
 					run = (byte & 15) * MIDI_BIT_TICKS
-					self.midi_pattern = byte >> 4
+					table[CELL_MIDI_PATTERN] = byte >> 4
 					free = MIDI_BYTE_TICKS
 
 			if run > 0 and run < hold:
@@ -1199,16 +1278,16 @@ class Timeline:
 			if free > 0:
 				free -= hold
 
-			self.midi_run = run
-			self.midi_free = free
-			self.midi_idle = idle
-			self.midi_queued = queued
+			table[CELL_MIDI_RUN] = run
+			table[CELL_MIDI_FREE] = free
+			table[CELL_MIDI_IDLE] = idle
+			table[CELL_MIDI_QUEUED] = queued
 
-			if not self.midi_mode and run < 0 and not queued:
-				self.midi_on = 0
-				self.midi_free = 0
+			if not table[CELL_MIDI_MODE] and run < 0 and not queued:
+				table[CELL_MIDI_ON] = 0
+				table[CELL_MIDI_FREE] = 0
 
-		self.midi_due = due
+		table[CELL_MIDI_DUE] = due
 
 		for slot in range(slots):
 
@@ -1225,8 +1304,8 @@ class Timeline:
 		if led_fall > 0:
 			led_fall -= hold
 
-		self.led_fall = led_fall
-		self.mask = mask
+		table[CELL_LED_FALL] = led_fall
+		table[CELL_MASK] = mask
 
 		return mask | ((hold * cycles_per_tick - overhead_cycles) << pin_bits)
 

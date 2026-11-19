@@ -350,7 +350,7 @@ def check_pulses_stay_on_their_grid_through_tempo_and_ratio_changes () -> None:
 	assert sum(follower.seen) > 100
 
 	# A line with no edge is only ever one the scheduler says ran into the pulse before it.
-	assert follower.skipped == timeline.merged
+	assert follower.skipped == timeline.table[synthsync.core.timeline.CELL_MERGED]
 
 
 def check_a_pulse_is_cut_short_when_a_tempo_jump_brings_the_next_one_forward () -> None:
@@ -372,7 +372,7 @@ def check_a_pulse_is_cut_short_when_a_tempo_jump_brings_the_next_one_forward () 
 	timeline.set_tempo(30000)
 	player.play(60)
 
-	assert timeline.merged == 0
+	assert timeline.table[synthsync.core.timeline.CELL_MERGED] == 0
 	assert len(player.falls[0]) >= 2
 
 	high = player.falls[0][0] - player.rises[0][0]
@@ -404,7 +404,7 @@ def check_stopping_sets_every_output_low_and_starting_begins_again () -> None:
 	timeline.stop()
 	assert timeline.quiet()
 	assert timeline.unpack(timeline.next_word())[0] == 0
-	assert timeline.beat == 0
+	assert timeline.table[synthsync.core.timeline.CELL_BEAT] == 0
 
 	timeline.start()
 	player.play(50)
@@ -630,7 +630,7 @@ def check_the_tempo_leds_flash_is_a_quarter_of_a_beat_at_every_tempo_but_never_m
 		timeline.set_tempo(tempo)
 
 		quarter = 6000000000 // tempo // 4
-		width = timeline.led_width
+		width = timeline.table[synthsync.core.timeline.CELL_LED_WIDTH]
 
 		assert width <= synthsync.core.timeline.LED_LONGEST, tempo
 		assert width == synthsync.core.timeline.LED_LONGEST or 0 <= quarter - width <= 1, tempo

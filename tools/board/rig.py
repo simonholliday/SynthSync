@@ -634,7 +634,10 @@ def make_player (ratios, tempo: int):
 
 
 # The longest one command may keep the second core while the clock plays, in
-# microseconds. A tempo change with four outputs takes about 2,000.
+# microseconds, under the rig's own loads. A tempo change with four outputs
+# takes up to about 2,200 there, and with eight up to about 3,300. With the
+# whole of SynthSync running and its page in hard use, one with eight outputs
+# has taken 6,600, which no test here makes.
 _SLOWEST_COMMAND = 6000
 
 # How long after it is sent a change can take effect on the pins while the
@@ -1878,13 +1881,13 @@ def test_inputs (load: str = "idle") -> None:
 			counts[0] += 1
 			yield 300
 			expect("play/pause didn't pause the clock, " + way, clock.transport.state == transport.PAUSED and doing() == transport.PAUSED)
-			held = player.timeline.beat
+			held = player.timeline.table[synthsync.core.timeline.CELL_BEAT]
 
 			finger.press(80)
 			counts[0] += 1
 			yield 300
 			expect("play/pause didn't carry the clock on, " + way, clock.transport.state == transport.RUNNING and doing() == transport.RUNNING)
-			expect("play/pause began again at zero, " + way, held >= 4 and player.timeline.beat >= held)
+			expect("play/pause began again at zero, " + way, held >= 4 and player.timeline.table[synthsync.core.timeline.CELL_BEAT] >= held)
 
 			use(transport.STOP, low)
 			yield 100
@@ -2181,6 +2184,14 @@ def test_led (load: str = "idle") -> None:
 	began = [0] * len(stages)
 	ended = [0] * len(stages)
 
+	# How long a stage's changes may take to be heard once the second core has
+	# taken them, in milliseconds. The words put by to cover the last of them
+	# were worked out before it, and play on, as do the words ahead. A change
+	# of PPQN moves every output's ratio.
+	cover = synthsync.device.player._COVER_TEMPO + synthsync.device.player._COVER_TEMPO_EACH * 4
+	cover += 4 * (synthsync.device.player._COVER_RATIO + synthsync.device.player._COVER_ROLE + 2 * synthsync.device.player._COVER_SWITCH)
+	heard_ms = (_HEARD_WITHIN + cover) // 1000 + 1
+
 	def take () -> None:
 
 		"""Take every count the timer and the counter have given."""
@@ -2253,6 +2264,9 @@ def test_led (load: str = "idle") -> None:
 			clock.set_output(0, "muted", not on)
 			clock.flush()
 			player.settle()
+
+			# Nothing is judged until what was worked out before the changes has played.
+			yield heard_ms
 			take()
 			ready[0] = True
 			began[index] = time.ticks_ms()
@@ -2319,8 +2333,8 @@ _POWERUP_CONFIG = "/_rig_config.txt"
 # how many short writes to make, how far a timed length may be out, and how
 # long a start may take after a flash write made with only MIDI's clock going,
 # in microseconds: about 2 ms of the first core's work, 4 ms of words already
-# queued and the 2 ms MIDI's Start needs, where a backlog played out first would
-# take 300 ms.
+# queued, the words put by to cover the start, the 2 ms MIDI's Start needs and
+# 2 ms to spare, where a backlog played out first would take 300 ms.
 _MIDI_RUNS = 3000
 _MIDI_ALIGN_MACHINE = 2
 _MIDI_BIT = SYSTEM_HZ // 31250
@@ -2331,7 +2345,7 @@ _MIDI_SHORT_WRITES = 300
 _MIDI_QUICK_STARTS = 40
 _MIDI_SLACK = 8
 _MIDI_ALIGN_SLACK = 16
-_MIDI_START_MOST = 10000
+_MIDI_START_MOST = 10000 + synthsync.device.player._COVER_TRANSPORT
 _MIDI_CLOCK = 0xF8
 _MIDI_START = 0xFA
 _MIDI_CONTINUE = 0xFB
@@ -2726,6 +2740,15 @@ def test_extremes (load: str = "idle") -> None:
 	rig_extremes.run(load)
 
 
+def test_word (load: str = "idle") -> None:
+
+	"""Hold the second core's word maker to the scheduler's `next_word` here on the Pico, and time both. It is in a file of its own, so that the other tests don't have it in memory."""
+
+	import rig_word
+
+	rig_word.run(load)
+
+
 def test_clustermidi (load: str = "idle") -> None:
 
 	"""Time the busiest outputs with MIDI's clock going. It is in a file of its own, so that the other tests don't have it in memory."""
@@ -2733,6 +2756,15 @@ def test_clustermidi (load: str = "idle") -> None:
 	import rig_busiest
 
 	rig_busiest.run(load)
+
+
+def test_eight (load: str = "idle") -> None:
+
+	"""Time output 1 with all eight outputs as busy as the page can make them and MIDI's clock going. It is in the same file as `clustermidi`, for the same reason."""
+
+	import rig_busiest
+
+	rig_busiest.run_eight(load)
 
 
 def test_powerup (load: str = "idle") -> None:
@@ -4267,6 +4299,8 @@ TESTS = {
 	"burst": test_burst,
 	"cluster": test_cluster,
 	"clustermidi": test_clustermidi,
+	"eight": test_eight,
+	"word": test_word,
 	"collect": test_collect,
 	"extremes": test_extremes,
 	"shortfall": test_shortfall,

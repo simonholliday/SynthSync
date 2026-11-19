@@ -67,6 +67,7 @@ import _thread
 import synthsync.core.buttons
 import synthsync.core.timeline
 import synthsync.core.transport
+import synthsync.device.word
 
 # PIO block 0, where the player is state machine 0. The radio owns a state
 # machine in block 2, so block 0 is clear.
@@ -94,16 +95,22 @@ _BACKLOG_WORDS = 2048
 _BACKLOG_TICKS = 300000
 
 # How much playing to put by before each kind of command is carried out while
-# the clock is playing, in ticks. Each is about twice what the command was
-# measured to take with the first core at its busiest: a tempo change 1.9 ms
-# with four outputs, a ratio 0.6 ms, a role 0.4 ms, the rest 0.15 ms or less.
-# A tempo change works through every output, so it is so much for each.
-_COVER_TEMPO = 1000
-_COVER_TEMPO_EACH = 600
-_COVER_RATIO = 1200
-_COVER_ROLE = 800
-_COVER_SWITCH = 300
-_COVER_TRANSPORT = 500
+# the clock is playing, in ticks. Each is about twice the longest the command
+# was measured to take among the busiest outputs with MIDI's clock going,
+# with the first core at its busiest or SynthSync running whole with its page
+# in hard use, whichever was slower: a tempo change 2.2 ms with four outputs
+# and 6.6 ms with eight, a ratio 1.7 ms, a role 0.9 ms, a start 0.9 ms and the
+# other transport commands 0.8 ms or less, the rest 0.5 ms or less. The page
+# in use slows commands most, though not the words: a command goes through
+# MicroPython's own code, which the first core shares, while the word maker
+# runs on its own. A tempo change works through every output, so it is so
+# much for each.
+_COVER_TEMPO = 1200
+_COVER_TEMPO_EACH = 1500
+_COVER_RATIO = 3400
+_COVER_ROLE = 2000
+_COVER_SWITCH = 1000
+_COVER_TRANSPORT = 1800
 
 # The commands the first core can leave for the second.
 _TEMPO = 1
@@ -278,6 +285,10 @@ class Player:
 		self._button_presses = array.array("i", [synthsync.core.transport.NUMBERS[name] for name in _BUTTONS])
 		self._buttons = [synthsync.core.buttons.Button() for _ in _BUTTONS]
 
+		# What the last look saw: which pins are buttons', how they read, and
+		# whether every button had settled, which a new button undoes.
+		self._looked = array.array("i", [0, 0, 0])
+
 		# What the clock is doing, as the second core last left it: 1 if running,
 		# plus 2 if paused. Then how many presses of the buttons it has carried
 		# out, and the time in milliseconds when it carried out the last.
@@ -301,7 +312,11 @@ class Player:
 		# network loaded, one can last longer than the player's eight words.
 		self._put = self.machine.put
 		self._waiting = self.machine.tx_fifo
-		self._next_word = self.timeline.next_word
+		# Words come from the viper copy of the scheduler's `next_word`, which
+		# makes each one from the timeline's table in about a tenth of the time.
+		# That is what lets eight busy outputs keep time.
+		self._next_word = synthsync.device.word.next_word
+		self._table = self.timeline.table
 		self._quiet = self.timeline.quiet
 		self._still = self.timeline.still
 		self._midi_resting = self.timeline.midi_resting
@@ -327,6 +342,7 @@ class Player:
 		put = self._put
 		waiting = self._waiting
 		next_word = self._next_word
+		table = self._table
 		quiet = self._quiet
 		still = self._still
 		marks = self._marks
@@ -380,7 +396,7 @@ class Player:
 				if not (timeline.running and not timeline.paused) and quiet():
 					# Nothing left to play. One last word leaves every pin low, and
 					# then the player is allowed to run dry.
-					put(next_word())
+					put(next_word(table))
 					playing = False
 					continue
 
@@ -398,7 +414,7 @@ class Player:
 
 				if level < _DEPTH:
 
-					put(next_word())
+					put(next_word(table))
 					since += 1
 
 					if level < counts[2]:
@@ -417,7 +433,7 @@ class Player:
 				player.active(0)
 
 				while waiting() < _DEPTH:
-					put(next_word())
+					put(next_word(table))
 
 				registers[_FDEBUG] = _RAN_DRY
 				player.active(1)
@@ -582,12 +598,23 @@ class Player:
 		break into it.
 		"""
 
+		looked = self._looked
+		read = _levels() & looked[0]
+
+		# The buttons read as they did, and every one had settled, so each
+		# button's rule would find it as it was and change nothing. Taking the
+		# rule through both buttons costs about 0.1 ms, which among the busiest
+		# outputs is longer than the eight words in hand can last.
+		if read == looked[1] and looked[2]:
+			return
+
 		pins = self._button_pins
 		levels = self._button_levels
 		presses = self._button_presses
 		buttons = self._buttons
 		kept = self._kept
-		read = _levels()
+		settled = 1
+		looked[1] = read
 
 		for index in range(len(buttons)):
 
@@ -596,7 +623,14 @@ class Player:
 			if pin < 0:
 				continue
 
-			if not buttons[index].look(((read >> pin) & 1) == levels[index], 0, elapsed):
+			button = buttons[index]
+			pressed = ((read >> pin) & 1) == levels[index]
+			began = button.look(pressed, 0, elapsed)
+
+			if pressed != button.down:
+				settled = 0
+
+			if not began:
 				continue
 
 			count = kept[0]
@@ -606,6 +640,8 @@ class Player:
 			if count < _KEPT_MOST:
 				kept[1 + count] = presses[index]
 				kept[0] = count + 1
+
+		looked[2] = settled
 
 	@micropython.native
 	def _glance (self, looked: int) -> int:
@@ -677,11 +713,12 @@ class Player:
 		put = self._put
 		waiting = self._waiting
 		next_word = self._next_word
+		table = self._table
 		resting = self._midi_resting
 
 		while not resting():
 			if waiting() < _DEPTH:
-				put(next_word())
+				put(next_word(table))
 
 	@micropython.native
 	def _ahead (self, ticks: int) -> None:
@@ -757,6 +794,7 @@ class Player:
 		put = self._put
 		waiting = self._waiting
 		next_word = self._next_word
+		table = self._table
 		counts = self._counts
 		lows = self._lows
 		bits = timeline.pin_bits
@@ -789,13 +827,13 @@ class Player:
 					head += 1
 					span -= ((word >> bits) + overhead) // cycles
 				else:
-					word = next_word()
+					word = next_word(table)
 					made += 1
 
 				put(word)
 
 			else:
-				word = next_word()
+				word = next_word(table)
 				made += 1
 				backlog[tail] = word
 				tail += 1
@@ -934,11 +972,15 @@ class Player:
 		"""
 
 		index = _BUTTONS.index(command)
+		looked = self._looked
 
 		# The second core leaves the button alone while it is changed, and then
 		# begins again with it not pressed. A look caught halfway sees at most a
-		# millisecond of a change, and a press takes twenty.
+		# millisecond of a change, and a press takes twenty. The next look takes
+		# every button's rule through, whatever the pins read.
+		looked[2] = 0
 		self._button_pins[index] = -1
+		looked[0] = self._button_mask()
 
 		if pin < 0:
 			return
@@ -948,6 +990,20 @@ class Player:
 		self._buttons[index] = synthsync.core.buttons.Button()
 		self._button_levels[index] = 0 if low else 1
 		self._button_pins[index] = pin
+		looked[0] = self._button_mask()
+		looked[2] = 0
+
+	def _button_mask (self) -> int:
+
+		"""Give the bits of the pins the buttons are on, as `_levels` reads them."""
+
+		mask = 0
+
+		for pin in self._button_pins:
+			if pin >= 0:
+				mask |= 1 << pin
+
+		return mask
 
 	def protect (self, write, ticks: int = _BACKLOG_TICKS):
 
@@ -1052,18 +1108,19 @@ class Player:
 		"""
 
 		timeline = self.timeline
+		table = self._table
 		lows = self._lows
 
 		return {
 			"running": timeline.running,
 			"paused": timeline.paused,
-			"beat": timeline.beat,
+			"beat": table[synthsync.core.timeline.CELL_BEAT],
 			"position": self.position(),
 			"faults": self._counts[0],
 			"refused": self._counts[1],
 			"fewest_waiting": self._counts[2],
 			"slowest_command": self._counts[4],
-			"merged": timeline.merged,
+			"merged": table[synthsync.core.timeline.CELL_MERGED],
 			"presses": self._pressed[0],
 			"pressed_at": self._pressed[1],
 			"empty": lows[0],

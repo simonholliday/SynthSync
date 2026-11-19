@@ -142,11 +142,11 @@ def check_the_scheduler_carries_out_every_press_as_the_table_says () -> None:
 		scheduler.next_word()
 
 	scheduler.press(timeline.PRESS_PAUSE)
-	held = (scheduler.beat, scheduler.position())
+	held = (scheduler.table[synthsync.core.timeline.CELL_BEAT], scheduler.position())
 	scheduler.press(timeline.PRESS_START)
 
 	assert held[0] > 0
-	assert (scheduler.beat, scheduler.position()) == held
+	assert (scheduler.table[synthsync.core.timeline.CELL_BEAT], scheduler.position()) == held
 
 	# A stop from stopped does nothing at all: its stop pulses fire only when the clock really stops.
 	scheduler = scheduler_in(transport.STOPPED)
@@ -175,7 +175,7 @@ def check_the_scheduler_carries_out_every_press_as_the_table_says () -> None:
 		for _ in range(50):
 			scheduler.next_word()
 
-		places.append((scheduler.beat, scheduler.position()))
+		places.append((scheduler.table[synthsync.core.timeline.CELL_BEAT], scheduler.position()))
 
 	assert states == [transport.RUNNING, transport.PAUSED, transport.RUNNING, transport.PAUSED, transport.RUNNING], states
 	assert places[0] > (0, 0) and places[1] == places[0] and places[2] > places[1] and places[3] == places[2] and places[4] > places[3], places

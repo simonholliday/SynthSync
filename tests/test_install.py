@@ -323,6 +323,41 @@ def test_nothing_the_second_core_runs_takes_a_method_out_under_a_name () -> None
 	assert found == ["_build: put = self.machine.put", "_build: next_word = timeline.next_word", "_build: take = self._take"]
 
 
+def accessors (source: str) -> list[str]:
+
+	"""Find every property and every method that makes a class's attributes special to reach: `property` named anywhere, and `__get__`, `__set__`, `__delete__`, `__getattr__`, `__setattr__` and `__delattr__` defined."""
+
+	special = {"__get__", "__set__", "__delete__", "__getattr__", "__setattr__", "__delattr__"}
+	found = []
+
+	for node in ast.walk(ast.parse(source)):
+
+		if isinstance(node, ast.Name) and node.id == "property":
+			found.append((node.lineno, "property"))
+
+		elif isinstance(node, ast.FunctionDef) and node.name in special:
+			found.append((node.lineno, node.name))
+
+	return ["%s, line %d" % (name, line) for line, name in sorted(found)]
+
+
+def test_nothing_the_second_core_works_through_has_a_property () -> None:
+
+	"""On the Pico, one property makes every attribute written to an object of its class cost about 23 microseconds rather than 2, and a property itself about 18 to read.
+
+	MicroPython has to look through such a class for a setter before each
+	write. The timeline once kept its numbers behind properties, and that made
+	a start or a stop take more than twice as long, longer than the words put
+	by to cover it.
+	"""
+
+	for path in SECOND_CORE:
+		assert accessors((ROOT / path).read_text()) == [], path
+
+	# The search finds each way of doing it.
+	assert accessors("class Timeline:\n\n\tmask = property(lambda self: 0)\n\n\t@property\n\tdef beat (self):\n\t\treturn 0\n\n\tdef __setattr__ (self, name, value):\n\t\tpass\n") == ["property, line 3", "property, line 5", "__setattr__, line 9"]
+
+
 def own_nodes (function: ast.FunctionDef | ast.AsyncFunctionDef) -> typing.Iterator[ast.AST]:
 
 	"""Give every node of a function's own body, leaving out the functions, classes and lambdas inside it, which have names of their own."""

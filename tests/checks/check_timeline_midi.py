@@ -377,7 +377,7 @@ def check_a_stop_never_cuts_a_byte_in_half () -> None:
 
 	clock.timeline.stop()
 
-	assert clock.timeline.mask & synthsync.core.timeline.MIDI_BIT
+	assert clock.timeline.table[synthsync.core.timeline.CELL_MASK] & synthsync.core.timeline.MIDI_BIT
 
 	clock.play_until(clock.tick + 2000)
 
@@ -546,6 +546,49 @@ def check_only_while_playing_goes_quiet_when_stopped () -> None:
 	assert len(clock.received()) == count
 
 
+def check_midi_rests_only_between_bytes () -> None:
+
+	"""The words may stop for a flash write only while no byte is part way out: never during a byte's start bit or its data, and at times between bytes, stopped with the clock going and playing alike.
+
+	Stopping the words holds every pin where it is, which would stretch the bit
+	going out, and a receiver would then read the byte wrongly. A stop bit held
+	longer is only the line at rest for longer.
+	"""
+
+	clock = line(ALWAYS)
+	asked: list[list[tuple[int, bool]]] = [[], []]
+
+	for stage in range(2):
+
+		if stage:
+			clock.timeline.start()
+
+		until = clock.tick + BEAT
+
+		while clock.tick < until:
+			asked[stage].append((clock.tick, clock.timeline.midi_resting()))
+			clock.play(1)
+
+	starts = [start for start, _ in clock.received()]
+
+	for stage in range(2):
+
+		rested = 0
+
+		for tick, resting in asked[stage]:
+
+			if not resting:
+				continue
+
+			rested += 1
+
+			# Asked between two words, the pin is as the last one left it.
+			assert not clock.high_at(tick - 1), "resting with the pin high at %d" % tick
+			assert not [start for start in starts if start < tick < start + 9 * BIT], "resting part way through a byte at %d" % tick
+
+		assert rested, "never resting %s" % ("playing" if stage else "stopped")
+
+
 def check_switching_off_while_playing_says_stop_and_goes_silent () -> None:
 
 	"""Nothing is left waiting for clocks that won't come, and the pin ends at rest."""
@@ -558,7 +601,7 @@ def check_switching_off_while_playing_says_stop_and_goes_silent () -> None:
 
 	assert clock.values()[-1] == STOP
 	assert not clock.pins & synthsync.core.timeline.MIDI_BIT
-	assert clock.timeline.midi_on == 0
+	assert clock.timeline.table[synthsync.core.timeline.CELL_MIDI_ON] == 0
 
 	edges = len(clock.edges)
 

@@ -507,7 +507,9 @@ Open the file with Thonny, as in [step 2](#step-2-copy-synthsync-onto-the-pico),
 
 Eight is the most there can be. Outputs 5 to 8 are on GP6 to GP9, pins 9 to 12.
 
-> **To come:** with more than four outputs, the timing isn't yet exact in every case. Some pulses can come up to about 5 ms late when outputs 5 to 8 are busy as well: for example, eight outputs each sending more than about 24 pulses a beat at 300 BPM, or slower outputs whose pulses keep falling almost together. Four outputs or fewer have kept exact time in every test, and the fix for more is being worked on.
+Eight outputs keep exact time too. In every test with eight, no pulse came late, even with all of them as busy as the page can set them, MIDI's clock going and the page in hard use.
+
+> **To come:** the twelve-hour tests in [How accurate is it?](#how-accurate-is-it) were made with four outputs, and haven't yet been repeated with eight. With all eight as busy as they can be, SynthSync has less time in hand than it has with four, and more room for eight is being worked on.
 
 ## Choosing the tempo range
 
