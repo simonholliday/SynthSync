@@ -478,7 +478,7 @@ def test_nothing_but_the_clock_is_loaded_before_the_first_pulse () -> None:
 		"synthsync.core.clock", "synthsync.core.config", "synthsync.core.settings", "synthsync.core.transport",
 		"synthsync.device.board", "synthsync.device.chip", "synthsync.device.player", "synthsync.device.storage",
 	}
-	assert later == {"synthsync.device.panel", "synthsync.device.radio", "synthsync.web.app", "synthsync.web.portal"}
+	assert later == {"synthsync.device.panel", "synthsync.device.knob", "synthsync.device.radio", "synthsync.web.app", "synthsync.web.portal"}
 
 	# And the file the Pico runs at power-up loads nothing else.
 	main = ast.parse((ROOT / "main.py").read_text())

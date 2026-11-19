@@ -24,7 +24,11 @@ import sys
 IMAGES = pathlib.Path(__file__).parent.parent / "docs" / "images"
 
 # The Pico's header pin for each GPIO that SynthSync uses, as the official pinout numbers them.
-HEADER_PIN = {2: 4, 3: 5, 4: 6, 5: 7, 6: 9, 7: 10, 8: 11, 9: 12, 10: 14, 11: 15, 21: 27, 22: 29}
+HEADER_PIN = {2: 4, 3: 5, 4: 6, 5: 7, 6: 9, 7: 10, 8: 11, 9: 12, 10: 14, 11: 15, 21: 27, 22: 29, 26: 31}
+
+# The header pins of the analogue ground and the analogue supply, which the tempo knob sits between.
+ANALOGUE_GROUND_PIN = 33
+ANALOGUE_SUPPLY_PIN = 35
 
 # The header pin of the Pico's own 3.3 V supply.
 SUPPLY_PIN = 36
@@ -35,12 +39,16 @@ PLAY_PAUSE = 21
 STOP = 22
 TEMPO_LED = 10
 MIDI_OUT = 11
+KNOB = 26
 
 # The part values, as the wiring guide gives them.
 INTO_BASE = "10 kΩ"
 PULL_UP = "10 kΩ"
 TO_JACK = "1 kΩ"
 FOR_LED = "1 kΩ"
+KNOB_TAG = 164
+KNOB_POT = "10 kΩ linear"
+KNOB_CAPACITOR = "100 nF"
 
 # MIDI out's, which are the MIDI standard's for a 3.3 V supply.
 MIDI_SUPPLY = "33 Ω, 0.5 W"
@@ -113,6 +121,9 @@ class Sheet:
 		# Everything written, as (where it starts or ends or is centred, how, the words, their kind), for checking that none of it runs off the card.
 		self.written: list[tuple[float, str, str, str]] = []
 
+		# Every pin's tag, as its words and how wide it is, for checking that the words fit.
+		self.tags: list[tuple[str, int]] = []
+
 		self.words(24, 36, title, kind="title")
 
 	def wire (self, *points: Point) -> None:
@@ -164,14 +175,16 @@ class Sheet:
 
 		self.parts.append('<path class="solid" d="M%s Z"/>' % " L".join("%.1f %.1f" % corner for corner in corners))
 
-	def tag (self, at: Point, name: str, number: int) -> Point:
+	def tag (self, at: Point, name: str, number: int, width: int = 124) -> Point:
 
-		"""Draw one of the Pico's pins as a tag ending at this point, with its name and its number on the header, and give the point back."""
+		"""Draw one of the Pico's pins as a tag this wide ending at this point, with its name and its number on the header, and give the point back."""
 
 		x, y = at
+		words = "%s · pin %d" % (name, number)
 
-		self.parts.append('<rect class="pin" x="%g" y="%g" width="124" height="28" rx="6"/>' % (x - 124, y - 14))
-		self.words(x - 62, y + 5, "%s · pin %d" % (name, number), anchor="middle", kind="name")
+		self.tags.append((words, width))
+		self.parts.append('<rect class="pin" x="%g" y="%g" width="%g" height="28" rx="6"/>' % (x - width, y - 14, width))
+		self.words(x - width / 2, y + 5, words, anchor="middle", kind="name")
 
 		return at
 
@@ -459,6 +472,42 @@ def tempo_led () -> Sheet:
 	return sheet
 
 
+def tempo_knob () -> Sheet:
+
+	"""Draw the tempo knob: a potentiometer across the analogue supply, with its wiper on GP26."""
+
+	sheet = Sheet(620, 340, "The tempo knob", "A 10 kilohm linear potentiometer between ADC_VREF and AGND, with its wiper on GP26, and a 100 nanofarad capacitor from GP26 to AGND.")
+
+	top = sheet.tag((190, 90), "ADC_VREF", ANALOGUE_SUPPLY_PIN, KNOB_TAG)
+	wiper = sheet.tag((190, 160), "GP%d" % KNOB, HEADER_PIN[KNOB], KNOB_TAG)
+	bottom = sheet.tag((190, 270), "AGND", ANALOGUE_GROUND_PIN, KNOB_TAG)
+	across = 410
+	branch = 300
+	tip = (across - 9, wiper[1])
+
+	sheet.wire(top, (across, top[1]), (across, 120))
+	sheet.wire(sheet.resistor((across, 120), KNOB_POT, down=True, beside=1), (across, bottom[1]), bottom)
+
+	# The wiper presses on the middle of the track.
+	sheet.wire(wiper, tip)
+	sheet.arrow(wiper, tip)
+	sheet.joint((branch, wiper[1]))
+
+	# The capacitor, from the wiper's wire down to the ground wire.
+	sheet.wire((branch, wiper[1]), (branch, 211))
+	sheet.wire((branch - 14, 211), (branch + 14, 211))
+	sheet.wire((branch - 14, 220), (branch + 14, 220))
+	sheet.wire((branch, 220), (branch, bottom[1]))
+	sheet.joint((branch, bottom[1]))
+	sheet.words(branch + 22, 220, KNOB_CAPACITOR)
+
+	sheet.words(across + 16, 112, "clockwise end", kind="note")
+	sheet.words(across + 16, 214, "counter-clockwise end", kind="note")
+	sheet.words(24, 318, "If the knob works backwards, swap the two wires on its outer lugs.", kind="note")
+
+	return sheet
+
+
 def midi_stage (sheet: Sheet, y: float) -> Point:
 
 	"""Draw GP11 switching MIDI's transistor, level with this height, and give where its collector ends."""
@@ -653,6 +702,7 @@ DIAGRAMS = {
 	"output-led": lambda: output(True),
 	"buttons": buttons,
 	"tempo-led": tempo_led,
+	"tempo-knob": tempo_knob,
 	"midi": midi,
 	"midi-switch": midi_switch,
 	"direct": direct,

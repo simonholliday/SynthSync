@@ -20,6 +20,12 @@ HARNESS = """<!doctype html>
 		return moments.map((moment) => counter.tap(moment));
 	};
 
+	window.slowTempos = (bpm, moments) => {
+		const counter = new TapTempo();
+		counter.slowest(bpm);
+		return moments.map((moment) => counter.tap(moment));
+	};
+
 	window.TapTempo = TapTempo;
 	window.ready = true;
 </script>
@@ -134,3 +140,14 @@ def test_it_counts_every_tap_and_says_how_many_are_wanted (page: "playwright.syn
 	assert said[4] == [4, 0]
 	assert said[10] == [10, 0]
 	assert said[11] == [0, 4]
+
+
+def test_a_range_with_slower_beats_waits_longer_before_starting_again (page: "playwright.sync_api.Page") -> None:
+
+	"""At 1 BPM, taps a minute apart are a tempo, and the usual range would have started again at each."""
+
+	moments = [0, 60000, 120000, 180000]
+
+	assert page.evaluate("(moments) => window.slowTempos(1, moments)", moments) == [None, None, None, 1]
+	assert page.evaluate("(moments) => window.tempos(moments)", moments) == [None, None, None, None]
+	assert page.evaluate("(moments) => window.slowTempos(100, moments)", [0, 3000, 6000, 9000]) == [None, None, None, 20]

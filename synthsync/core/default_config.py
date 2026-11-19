@@ -20,4 +20,10 @@ TEXT = b"""# How your SynthSync is wired.
 # How many clock outputs are wired, from 1 to 8. Output 1 is on GP2, output 2
 # on GP3, and so on, up to output 8 on GP9.
 outputs = 4
+
+# The tempo range, for the page and for a tempo knob alike, from 1 to 1000 BPM.
+# It is 20 to 300 unless you remove the # from these lines and change them. A
+# range below 20 or above 300 BPM narrows the ratios the outputs can have.
+# min_bpm = 20
+# max_bpm = 300
 """

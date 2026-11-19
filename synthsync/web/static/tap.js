@@ -12,8 +12,10 @@ const FIRST_TEMPO_AT = 4;
 // How many of the latest taps are averaged, so that the tempo settles and can still be moved.
 const MOST_COUNTED = 8;
 
-// A longer gap than this between taps starts the count again, in milliseconds. The slowest beat is 3 seconds.
+// A longer gap than this between taps starts the count again, in milliseconds:
+// a little over the slowest beat, which is 3 seconds in the usual tempo range.
 const STARTS_AGAIN_AFTER = 3200;
+const LONGEST_BEATS_MORE = 16 / 15;
 
 
 export class TapTempo {
@@ -21,7 +23,14 @@ export class TapTempo {
 	/* Count taps from nothing. */
 	constructor () {
 
+		this.startsAgainAfter = STARTS_AGAIN_AFTER;
 		this.reset();
+	}
+
+	/* Allow for beats as slow as this, in BPM, by waiting that much longer before starting again. */
+	slowest (bpm) {
+
+		this.startsAgainAfter = Math.max(STARTS_AGAIN_AFTER, 60000 / bpm * LONGEST_BEATS_MORE);
 	}
 
 	/* Forget every tap. */
@@ -40,7 +49,7 @@ export class TapTempo {
 	/* Take a tap at a moment in milliseconds, and give the tempo so far in whole BPM, or null while there are too few taps. */
 	tap (moment) {
 
-		if (this.times.length > 0 && moment - this.times[this.times.length - 1] > STARTS_AGAIN_AFTER) {
+		if (this.times.length > 0 && moment - this.times[this.times.length - 1] > this.startsAgainAfter) {
 			this.reset();
 		}
 

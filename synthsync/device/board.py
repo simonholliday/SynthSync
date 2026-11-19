@@ -9,8 +9,8 @@ player sets comes straight after them. Everything else takes pins from the
 top, starting at GP22. A new pin for anything that isn't the player's is the
 highest one still free, so the two ends grow towards each other and only the
 room between them limits what fits. GP23 to GP25 and GP29 belong to the Pico 2
-W's radio, and GP26 to GP28 are kept free for analogue inputs. The buttons step
-out of that order for the wiring's sake, either side of a ground pin, so GP18
+W's radio, and GP26 to GP28 are kept for analogue inputs, of which the tempo
+knob has the first. The buttons step out of that order for the wiring's sake, either side of a ground pin, so GP18
 to GP20 are free.
 """
 
@@ -35,6 +35,9 @@ MIDI_PIN = 11
 # both can share. GP20 is the next one free, then GP19 and GP18.
 STOP_PIN = 22
 PLAY_PAUSE_PIN = 21
+
+# The tempo knob, a potentiometer's wiper, if one is fitted: ADC 0.
+KNOB_PIN = 26
 
 # Whether an input reads as pressed when its pin is pulled low. A bare push
 # button between the pin and ground does that, against the Pico's own pull-up,

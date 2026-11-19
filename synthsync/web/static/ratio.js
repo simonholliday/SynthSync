@@ -97,7 +97,8 @@ Give the musical values as ratios of the clock, slowest first, when it sends `pp
 The Pico lists them once, as pulses a beat, since they are the same notes at
 every PPQN. Divided by the PPQN, they are what a knob stops on: at 4, a
 quarter note is "1/4". Those slower than `slowest` or faster than `fastest`
-are left out, as the Pico would refuse them.
+are left out, as the Pico would refuse them, and `fastest` is always the last,
+so that a knob can reach it.
 */
 export function ofClock (beatSnaps, ppqn, slowest, fastest) {
 
@@ -122,6 +123,10 @@ export function ofClock (beatSnaps, ppqn, slowest, fastest) {
 		if (toNumber(text) >= low && toNumber(text) <= high) {
 			found.push(text);
 		}
+	}
+
+	if (found.length === 0 || toNumber(found[found.length - 1]) < toNumber(fastest) - 1e-9) {
+		found.push(String(fastest));
 	}
 
 	return found;

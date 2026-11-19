@@ -14,7 +14,8 @@ whatever happens. The next test puts back a copy one cut short left.
 
 `freerun` proves the rig itself. The rest test the real player: `player` times
 its fastest output in the busiest pattern, `cluster` times one whose edges
-crowd together with three others', `sweep` changes the tempo many times a
+crowd together with three others', `clustermidi` does that with MIDI's clock
+going, as SynthSync plays by default, `sweep` changes the tempo many times a
 second, `burst` sends every setting at once over and over, `collect` changes
 outputs while the first core collects a large heap straight after each change,
 `pause` pauses and carries on a dozen times, `startstop` starts and stops over
@@ -62,7 +63,7 @@ import tools.stage
 
 ROOT = pathlib.Path(__file__).parent.parent
 
-TESTS = ("freerun", "player", "cluster", "sweep", "burst", "collect", "pause", "startstop", "position", "inputs", "led", "midi", "powerup", "network", "page", "air", "save", "saved", "stopsave", "shortfall")
+TESTS = ("freerun", "player", "cluster", "clustermidi", "sweep", "burst", "collect", "pause", "startstop", "position", "inputs", "led", "midi", "extremes", "powerup", "network", "page", "air", "save", "saved", "stopsave", "shortfall")
 
 # The test that needs the Pico's address on a network, and how long to give a round of
 # requests that failed to be seen as the end of the test, in seconds.
@@ -102,6 +103,8 @@ def stage (folder: pathlib.Path, compiler: str) -> None:
 	tools.stage.copy_microdot(folder, test_client=True)
 	tools.stage.pack_page(folder)
 	shutil.copy(ROOT / "tools" / "board" / "rig.py", folder / "rig.py")
+	shutil.copy(ROOT / "tools" / "board" / "rig_extremes.py", folder / "rig_extremes.py")
+	shutil.copy(ROOT / "tools" / "board" / "rig_busiest.py", folder / "rig_busiest.py")
 
 	tools.stage.compile_all(folder, compiler)
 

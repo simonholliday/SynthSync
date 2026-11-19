@@ -19,12 +19,15 @@ far too long to be this one, isn't read at all.
 It describes the hardware, not the patch, so starting again as new leaves it
 alone, and so do an install and a new release copied over the old one.
 
-It holds one setting so far: `outputs`, from 1 to 8, which is 4 unless set.
-Output 1 is on GP2, and each one after it on the next pin.
+It holds `outputs`, from 1 to 8, which is 4 unless set: output 1 is on GP2, and
+each one after it on the next pin. `min_bpm` and `max_bpm` give the tempo range
+for the whole clock, from 1 to 1000 BPM, which is 20 to 300 unless set.
 """
 
 import os
 
+import synthsync.core.limits
+import synthsync.core.settings
 import synthsync.core.timeline
 
 # mypy treats this name as true, and nothing else does: it lets a type be named
@@ -40,7 +43,7 @@ NAME = "config.txt"
 DEFAULT_OUTPUTS = 4
 
 # The longest the file may be, in bytes. The one SynthSync comes with is under
-# a thousand. A file far longer is some other file, and reading it all could
+# two thousand. A file far longer is some other file, and reading it all could
 # take memory the clock needs.
 LONGEST = 4096
 
@@ -66,7 +69,59 @@ class Config:
 		"""Begin with every default, and nothing to say."""
 
 		self.outputs = DEFAULT_OUTPUTS
+		self.slowest_tempo = synthsync.core.limits.DEFAULT_SLOWEST_TEMPO
+		self.fastest_tempo = synthsync.core.limits.DEFAULT_FASTEST_TEMPO
 		self.problems: "list[str]" = []
+
+	def limits (self) -> synthsync.core.limits.Limits:
+
+		"""Give the tempo range the file asks for, with what it allows."""
+
+		return synthsync.core.limits.Limits(self.slowest_tempo, self.fastest_tempo)
+
+
+def _bpm (name: str, value: str) -> int:
+
+	"""Read a tempo limit in BPM as hundredths of a BPM, or refuse it with a message fit to show."""
+
+	message = "%s has to be a number from %d to %d" % (name, synthsync.core.limits.SLOWEST_TEMPO // 100, synthsync.core.limits.FASTEST_TEMPO // 100)
+
+	try:
+		tempo = synthsync.core.settings.parse_tempo(value)
+
+	except ValueError:
+		raise ValueError(message)
+
+	if tempo < synthsync.core.limits.SLOWEST_TEMPO or tempo > synthsync.core.limits.FASTEST_TEMPO:
+		raise ValueError(message)
+
+	return tempo
+
+
+def _min_bpm (config: Config, value: str) -> "str | None":
+
+	"""Take the slowest tempo the clock may play, or say why it can't be taken."""
+
+	try:
+		config.slowest_tempo = _bpm("min_bpm", value)
+
+	except ValueError as problem:
+		return str(problem)
+
+	return None
+
+
+def _max_bpm (config: Config, value: str) -> "str | None":
+
+	"""Take the fastest tempo the clock may play, or say why it can't be taken."""
+
+	try:
+		config.fastest_tempo = _bpm("max_bpm", value)
+
+	except ValueError as problem:
+		return str(problem)
+
+	return None
 
 
 def _outputs (config: Config, value: str) -> "str | None":
@@ -95,6 +150,8 @@ def _outputs (config: Config, value: str) -> "str | None":
 # Every setting the file can hold, and what takes each one.
 _SETTINGS: "dict[str, typing.Callable[[Config, str], str | None]]" = {
 	"outputs": _outputs,
+	"min_bpm": _min_bpm,
+	"max_bpm": _max_bpm,
 }
 
 
@@ -182,6 +239,12 @@ def parse (data: bytes) -> Config:
 
 	if untold:
 		config.problems.append("%s has %d more line%s that couldn't be used" % (NAME, untold, "" if untold == 1 else "s"))
+
+	# Each limit can be fine alone and the two still make no range.
+	if config.slowest_tempo >= config.fastest_tempo:
+		config.slowest_tempo = synthsync.core.limits.DEFAULT_SLOWEST_TEMPO
+		config.fastest_tempo = synthsync.core.limits.DEFAULT_FASTEST_TEMPO
+		config.problems.append("%s: min_bpm has to be below max_bpm, so the range is 20 to 300 BPM" % NAME)
 
 	return config
 

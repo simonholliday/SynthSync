@@ -214,12 +214,14 @@ class Capture:
 
 		"""Say how far the gaps captured after the first `skip`, all together, came from as many exact gaps, in cycles: what `drift` says of a list."""
 
+		# Asked once: a capture still running has more gaps by the time this has added them up.
+		taken = self.taken()
 		total = 0
 
-		for index in range(skip, self.taken()):
+		for index in range(skip, taken):
 			total += 2 * self.counts[index] + 4
 
-		return drift_cycles(total, max(self.taken() - skip, 0), tempo, pulses, beats)
+		return drift_cycles(total, max(taken - skip, 0), tempo, pulses, beats)
 
 
 def drift_cycles (total: int, gaps: int, tempo: int, pulses: int, beats: int) -> int:
@@ -2326,6 +2328,7 @@ _MIDI_BYTE = 10 * _MIDI_BIT
 _MIDI_GAP = SYSTEM_HZ // 1000
 _MIDI_PER_BEAT = 24
 _MIDI_SHORT_WRITES = 300
+_MIDI_QUICK_STARTS = 40
 _MIDI_SLACK = 8
 _MIDI_ALIGN_SLACK = 16
 _MIDI_START_MOST = 10000
@@ -2598,6 +2601,25 @@ def test_midi (load: str = "idle") -> None:
 			if found[index][1] in (_MIDI_START, _MIDI_CONTINUE):
 				result["after"] = max(result["after"], _MIDI_BYTE + _MIDI_GAP - (found[index + 1][0] - found[index][0]))
 
+		# A start straight after a stop, at each moment the Stop byte may still be going out: it must not be stretched.
+		capture.again(_MIDI_RUNS)
+
+		for index in range(_MIDI_QUICK_STARTS):
+
+			press(transport.START)
+			yield 20
+
+			clock.press(transport.STOP)
+			clock.flush()
+			time.sleep_us(index * 100)
+			press(transport.START)
+			yield 20
+
+			press(transport.STOP)
+			yield 10
+
+		read()
+
 		# The clock while stopped, on its own.
 		clock.set_midi("always")
 		clock.flush()
@@ -2693,6 +2715,24 @@ def test_midi (load: str = "idle") -> None:
 	)
 
 	report("midi", passed, "clocks=%d aligned=%d framing_wrong=%d order_wrong=%d worst_bit_cycles=%d worst_gap_cycles=%d worst_idle_gap_cycles=%d worst_align_cycles=%d short_after_start_cycles=%d slowest_start_us=%d short_writes=%d faults=%d empty=%d one_left=%d fewest_waiting=%d load=%s" % (result["clocks"], result["aligned"], result["wrong"], result["order"], result["bit"], result["gap"], result["idle"], result["align"], result["after"], result["start"], result["short_writes"], status["faults"], status["empty"], status["one_left"], status["fewest_waiting"], described))
+
+
+def test_extremes (load: str = "idle") -> None:
+
+	"""Play both ends of the widest tempo range. It is in a file of its own, so that the other tests don't have it in memory."""
+
+	import rig_extremes
+
+	rig_extremes.run(load)
+
+
+def test_clustermidi (load: str = "idle") -> None:
+
+	"""Time the busiest outputs with MIDI's clock going. It is in a file of its own, so that the other tests don't have it in memory."""
+
+	import rig_busiest
+
+	rig_busiest.run(load)
 
 
 def test_powerup (load: str = "idle") -> None:
@@ -2855,6 +2895,7 @@ def _powerup_cases (load: str) -> None:
 		("a typo after a good line", b"outputs = 3\noutptus = 2\n", 3, 1),
 		("too many outputs", b"outputs = 9\n", 4, 1),
 		("a config.txt of rubbish", b"\x00\xff not a setting at all", 4, 1),
+		("a tempo range", b"outputs = 2\nmin_bpm = 100\nmax_bpm = 130\n", 2, 0),
 	)
 
 	for name, data, outputs, told in wirings:
@@ -2894,6 +2935,13 @@ def _powerup_cases (load: str) -> None:
 
 		if parts.player.timeline.outputs != outputs or parts.clock.settings.count != outputs:
 			wrong.append(name + ": the player has %d outputs and the settings %d" % (parts.player.timeline.outputs, parts.clock.settings.count))
+
+		# The scheduler keeps its tempo range in its answer's third and fourth places.
+		wanted = parts.config.limits()
+		held = parts.player.timeline._answer
+
+		if held[2] != wanted.slowest_tempo or held[3] != wanted.fastest_tempo or parts.clock.settings.limits.fastest_tempo != wanted.fastest_tempo:
+			wrong.append(name + ": the player plays %d to %d and the settings go to %d" % (held[2], held[3], parts.clock.settings.limits.fastest_tempo))
 
 		if not 7 <= pulses <= 9:
 			wrong.append(name + ": %d pulses in a second" % pulses)
@@ -2960,7 +3008,7 @@ def _powerup_cases (load: str) -> None:
 	asyncio.run(start.carry_on(parts, 2500))
 	stood = start.reached(parts)
 
-	if len(parts.jobs) != 7 or parts.panel is None:
+	if len(parts.jobs) != 8 or parts.panel is None or parts.knob is None:
 		wrong.append("the rest: %d jobs were started" % len(parts.jobs))
 
 	if not stood.startswith("page=1 ") or not answered():
@@ -3052,7 +3100,7 @@ def _powerup_cases (load: str) -> None:
 	finally:
 		start.reach = reach
 
-	if len(parts.jobs) != 3 or not start.reached(parts).startswith("page=0 "):
+	if len(parts.jobs) != 4 or not start.reached(parts).startswith("page=0 "):
 		wrong.append("no page: %d jobs were started" % len(parts.jobs))
 
 	start.stop(parts)
@@ -3333,7 +3381,11 @@ def test_network (load: str = "idle") -> None:
 	status = player.status()
 	taken = capture.taken()
 	played_for = time.ticks_diff(time.ticks_ms(), playing_from)
-	gaps = capture.gaps()
+
+	# Judged where they lie: by now there isn't always room left for a list of them all.
+	capture.halt()
+	pulses, worst = capture.judge(gap_lengths(30000, _DENSE[0][0], _DENSE[0][1]))
+	drifted = capture.drift(30000, _DENSE[0][0], _DENSE[0][1])
 
 	wifi[0].close()
 
@@ -3356,15 +3408,13 @@ def test_network (load: str = "idle") -> None:
 	player.close()
 	capture.close()
 
-	worst = worst_error(gaps, gap_lengths(30000, _DENSE[0][0], _DENSE[0][1]))
-	drifted = drift(gaps, 30000, _DENSE[0][0], _DENSE[0][1])
 	going = kept_going(taken, played_for, 30000, _DENSE[0][0], _DENSE[0][1]) and status["running"]
 
 	# The own network starts at first, for the new password, for the reset,
 	# and after each of the three joins that fail.
 	passed = never.over and not wrong and started[1] == 6 and taken < count and going and worst <= 2 and abs(drifted) <= _DRIFT_MOST and sound(status)
 
-	report("network", passed, "starts=%d first_start_ms=%d change_in_force_ms=%d found=%d look_ms=%d joins=%d back_after_ms=%d wrong=%d first_wrong=%s pulses=%d played_ms=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (started[1], took, counts[0], counts[1], counts[2], started[3], counts[3], len(wrong), wrong[0].replace(" ", "_") if wrong else "none", len(gaps), played_for, worst, drifted, describe(status), described))
+	report("network", passed, "starts=%d first_start_ms=%d change_in_force_ms=%d found=%d look_ms=%d joins=%d back_after_ms=%d wrong=%d first_wrong=%s pulses=%d played_ms=%d worst_cycles=%d drift_cycles=%d %s load=%s" % (started[1], took, counts[0], counts[1], counts[2], started[3], counts[3], len(wrong), wrong[0].replace(" ", "_") if wrong else "none", pulses, played_for, worst, drifted, describe(status), described))
 
 
 # Where the page test keeps its settings, and the page's files while it runs.
@@ -3808,6 +3858,10 @@ def test_air (load: str = "idle") -> None:
 		parts.clock.set_tempo(tempo)
 		parts.clock.set_output(1, "ratio", "24")
 
+		# Told now, because nothing else tells it until the network and the page have loaded, a second later.
+		parts.clock.flush()
+		parts.player.settle()
+
 		playing_from = time.ticks_ms()
 		asyncio.run(start.carry_on(parts, _AIR_FOR, _PAGE_FOLDER))
 		played_for = time.ticks_diff(time.ticks_ms(), playing_from)
@@ -4212,7 +4266,9 @@ TESTS = {
 	"air": test_air,
 	"burst": test_burst,
 	"cluster": test_cluster,
+	"clustermidi": test_clustermidi,
 	"collect": test_collect,
+	"extremes": test_extremes,
 	"shortfall": test_shortfall,
 	"freerun": test_freerun,
 	"inputs": test_inputs,

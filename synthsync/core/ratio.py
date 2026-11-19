@@ -9,26 +9,30 @@ pulses for each of the clock's, (1, 2) is one for every two of the clock's,
 and (4, 3) is exactly four for every three, never 1.3333. The scheduler counts
 in beats, so `effective` gives what an output sends a beat.
 
+How far a ratio can go depends on the tempo range, which `config.txt` can
+change: every function here that cares takes the `Limits` to keep to.
+
 This runs on the Pico as well as on a laptop, so it uses whole numbers only.
 """
+
+import synthsync.core.limits
 
 # The PPQNs the clock can be set to, slowest first: the rates other gear uses.
 # 4 suits most step sequencers, which take a step on each pulse: a 16th note.
 PPQNS = (1, 2, 4, 8, 12, 16, 24, 48)
 DEFAULT_PPQN = 4
 
-# The slowest ratio an output can run at, of the clock, whatever its PPQN.
-SLOWEST = (1, 128)
+# The slowest ratio an output can run at, of the clock, in the usual tempo range
+# and whatever its PPQN. `slowest` gives it for any range.
+SLOWEST = (1, synthsync.core.limits.MOST_BEATS)
 
-# The most pulses a beat any output may send. The timing is proven at this
-# rate, so the fastest ratio depends on the PPQN: `fastest` gives it.
-MOST_A_BEAT = 96
+# The most pulses a beat any output may send in the usual tempo range. The
+# fastest ratio depends on the PPQN: `fastest` gives it.
+MOST_A_BEAT = synthsync.core.limits.MOST_A_BEAT
 
-# Neither half of a ratio may be larger than this. The scheduler multiplies the
-# pulses by the tempo in hundredths of a BPM, and that product has to stay small
-# enough for the Pico to handle without reaching for memory. Two decimal places
-# can never exceed it.
-LARGEST_PART = 9600
+# Neither half of a ratio may be larger than this in the usual tempo range. Two
+# decimal places can never exceed it.
+LARGEST_PART = synthsync.core.limits.LARGEST_PART
 
 # One pulse for each of the clock's: what every output starts at.
 ONE = (1, 1)
@@ -114,14 +118,29 @@ def _short_decimal (top: int, bottom: int) -> str:
 	return "%d.%02d" % (whole, places)
 
 
-def fastest (ppqn: int) -> tuple[int, int]:
+def ppqns (limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> "tuple[int, ...]":
+
+	"""Give the PPQNs the clock can be set to in this tempo range: those an output can send."""
+
+	return tuple(ppqn for ppqn in PPQNS if ppqn <= limits.most_a_beat)
+
+
+def fastest (ppqn: int, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> tuple[int, int]:
 
 	"""Give the fastest ratio an output can have when the clock sends this many pulses a beat.
 
-	It keeps every output within 96 pulses a beat: ×24 at 4 PPQN, ×2 at 48.
+	In the usual tempo range it keeps every output within 96 pulses a beat:
+	×24 at 4 PPQN, ×2 at 48.
 	"""
 
-	return (MOST_A_BEAT // ppqn, 1)
+	return (limits.most_a_beat // ppqn, 1)
+
+
+def slowest (ppqn: int, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> tuple[int, int]:
+
+	"""Give the slowest ratio an output can have when the clock sends this many pulses a beat. It is ÷128 unless the tempo range reaches below 20 BPM."""
+
+	return (1, min(SLOWEST[1], limits.most_beats * ppqn))
 
 
 def effective (ratio: tuple[int, int], ppqn: int) -> tuple[int, int]:
@@ -135,7 +154,7 @@ def effective (ratio: tuple[int, int], ppqn: int) -> tuple[int, int]:
 	return (pulses // divisor, beats // divisor)
 
 
-def make (pulses: int, beats: int, ppqn: int = 1) -> tuple[int, int]:
+def make (pulses: int, beats: int, ppqn: int = 1, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> tuple[int, int]:
 
 	"""Build the ratio of this many pulses to this many of the clock's, in lowest terms.
 
@@ -150,10 +169,12 @@ def make (pulses: int, beats: int, ppqn: int = 1) -> tuple[int, int]:
 	pulses //= divisor
 	beats //= divisor
 
-	if pulses * SLOWEST[1] < beats * SLOWEST[0]:
-		raise ValueError("The slowest ratio is ÷128")
+	bottom = slowest(ppqn, limits)
 
-	top = fastest(ppqn)
+	if compare((pulses, beats), bottom) < 0:
+		raise ValueError("The slowest ratio is ÷%d" % bottom[1])
+
+	top = fastest(ppqn, limits)
 
 	if compare((pulses, beats), top) > 0:
 
@@ -163,13 +184,15 @@ def make (pulses: int, beats: int, ppqn: int = 1) -> tuple[int, int]:
 		raise ValueError("At %d PPQN the fastest ratio is ×%d" % (ppqn, top[0]))
 
 	# The scheduler is given the ratio a beat, so that has to stay small enough too.
-	if pulses > LARGEST_PART or beats > LARGEST_PART or effective((pulses, beats), ppqn)[0] > LARGEST_PART:
+	largest = limits.largest_part
+
+	if pulses > largest or beats > largest or effective((pulses, beats), ppqn)[0] > largest:
 		raise ValueError("That ratio is too fine to play exactly: use at most two decimal places, or a fraction of smaller numbers")
 
 	return (pulses, beats)
 
 
-def parse (text: str, ppqn: int = 1) -> tuple[int, int]:
+def parse (text: str, ppqn: int = 1, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> tuple[int, int]:
 
 	"""Read a ratio as someone would type it.
 
@@ -199,7 +222,7 @@ def parse (text: str, ppqn: int = 1) -> tuple[int, int]:
 	if divide:
 		pulses, beats = beats, pulses
 
-	return make(pulses, beats, ppqn)
+	return make(pulses, beats, ppqn, limits)
 
 
 def to_text (ratio: tuple[int, int]) -> str:
@@ -257,16 +280,17 @@ def compare (first: tuple[int, int], second: tuple[int, int]) -> int:
 	return 0
 
 
-def snaps (ppqn: int = 1) -> list[tuple[int, int]]:
+def snaps (ppqn: int = 1, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> list[tuple[int, int]]:
 
 	"""Give the musical values as ratios of a clock of this many pulses a beat, slowest first, keeping those it can play.
 
-	At one pulse a beat they are `SNAPS` as they stand. The fastest ratio at
-	every PPQN, 96 pulses a beat, is always among them.
+	At one pulse a beat they are `SNAPS` as they stand. The fastest ratio there
+	is at this PPQN is always the last of them, so a knob can reach it.
 	"""
 
 	found = []
-	top = fastest(ppqn)
+	top = fastest(ppqn, limits)
+	bottom = slowest(ppqn, limits)
 
 	for pulses, beats in SNAPS:
 
@@ -274,24 +298,27 @@ def snaps (ppqn: int = 1) -> list[tuple[int, int]]:
 		divisor = _common(pulses, beats)
 		snap = (pulses // divisor, beats // divisor)
 
-		if compare(snap, SLOWEST) >= 0 and compare(snap, top) <= 0:
+		if compare(snap, bottom) >= 0 and compare(snap, top) <= 0:
 			found.append(snap)
+
+	if not found or found[-1] != top:
+		found.append(top)
 
 	return found
 
 
-def is_snap (ratio: tuple[int, int], ppqn: int = 1) -> bool:
+def is_snap (ratio: tuple[int, int], ppqn: int = 1, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> bool:
 
 	"""Say whether a ratio is one of the musical values the snap switch stops on, at this PPQN."""
 
-	return ratio in snaps(ppqn)
+	return ratio in snaps(ppqn, limits)
 
 
-def next_snap (ratio: tuple[int, int], ppqn: int = 1) -> tuple[int, int]:
+def next_snap (ratio: tuple[int, int], ppqn: int = 1, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> tuple[int, int]:
 
 	"""Give the first snap value faster than this ratio at this PPQN, or the fastest if there is none."""
 
-	found = snaps(ppqn)
+	found = snaps(ppqn, limits)
 
 	for snap in found:
 		if compare(snap, ratio) > 0:
@@ -300,11 +327,11 @@ def next_snap (ratio: tuple[int, int], ppqn: int = 1) -> tuple[int, int]:
 	return found[-1]
 
 
-def previous_snap (ratio: tuple[int, int], ppqn: int = 1) -> tuple[int, int]:
+def previous_snap (ratio: tuple[int, int], ppqn: int = 1, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> tuple[int, int]:
 
 	"""Give the first snap value slower than this ratio at this PPQN, or the slowest if there is none."""
 
-	found = snaps(ppqn)
+	found = snaps(ppqn, limits)
 	slower = found[0]
 
 	for snap in found:
@@ -317,7 +344,7 @@ def previous_snap (ratio: tuple[int, int], ppqn: int = 1) -> tuple[int, int]:
 	return slower
 
 
-def nearest_snap (ratio: tuple[int, int], ppqn: int = 1) -> tuple[int, int]:
+def nearest_snap (ratio: tuple[int, int], ppqn: int = 1, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> tuple[int, int]:
 
 	"""Give the snap value closest to this ratio, of those the clock can play at this PPQN.
 
@@ -325,7 +352,7 @@ def nearest_snap (ratio: tuple[int, int], ppqn: int = 1) -> tuple[int, int]:
 	×1.33 is. A ratio exactly between two snap values goes to the slower one.
 	"""
 
-	found = snaps(ppqn)
+	found = snaps(ppqn, limits)
 
 	if compare(ratio, found[0]) <= 0:
 		return found[0]
@@ -333,8 +360,8 @@ def nearest_snap (ratio: tuple[int, int], ppqn: int = 1) -> tuple[int, int]:
 	if compare(ratio, found[-1]) >= 0:
 		return found[-1]
 
-	slower = previous_snap(ratio, ppqn)
-	faster = next_snap(slower, ppqn)
+	slower = previous_snap(ratio, ppqn, limits)
+	faster = next_snap(slower, ppqn, limits)
 
 	if compare(faster, ratio) == 0:
 		return faster
@@ -348,3 +375,27 @@ def nearest_snap (ratio: tuple[int, int], ppqn: int = 1) -> tuple[int, int]:
 		return slower
 
 	return faster
+
+
+def fit (ratio: tuple[int, int], ppqn: int, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> tuple[int, int]:
+
+	"""Give the ratio nearest to this one that can be played at this PPQN and in this tempo range, which is this one if it can.
+
+	One too fast or too slow goes to the fastest or the slowest, and one too
+	fine to play exactly goes to its nearest snap value.
+	"""
+
+	top = fastest(ppqn, limits)
+	bottom = slowest(ppqn, limits)
+	largest = limits.largest_part
+
+	if compare(ratio, top) > 0:
+		return top
+
+	if compare(ratio, bottom) < 0:
+		return bottom
+
+	if ratio[0] > largest or ratio[1] > largest or effective(ratio, ppqn)[0] > largest:
+		return nearest_snap(ratio, ppqn, limits)
+
+	return ratio

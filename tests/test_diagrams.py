@@ -34,6 +34,7 @@ def test_the_diagrams_show_the_pins_the_board_uses () -> None:
 	assert tools.diagrams.STOP == board.STOP_PIN
 	assert tools.diagrams.TEMPO_LED == board.LED_PIN
 	assert tools.diagrams.MIDI_OUT == board.MIDI_PIN
+	assert tools.diagrams.KNOB == board.KNOB_PIN
 
 	# The player lights the tempo LED from the bit after the eighth output's, and MIDI out is to have the one after that.
 	assert board.LED_PIN == board.FIRST_OUTPUT_PIN + synthsync.core.timeline.MOST_OUTPUTS
@@ -135,6 +136,17 @@ def test_every_diagram_is_a_whole_picture_with_words_for_a_screen_reader () -> N
 			said = root.getElementsByTagName(tag)
 
 			assert len(said) == 1 and said[0].firstChild is not None and len(said[0].firstChild.nodeValue or "") > 10, (name, tag)
+
+
+def test_the_words_on_every_pin_fit_its_tag () -> None:
+
+	"""A long pin name gets a wider tag."""
+
+	height, part = LETTER["name"]
+
+	for name, draw in tools.diagrams.DIAGRAMS.items():
+		for words, width in draw().tags:
+			assert len(words) * height * part <= width - 8, (name, words)
 
 
 def test_nothing_written_on_a_diagram_runs_off_its_card () -> None:

@@ -60,7 +60,8 @@ import synthsync.device.board
 import synthsync.device.radio
 import synthsync.device.storage
 
-settings = synthsync.core.settings.Settings(synthsync.core.config.read(synthsync.device.board.CONFIG).outputs)
+wired = synthsync.core.config.read(synthsync.device.board.CONFIG)
+settings = synthsync.core.settings.Settings(wired.outputs, wired.limits())
 storage = synthsync.device.storage.Storage(settings)
 storage.load()
 
@@ -117,7 +118,8 @@ import synthsync.core.settings
 import synthsync.device.board
 import synthsync.device.storage
 
-settings = synthsync.core.settings.Settings(synthsync.core.config.read(synthsync.device.board.CONFIG).outputs)
+wired = synthsync.core.config.read(synthsync.device.board.CONFIG)
+settings = synthsync.core.settings.Settings(wired.outputs, wired.limits())
 storage = synthsync.device.storage.Storage(settings)
 storage.load()
 settings.forget_network()

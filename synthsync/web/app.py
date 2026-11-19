@@ -44,7 +44,7 @@ and one of each other message to begin from. After that it is sent a message
 whenever something changes, whoever changed it:
 
     {"type": "tempo", "tempo": 12050, "text": "120.5", "by": 2, "id": 31}
-    {"type": "ppqn", "ppqn": 4, "fastest_ratio": "24", "by": 2, "id": 32}
+    {"type": "ppqn", "ppqn": 4, "fastest_ratio": "24", "slowest_ratio": "1/128", "by": 2, "id": 32}
     {"type": "midi", "midi": "always", "by": 2, "id": 33}
     {"type": "output", "index": 1, "ratio": "4/3", "label": "×4/3", ...}
     {"type": "transport", "state": "running", "by": 0, "id": 0}
@@ -208,7 +208,7 @@ BATCH = ("batch", "messages")
 TO_PAGE = {
 	"hello": ("you", "fixed", "now"),
 	"tempo": ("tempo", "text", "by", "id"),
-	"ppqn": ("ppqn", "fastest_ratio", "by", "id"),
+	"ppqn": ("ppqn", "fastest_ratio", "slowest_ratio", "by", "id"),
 	"midi": ("midi", "by", "id"),
 	"output": ("index", "ratio", "label", "snap", "muted", "pulse", "role", "by", "id"),
 	"transport": ("state", "by", "id"),
@@ -223,7 +223,7 @@ FIXED = (
 	"version",
 	"slowest_tempo",
 	"fastest_tempo",
-	"slowest_ratio",
+	"tempo_step",
 	"ppqns",
 	"snaps",
 	"shortest_pulse",
@@ -589,12 +589,14 @@ class App:
 
 		"""Gather what a page needs that never changes while it's open."""
 
+		limits = self.clock.settings.limits
+
 		return {
 			"version": synthsync.__version__,
-			"slowest_tempo": synthsync.core.timeline.SLOWEST_TEMPO,
-			"fastest_tempo": synthsync.core.timeline.FASTEST_TEMPO,
-			"slowest_ratio": synthsync.core.ratio.to_text(synthsync.core.ratio.SLOWEST),
-			"ppqns": list(synthsync.core.ratio.PPQNS),
+			"slowest_tempo": limits.slowest_tempo,
+			"fastest_tempo": limits.fastest_tempo,
+			"tempo_step": limits.tempo_step,
+			"ppqns": list(synthsync.core.ratio.ppqns(limits)),
 			"snaps": [synthsync.core.ratio.to_text(snap) for snap in synthsync.core.ratio.SNAPS],
 			"shortest_pulse": synthsync.core.settings.SHORTEST_PULSE,
 			"longest_pulse": synthsync.core.settings.LONGEST_PULSE,
@@ -645,7 +647,8 @@ class App:
 			return {
 				"type": "ppqn",
 				"ppqn": settings.ppqn,
-				"fastest_ratio": synthsync.core.ratio.to_text(synthsync.core.ratio.fastest(settings.ppqn)),
+				"fastest_ratio": synthsync.core.ratio.to_text(synthsync.core.ratio.fastest(settings.ppqn, settings.limits)),
+				"slowest_ratio": synthsync.core.ratio.to_text(synthsync.core.ratio.slowest(settings.ppqn, settings.limits)),
 				"by": by[0],
 				"id": by[1],
 			}

@@ -18,6 +18,7 @@ them with everything else.
 
 import json
 
+import synthsync.core.limits
 import synthsync.core.ratio
 import synthsync.core.timeline
 
@@ -28,9 +29,9 @@ TYPE_CHECKING = False
 if TYPE_CHECKING:
 	import typing
 
-# Raised each time the saved form changes shape. 2 added the clock's PPQN, and
-# 3 MIDI out.
-VERSION = 3
+# Raised each time the saved form changes shape. 2 added the clock's PPQN, 3
+# MIDI out, and 4 where the tempo knob was.
+VERSION = 4
 
 # Tempo is held in hundredths of a BPM: 12000 is 120 BPM.
 DEFAULT_TEMPO = 12000
@@ -51,6 +52,11 @@ ROLES = ("clock", "start", "stop", "run")
 
 DEFAULT_PASSWORD = "synthsync"
 DEFAULT_HOST_NAME = "synthsync"
+
+# Where the tempo knob was when last noted, as a reading from 0 to 4095, or this
+# when it never has been.
+NO_KNOB = -1
+_FULLEST_KNOB = 4095
 
 _DIGITS = "0123456789"
 _NAME_CHARACTERS = "abcdefghijklmnopqrstuvwxyz0123456789-"
@@ -140,14 +146,16 @@ class Settings:
 
 	"""The tempo, the clock's PPQN, MIDI out, every output's settings and the network settings, with their checks."""
 
-	def __init__ (self, outputs: int) -> None:
+	def __init__ (self, outputs: int, limits: "synthsync.core.limits.Limits" = synthsync.core.limits.DEFAULT) -> None:
 
-		"""Begin with the defaults, for this many outputs."""
+		"""Begin with the defaults, for this many outputs, in this tempo range."""
 
 		self.count = outputs
-		self.tempo = DEFAULT_TEMPO
-		self.ppqn = synthsync.core.ratio.DEFAULT_PPQN
+		self.limits = limits
+		self.tempo = limits.tempo_in(DEFAULT_TEMPO)
+		self.ppqn = self._playable_ppqn(synthsync.core.ratio.DEFAULT_PPQN)
 		self.midi = DEFAULT_MIDI
+		self.knob_at = NO_KNOB
 		self.outputs = [Output() for _ in range(outputs)]
 
 		# The saved settings of outputs past the last one wired, as they were saved.
@@ -162,9 +170,10 @@ class Settings:
 
 		"""Go back to the defaults, as a factory reset does."""
 
-		self.tempo = DEFAULT_TEMPO
-		self.ppqn = synthsync.core.ratio.DEFAULT_PPQN
+		self.tempo = self.limits.tempo_in(DEFAULT_TEMPO)
+		self.ppqn = self._playable_ppqn(synthsync.core.ratio.DEFAULT_PPQN)
 		self.midi = DEFAULT_MIDI
+		self.knob_at = NO_KNOB
 		self.outputs = [Output() for _ in range(self.count)]
 		self.beyond = []
 		self.own_password = DEFAULT_PASSWORD
@@ -179,10 +188,31 @@ class Settings:
 		if isinstance(tempo, bool) or not isinstance(tempo, int):
 			raise ValueError("A tempo is a whole number of hundredths of a BPM")
 
-		if tempo < synthsync.core.timeline.SLOWEST_TEMPO or tempo > synthsync.core.timeline.FASTEST_TEMPO:
-			raise ValueError("The tempo has to be between 20 and 300 BPM")
+		if tempo < self.limits.slowest_tempo or tempo > self.limits.fastest_tempo:
+			raise ValueError("The tempo has to be between %s and %s BPM" % (tempo_text(self.limits.slowest_tempo), tempo_text(self.limits.fastest_tempo)))
 
 		self.tempo = tempo
+
+	def set_knob_at (self, reading: object) -> None:
+
+		"""Note where the tempo knob is, as a reading from 0 to 4095."""
+
+		if isinstance(reading, bool) or not isinstance(reading, int) or reading < 0 or reading > _FULLEST_KNOB:
+			raise ValueError("The knob reads from 0 to %d" % _FULLEST_KNOB)
+
+		self.knob_at = reading
+
+	def _playable_ppqn (self, ppqn: int) -> int:
+
+		"""Give this PPQN, or the nearest below it that this tempo range can send."""
+
+		found = synthsync.core.ratio.ppqns(self.limits)[0]
+
+		for each in synthsync.core.ratio.ppqns(self.limits):
+			if each <= ppqn:
+				found = each
+
+		return found
 
 	def set_midi (self, mode: object) -> None:
 
@@ -208,29 +238,29 @@ class Settings:
 		most pulses a beat any output may send is moved to the fastest ratio
 		there is at the new PPQN, which is a snap value. One too fine to play
 		exactly at the new PPQN is moved to its nearest snap value, as turning
-		snap on would.
+		snap on would. A tempo range reaching below 20 BPM can also move one
+		that would wait too long between pulses to the slowest there is.
 		"""
 
-		if isinstance(ppqn, bool) or not isinstance(ppqn, int) or ppqn not in synthsync.core.ratio.PPQNS:
-			choices = ["%d" % each for each in synthsync.core.ratio.PPQNS]
+		allowed = synthsync.core.ratio.ppqns(self.limits)
+
+		if isinstance(ppqn, bool) or not isinstance(ppqn, int) or ppqn not in allowed:
+			choices = ["%d" % each for each in allowed]
 			raise ValueError("The clock sends %s or %s pulses a beat" % (", ".join(choices[:-1]), choices[-1]))
 
-		top = synthsync.core.ratio.fastest(ppqn)
 		moved = []
 
 		for index in range(self.count):
 
 			output = self.outputs[index]
 
-			if synthsync.core.ratio.compare(output.ratio, top) > 0:
-				output.ratio = top
-				moved.append(index)
-
 			# What an output sends a beat is its ratio times the PPQN, so a
 			# fraction fine enough at a low PPQN can have too large a numerator
 			# for the scheduler at a higher one.
-			elif synthsync.core.ratio.effective(output.ratio, ppqn)[0] > synthsync.core.ratio.LARGEST_PART:
-				output.ratio = synthsync.core.ratio.nearest_snap(output.ratio, ppqn)
+			fitted = synthsync.core.ratio.fit(output.ratio, ppqn, self.limits)
+
+			if fitted != output.ratio:
+				output.ratio = fitted
 				moved.append(index)
 
 		self.ppqn = ppqn
@@ -258,7 +288,7 @@ class Settings:
 			if not isinstance(value, str):
 				raise ValueError("A ratio is typed as a number such as 1.5, or as a fraction such as 4/3")
 
-			ratio = synthsync.core.ratio.parse(value, self.ppqn)
+			ratio = synthsync.core.ratio.parse(value, self.ppqn, self.limits)
 
 			if index == 0 and ratio != synthsync.core.ratio.ONE:
 				raise ValueError(_MAIN_CLOCK)
@@ -275,7 +305,7 @@ class Settings:
 				# Turned on, snap takes a ratio set freely to the nearest value the knob would have stopped on.
 				if value and not output.snap:
 
-					nearest = synthsync.core.ratio.nearest_snap(output.ratio, self.ppqn)
+					nearest = synthsync.core.ratio.nearest_snap(output.ratio, self.ppqn, self.limits)
 
 					if nearest != output.ratio:
 						output.ratio = nearest
@@ -387,12 +417,40 @@ class Settings:
 			"tempo": self.tempo,
 			"ppqn": self.ppqn,
 			"midi": self.midi,
+			"knob_at": self.knob_at,
 			"outputs": outputs,
 			"own_password": self.own_password,
 			"host_name": self.host_name,
 			"network_name": self.network_name,
 			"network_password": self.network_password,
 		}
+
+	def _load_tempo (self, tempo: object) -> None:
+
+		"""Take a saved tempo. One any range could hold goes to the nearest in this one, so a narrower range in `config.txt` never counts as damage."""
+
+		if isinstance(tempo, int) and not isinstance(tempo, bool) and synthsync.core.limits.SLOWEST_TEMPO <= tempo <= synthsync.core.limits.FASTEST_TEMPO:
+			tempo = self.limits.tempo_in(tempo)
+
+		self.set_tempo(tempo)
+
+	def _load_ppqn (self, ppqn: object) -> None:
+
+		"""Take a saved PPQN, going to the nearest below it that this tempo range can send."""
+
+		if isinstance(ppqn, int) and not isinstance(ppqn, bool) and ppqn in synthsync.core.ratio.PPQNS:
+			ppqn = self._playable_ppqn(ppqn)
+
+		self.set_ppqn(ppqn)
+
+	def _load_ratio (self, index: int, value: object) -> None:
+
+		"""Take an output's saved ratio. One the usual range allows goes to the nearest that this range does."""
+
+		if isinstance(value, str):
+			value = synthsync.core.ratio.to_text(synthsync.core.ratio.fit(synthsync.core.ratio.parse(value, self.ppqn), self.ppqn, self.limits))
+
+		self.set_output(index, "ratio", value)
 
 	def load_dict (self, data: object) -> list[str]:
 
@@ -411,17 +469,21 @@ class Settings:
 			return problems
 
 		if "tempo" in data:
-			_attempt(problems, "tempo", lambda: self.set_tempo(data["tempo"]))
+			_attempt(problems, "tempo", lambda: self._load_tempo(data["tempo"]))
 
 		# Before the outputs, whose ratios are checked against it. A file saved
 		# before there was a PPQN has none, and its ratios are read as ratios of
 		# the default clock.
 		if "ppqn" in data:
-			_attempt(problems, "ppqn", lambda: self.set_ppqn(data["ppqn"]))
+			_attempt(problems, "ppqn", lambda: self._load_ppqn(data["ppqn"]))
 
 		# A file saved before there was MIDI out has none, and gets the default.
 		if "midi" in data:
 			_attempt(problems, "midi", lambda: self.set_midi(data["midi"]))
+
+		# A file saved before there was a tempo knob has no place for it.
+		if "knob_at" in data and data["knob_at"] != NO_KNOB:
+			_attempt(problems, "knob", lambda: self.set_knob_at(data["knob_at"]))
 
 		saved = data.get("outputs", [])
 
@@ -437,7 +499,10 @@ class Settings:
 				problems.append("output %d: not readable" % (index + 1))
 				continue
 
-			for name in ("ratio", "snap", "muted", "pulse", "role"):
+			if "ratio" in entry:
+				_attempt(problems, "output %d ratio" % (index + 1), lambda: self._load_ratio(index, entry["ratio"]))
+
+			for name in ("snap", "muted", "pulse", "role"):
 				if name in entry:
 					_attempt(problems, "output %d %s" % (index + 1, name), lambda: self.set_output(index, name, entry[name]))
 

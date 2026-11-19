@@ -322,7 +322,7 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 		assert fixed["version"] == synthsync.__version__
 		assert fixed["slowest_tempo"] == 2000
 		assert fixed["fastest_tempo"] == 30000
-		assert fixed["slowest_ratio"] == "1/128"
+		assert fixed["tempo_step"] == 100
 		assert fixed["ppqns"] == [1, 2, 4, 8, 12, 16, 24, 48]
 		assert fixed["roles"] == ["clock", "start", "stop", "run"]
 		assert fixed["config_problems"] == []
@@ -338,6 +338,7 @@ def check_a_page_that_has_just_opened_gets_everything_in_one_request () -> None:
 
 		assert ppqn["ppqn"] == 4
 		assert ppqn["fastest_ratio"] == "24"
+		assert ppqn["slowest_ratio"] == "1/128"
 		assert fixed["snaps"] == [synthsync.core.ratio.to_text(snap) for snap in synthsync.core.ratio.SNAPS]
 		assert sorted(message["index"] for message in by_type(now, "output")) == [0, 1, 2, 3]
 

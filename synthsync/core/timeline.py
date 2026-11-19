@@ -36,7 +36,9 @@ other half of the program collecting its garbage can't hold a pulse up.
 
 import array
 
-# Tempo is given in hundredths of a BPM: 12000 is 120 BPM.
+# Tempo is given in hundredths of a BPM: 12000 is 120 BPM. This is the usual
+# range, which `synthsync.core.limits` also gives, and a timeline can be given
+# another. Nothing here needs that module loaded.
 SLOWEST_TEMPO = 2000
 FASTEST_TEMPO = 30000
 
@@ -126,7 +128,7 @@ _MILLION = 1000000
 # The count of changes wraps here, well inside a small whole number.
 _CHANGES_WRAP = 0xFFFFFF
 
-# The limits a ratio must keep, as synthsync.core.ratio enforces them.
+# The limits a ratio must keep in the usual tempo range, as synthsync.core.ratio enforces them.
 _LARGEST_PART = 9600
 _SLOWEST_BEATS = 128
 _FASTEST_PULSES = 96
@@ -158,14 +160,16 @@ class Timeline:
 	at any time, running or not.
 	"""
 
-	def __init__ (self, outputs: int, cycles_per_tick: int = 150, overhead_cycles: int = 4, pin_bits: int = PIN_BITS) -> None:
+	def __init__ (self, outputs: int, cycles_per_tick: int = 150, overhead_cycles: int = 4, pin_bits: int = PIN_BITS, limits: "typing.Any" = None) -> None:  # type: ignore[name-defined]
 
 		"""Make a stopped timeline for this many outputs, at 120 BPM with every ratio at one pulse a beat.
 
-		The other three numbers describe the player's words: how many of its
+		The next three numbers describe the player's words: how many of its
 		clock cycles make one tick, how many cycles it spends fetching a word,
 		and how many of a word's low bits carry the pins. Those have room for
-		the eight outputs and the tempo LED at least.
+		the eight outputs and the tempo LED at least. `limits` is a
+		`synthsync.core.limits.Limits`, the tempo range and what it allows, and
+		the usual range is kept to without one.
 		"""
 
 		if outputs < 1 or outputs > MOST_OUTPUTS:
@@ -250,7 +254,23 @@ class Timeline:
 		self.midi_idle_part = 0
 
 		# Where _muldiv leaves its answer: the whole part, then the remainder.
-		self._answer = array.array("i", [0, 0])
+		#
+		# The tempo range follows them: the slowest and fastest tempo, the most
+		# beats between pulses, the most pulses a beat and the largest part of a
+		# ratio.
+		if limits is None:
+			bounds = [SLOWEST_TEMPO, FASTEST_TEMPO, _SLOWEST_BEATS, _FASTEST_PULSES, _LARGEST_PART]
+		else:
+			bounds = [limits.slowest_tempo, limits.fastest_tempo, limits.most_beats, limits.most_a_beat, limits.largest_part]
+
+		self._answer = array.array("i", [0, 0] + bounds)
+
+		# What every word needs and nothing ever replaces, to be had in one look.
+		# Looking up a name takes about a microsecond, and more when another name
+		# in use shares its entry in MicroPython's small lookup cache, which comes
+		# down to what else happens to be loaded. The player's margin at its
+		# busiest shouldn't.
+		self.parts = (self.until, self.until_part, self.fall, self.period, self.period_part, self.divisor, self.width, self.muted, self.bit, slots, self.midi_slot, cycles_per_tick, overhead_cycles, pin_bits, HOLD_LIMIT, LED_BIT)
 
 		self.tempo = 12000
 		self.mask = 0
@@ -448,8 +468,10 @@ class Timeline:
 		anything else.
 		"""
 
-		if tempo < SLOWEST_TEMPO or tempo > FASTEST_TEMPO:
-			raise ValueError("The tempo has to be between 20 and 300 BPM")
+		bounds = self._answer
+
+		if tempo < bounds[2] or tempo > bounds[3]:
+			raise ValueError("That tempo is outside the clock's range")
 
 		self.changes = (self.changes + 1) & _CHANGES_WRAP
 
@@ -486,11 +508,13 @@ class Timeline:
 
 		self._check_output(output)
 
-		if pulses < 1 or beats < 1 or pulses > _LARGEST_PART or beats > _LARGEST_PART:
-			raise ValueError("A ratio is made of whole numbers from 1 to %d" % _LARGEST_PART)
+		bounds = self._answer
 
-		if pulses * _SLOWEST_BEATS < beats or pulses > beats * _FASTEST_PULSES:
-			raise ValueError("A ratio has to be between ÷%d and ×%d" % (_SLOWEST_BEATS, _FASTEST_PULSES))
+		if pulses < 1 or beats < 1 or pulses > bounds[6] or beats > bounds[6]:
+			raise ValueError("A ratio is made of whole numbers from 1 to %d" % bounds[6])
+
+		if pulses * bounds[4] < beats or pulses > beats * bounds[5]:
+			raise ValueError("A ratio has to be between ÷%d and ×%d" % (bounds[4], bounds[5]))
 
 		self.pulses[output] = pulses
 		self.beats[output] = beats
@@ -1017,26 +1041,15 @@ class Timeline:
 		uses nothing but small whole numbers and the arrays made at the start.
 		"""
 
-		until = self.until
-		until_part = self.until_part
-		fall = self.fall
-		period = self.period
-		period_part = self.period_part
-		divisor = self.divisor
-		width = self.width
-		muted = self.muted
-		bit = self.bit
-		slots = self.slots
+		until, until_part, fall, period, period_part, divisor, width, muted, bit, slots, midi_slot, cycles_per_tick, overhead_cycles, pin_bits, hold, led_bit = self.parts
 		last = slots - 1
 		mask = self.mask
-		hold = HOLD_LIMIT
 		led_fall = self.led_fall
-		midi_slot = self.midi_slot
 		due = self.midi_due
 
 		# The tempo LED goes out before anything rises, as each slot's pin does.
 		if led_fall == 0:
-			mask &= ~LED_BIT
+			mask &= ~led_bit
 			led_fall = -1
 
 		for slot in range(slots):
@@ -1056,9 +1069,10 @@ class Timeline:
 				# part carries over so the fraction is never lost.
 				part = until_part[slot] + period_part[slot]
 				wait = period[slot]
+				whole = divisor[slot]
 
-				if part >= divisor[slot]:
-					part -= divisor[slot]
+				if part >= whole:
+					part -= whole
 					wait += 1
 
 				until_part[slot] = part
@@ -1068,7 +1082,7 @@ class Timeline:
 					self.beat += 1
 
 					# Every beat lights the tempo LED, whatever the outputs are doing.
-					mask |= LED_BIT
+					mask |= led_bit
 					led_fall = self.led_width
 
 				elif slot == midi_slot:
@@ -1076,10 +1090,13 @@ class Timeline:
 					due += 1
 
 				elif not muted[slot]:
-					if mask & bit[slot]:
+
+					pin = bit[slot]
+
+					if mask & pin:
 						self.merged += 1
 
-					mask |= bit[slot]
+					mask |= pin
 					drop = width[slot]
 
 					# Half the gap when asked for, or when the pulse wouldn't fit.
@@ -1195,11 +1212,15 @@ class Timeline:
 
 		for slot in range(slots):
 
-			if until[slot] > 0:
-				until[slot] -= hold
+			wait = until[slot]
 
-			if fall[slot] > 0:
-				fall[slot] -= hold
+			if wait > 0:
+				until[slot] = wait - hold
+
+			drop = fall[slot]
+
+			if drop > 0:
+				fall[slot] = drop - hold
 
 		if led_fall > 0:
 			led_fall -= hold
@@ -1207,7 +1228,7 @@ class Timeline:
 		self.led_fall = led_fall
 		self.mask = mask
 
-		return mask | ((hold * self.cycles_per_tick - self.overhead_cycles) << self.pin_bits)
+		return mask | ((hold * cycles_per_tick - overhead_cycles) << pin_bits)
 
 	def unpack (self, word: int) -> tuple[int, int]:
 

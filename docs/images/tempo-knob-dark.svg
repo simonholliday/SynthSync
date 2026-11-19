@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 340" width="620" height="340" role="img" aria-labelledby="title about">
+<title id="title">The tempo knob</title><desc id="about">A 10 kilohm linear potentiometer between ADC_VREF and AGND, with its wiper on GP26, and a 100 nanofarad capacitor from GP26 to AGND.</desc>
+<style>
+	.wire { fill: none; stroke: #e6edf3; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+	.shape { fill: #161b22; stroke: #e6edf3; stroke-width: 2; stroke-linejoin: round; }
+	.solid { fill: #e6edf3; stroke: none; }
+	.pin { fill: #12351f; stroke: #3fb950; stroke-width: 1.5; }
+	.maybe { fill: none; stroke: #9198a1; stroke-width: 1.5; stroke-dasharray: 6 5; }
+	text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e6edf3; }
+	.label { font-size: 14px; }
+	.name { font-size: 14px; font-weight: 600; }
+	.title { font-size: 17px; font-weight: 600; }
+	.note { font-size: 13px; fill: #9198a1; }
+</style>
+<rect x="1" y="1" width="618" height="338" rx="12" fill="#161b22" stroke="#3d444d" stroke-width="2"/>
+<text class="title" x="24" y="36" text-anchor="start">The tempo knob</text>
+<rect class="pin" x="26" y="76" width="164" height="28" rx="6"/>
+<text class="name" x="108" y="95" text-anchor="middle">ADC_VREF · pin 35</text>
+<rect class="pin" x="26" y="146" width="164" height="28" rx="6"/>
+<text class="name" x="108" y="165" text-anchor="middle">GP26 · pin 31</text>
+<rect class="pin" x="26" y="256" width="164" height="28" rx="6"/>
+<text class="name" x="108" y="275" text-anchor="middle">AGND · pin 33</text>
+<path class="wire" d="M190 90 L410 90 L410 120"/>
+<path class="wire" d="M410 120 L410 136 L403 140 L417 148 L403 156 L417 164 L403 172 L417 180 L410 184 L410 200"/>
+<text class="label" x="426" y="165" text-anchor="start">10 kΩ linear</text>
+<path class="wire" d="M410 200 L410 270 L190 270"/>
+<path class="wire" d="M190 160 L401 160"/>
+<path class="solid" d="M401.0 160.0 L392.0 164.5 L392.0 155.5 Z"/>
+<circle class="solid" cx="300" cy="160" r="3.5"/>
+<path class="wire" d="M300 160 L300 211"/>
+<path class="wire" d="M286 211 L314 211"/>
+<path class="wire" d="M286 220 L314 220"/>
+<path class="wire" d="M300 220 L300 270"/>
+<circle class="solid" cx="300" cy="270" r="3.5"/>
+<text class="label" x="322" y="220" text-anchor="start">100 nF</text>
+<text class="note" x="426" y="112" text-anchor="start">clockwise end</text>
+<text class="note" x="426" y="214" text-anchor="start">counter-clockwise end</text>
+<text class="note" x="24" y="318" text-anchor="start">If the knob works backwards, swap the two wires on its outer lugs.</text>
+</svg>

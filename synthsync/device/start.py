@@ -55,6 +55,7 @@ class Parts:
 		# What is made after the clock has started: the buttons and the light,
 		# the network, the page's server, and the jobs that keep them all going.
 		self.panel = None
+		self.knob = None
 		self.wifi = None
 		self.app = None
 		self.jobs: list = []
@@ -101,10 +102,11 @@ def begin (config: str = synthsync.device.board.CONFIG) -> Parts:
 		wired.problems.append("%s couldn't be read, so none of it was used" % synthsync.core.config.NAME)
 
 	board = synthsync.device.board
-	settings = synthsync.core.settings.Settings(wired.outputs)
+	limits = wired.limits()
+	settings = synthsync.core.settings.Settings(wired.outputs, limits)
 
 	# The player is made before anything else touches its pins. Setting one up afterwards would take it away.
-	player = synthsync.device.player.Player(board.FIRST_OUTPUT_PIN, wired.outputs)
+	player = synthsync.device.player.Player(board.FIRST_OUTPUT_PIN, wired.outputs, limits)
 	storage = synthsync.device.storage.Storage(settings, player)
 
 	try:
@@ -219,6 +221,16 @@ async def carry_on (parts: Parts, trial: int, static: "str | None" = None) -> No
 
 	parts.panel = synthsync.device.panel.Panel(parts.clock, parts.player)
 	parts.jobs = [asyncio.create_task(keep(job)) for job in (parts.storage.run, parts.clock.run, parts.panel.run)]
+
+	# The tempo knob, if there is one, finds that out for itself. Whatever goes wrong with it leaves the rest going.
+	try:
+		import synthsync.device.knob
+
+		parts.knob = synthsync.device.knob.TempoKnob(parts.clock)
+		parts.jobs.append(asyncio.create_task(keep(parts.knob.run)))
+
+	except Exception as problem:
+		sys.print_exception(problem)
 
 	# The network and the page come last, and nothing above waits for them. If
 	# they can't be made, the clock, the buttons and the saving carry on without.

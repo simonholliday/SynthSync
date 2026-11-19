@@ -36,6 +36,7 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 	- [Why not straight from the pin?](#why-not-straight-from-the-pin)
 	- [The play/pause and stop buttons](#the-playpause-and-stop-buttons)
 	- [The tempo LED](#the-tempo-led)
+	- [The tempo knob](#the-tempo-knob)
 	- [MIDI out](#midi-out)
 	- [Power](#power)
 	- [Parts list](#parts-list)
@@ -46,6 +47,7 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 - [Matching your other gear](#matching-your-other-gear)
 - [WiFi](#wifi)
 - [More or fewer outputs](#more-or-fewer-outputs)
+- [Choosing the tempo range](#choosing-the-tempo-range)
 - [How accurate is it?](#how-accurate-is-it)
 - [If something isn't working](#if-something-isnt-working)
 - [What it doesn't do](#what-it-doesnt-do)
@@ -54,7 +56,7 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 
 ## What it does
 
-- **Sets the tempo for your system,** from 20 to 300 BPM, in steps as fine as 0.01 BPM.
+- **Sets the tempo for your system,** from 20 to 300 BPM, in steps as fine as 0.01 BPM. You can [choose another range](#choosing-the-tempo-range), anywhere from 1 to 1000 BPM.
 - **Has up to eight clock outputs,** four of them out of the box. Each is a 3.5 mm jack that pulses at about 5 V.
 - **Output 1 is the main clock.** Out of the box it sends four pulses a beat, one for each 16th note, which is what most step sequencers want. You can change that to suit your gear: [Matching your other gear](#matching-your-other-gear) says how.
 - **Every other output is a multivider:** a clock multiplier and divider in one, named the way an attenuverter is. Each has its own ratio of the main clock: ×2 is twice as fast, and ÷4 a quarter as fast. The slowest is ÷128. The fastest is ×24 at four pulses a beat, because no output goes faster than 96 pulses a beat.
@@ -161,6 +163,7 @@ Every diagram below gives both, as in "GP2 · pin 4". Raspberry Pi's own pinout 
 | Tempo LED | GP10 | 14 |
 | Play/pause button | GP21 | 27 |
 | Stop button | GP22 | 29 |
+| Tempo knob | GP26, with AGND and ADC_VREF | 31, with 33 and 35 |
 | 5 V for the outputs | VSYS | 39 |
 | Ground | GND | 3, 8, 13, 18, 23, 28 or 38 |
 
@@ -255,6 +258,22 @@ It goes dark while the clock is paused or stopped. It keeps flashing when output
 
 Unlike the output LEDs, it needs no transistors: just a resistor from the pin. The resistor can be anything from 330 Ω to 1 kΩ, and a smaller one makes the LED brighter. For a blue, white or bright green LED, use 330 Ω: [Choosing LEDs](#choosing-leds) says why. The light on the Pico itself flashes on the beat too, but it is hidden once the board is in a case.
 
+### The tempo knob
+
+**Optional.** A knob on the panel sets the tempo by hand, so with the two buttons you can run the clock with no phone at all.
+
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="docs/images/tempo-knob-dark.svg">
+<img src="docs/images/tempo-knob.svg" alt="The tempo knob: a 10 kΩ linear potentiometer between ADC_VREF and AGND, its wiper on GP26, with a 100 nF capacitor from GP26 to AGND.">
+</picture>
+
+Use a 10 kΩ linear potentiometer, often marked B10K. Fit the 100 nF capacitor close to the Pico. There is nothing to set: SynthSync checks for the knob when it starts, and leaves the pin alone if there isn't one. If you add a knob later, restart the Pico.
+
+- **Straight up is 120 BPM.** A quarter of the way round is 80 and three quarters is 180, with 20 and 300 at the ends. If you [choose another range](#choosing-the-tempo-range), the knob covers that instead, in the same proportions.
+- **The last control you touched has the tempo.** Turn the knob and the page follows it. Change the tempo on the page and the knob lets go.
+- **The tempo never jumps.** After a change from the page, the knob does nothing until you have moved it to the current tempo. From there it takes over.
+- **At power-up,** the saved tempo plays if the knob is where you left it. If it was turned while the Pico was off, the knob sets the tempo.
+
 ### MIDI out
 
 **Optional.** Sockets that send MIDI clock, so that drum machines, sequencers and effects with a MIDI input can follow SynthSync.
@@ -323,6 +342,7 @@ The clock outputs take their 5 V from the Pico's VSYS pin, pin 39, as the diagra
 | Push button, for play/pause | Optional | 1 |
 | Tempo LED, and a resistor of 330 Ω to 1 kΩ | Optional, and the most useful LED | 1 of each |
 | Output LED, and a 1 kΩ resistor | Optional | 1 of each, for each output you want one on |
+| For the [tempo knob](#the-tempo-knob): 10 kΩ linear potentiometer, 100 nF capacitor | Optional | 1 of each |
 | For [MIDI out](#midi-out): NPN transistor, 1 kΩ and 4.7 kΩ resistors | Optional | 1 of each |
 | For each MIDI socket: 3.5 mm stereo jack or 5-pin DIN socket, 33 Ω 0.5 W and 10 Ω resistors | Optional | 1 of each |
 | For one MIDI jack that serves both types: two-pole, two-way (DPDT) switch | Optional | 1 |
@@ -487,6 +507,28 @@ Open the file with Thonny, as in [step 2](#step-2-copy-synthsync-onto-the-pico),
 
 Eight is the most there can be. Outputs 5 to 8 are on GP6 to GP9, pins 9 to 12.
 
+> **To come:** with more than four outputs, the timing isn't yet exact in every case. Some pulses can come up to about 5 ms late when outputs 5 to 8 are busy as well: for example, eight outputs each sending more than about 24 pulses a beat at 300 BPM, or slower outputs whose pulses keep falling almost together. Four outputs or fewer have kept exact time in every test, and the fix for more is being worked on.
+
+## Choosing the tempo range
+
+The tempo runs from 20 to 300 BPM unless you change it. You might want a narrow range, to set a tempo very finely, or an extreme one to experiment with. Add these lines to `config.txt`, in the same way as above, with any numbers from 1 to 1000:
+
+```
+min_bpm = 100
+max_bpm = 110
+```
+
+The range applies everywhere: the page's knob, tap tempo, and the [tempo knob](#the-tempo-knob). The narrower it is, the finer the steps those knobs move in. A saved tempo outside the new range plays at the nearest end of it.
+
+Going beyond 20 to 300 BPM narrows what the outputs can do, so that no output is asked for more than it can do at 20 or 300 BPM:
+
+| Range reaches | What changes |
+| --- | --- |
+| Down to 1 BPM | An output can wait at most 6 beats between pulses, not 128 |
+| Up to 1000 BPM | An output can send at most 28 pulses a beat, not 96, and the clock can't be set to 48 PPQN |
+
+Ranges between those limits are in proportion. Anything that follows the clock may not cope with the extremes, so try them with care.
+
 ## How accurate is it?
 
 There are two different questions here: how steady each pulse is, and how true the tempo stays over time. The figures below come from one Pico, timed for twelve hours.
@@ -502,6 +544,8 @@ That is one Pico's crystal on one night, and yours may stray further: the crysta
 **How we measured it.** Output 1 played 30, 60, 120, 174 and 300 BPM in turn, half an hour of each, at 4 pulses a beat, with the other outputs playing too. The Pico timed all of about 374,000 pulses at its own pin, to within 13 billionths of a second, and none was missing or out of place.
 
 A separate twelve-hour test kept the page in constant use and saved the settings about twice a minute. All 407,443 pulses, at ten tempos from 60 to 300 BPM, were just as exact, with no late pulses and no timing faults.
+
+All of these figures are for four outputs. With more, see [More or fewer outputs](#more-or-fewer-outputs).
 
 **What this can't show.** The Pico times its pulses with the same crystal that makes them. So these figures show that each pulse leaves exactly when the chip means it to, but not any wobble in the crystal itself, or anything that happens after the pin, such as in the output transistor. That takes an outside instrument such as an oscilloscope, which is why we say "within 1 µs" and not "no jitter at all".
 

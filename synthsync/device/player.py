@@ -81,6 +81,10 @@ _TXF0 = 0x50200000 + 0x010
 # How many words the player's queue holds.
 _DEPTH = 8
 
+# How long, in milliseconds, the player can take over the words it has: the
+# queue's and the one it is on, each at most 2.5 ms, and something over.
+_FINISHES_WITHIN = 30
+
 # How many words a backlog can hold, and how long one lasts unless asked
 # otherwise, in ticks. At the busiest the outputs can be, eight of them at 96
 # pulses a beat on unrelated ratios at 300 BPM, the words run out after about
@@ -203,16 +207,16 @@ class Player:
 	as `synthsync.core.settings` does.
 	"""
 
-	def __init__ (self, first_pin: int, outputs: int) -> None:
+	def __init__ (self, first_pin: int, outputs: int, limits: "object | None" = None) -> None:
 
-		"""Set up the pins, the hardware player and the second core."""
+		"""Set up the pins, the hardware player and the second core. `limits` is the tempo range, which is the usual one unless given."""
 
 		cycles = machine.freq() // 1000000
 
 		if cycles * 1000000 != machine.freq():
 			raise ValueError("The player needs a system clock that is a whole number of megahertz")
 
-		self.timeline = synthsync.core.timeline.Timeline(outputs, cycles_per_tick=cycles)
+		self.timeline = synthsync.core.timeline.Timeline(outputs, cycles_per_tick=cycles, limits=limits)
 
 		# The program is kept, so that closing the player can give back the room it takes in the
 		# hardware. There is room for six, and each player made would otherwise take its own.
@@ -407,7 +411,9 @@ class Player:
 			elif (timeline.running and not timeline.paused) or not quiet():
 
 				# Something to play again. Fill the queue with the player held, so it
-				# sets off with a full queue rather than one word.
+				# sets off with a full queue rather than one word. What it still has
+				# goes out first, because holding it would stretch that.
+				self._let_finish()
 				player.active(0)
 
 				while waiting() < _DEPTH:
@@ -416,6 +422,29 @@ class Player:
 				registers[_FDEBUG] = _RAN_DRY
 				player.active(1)
 				playing = True
+
+	@micropython.native
+	def _let_finish (self) -> None:
+
+		"""Wait until the player has played every word it was given, keeping any press of a button meanwhile for afterwards. Runs on the second core.
+
+		Held part of the way through them it would stretch whatever they were
+		doing, such as a bit of a MIDI byte, which a receiver would then read
+		wrongly. They take as long to play now as they would have after the hold.
+		"""
+
+		registers = machine.mem32
+		ticks_ms = time.ticks_ms
+		ticks_diff = time.ticks_diff
+		began = ticks_ms()
+		looked = began
+
+		# Cleared first, since it may say the player ran out some time ago. It
+		# comes back at once if the player is waiting for a word now.
+		registers[_FDEBUG] = _RAN_DRY
+
+		while not registers[_FDEBUG] & _RAN_DRY and ticks_diff(ticks_ms(), began) < _FINISHES_WITHIN:
+			looked = self._glance(looked)
 
 	@micropython.native
 	def _take_under_cover (self) -> None:

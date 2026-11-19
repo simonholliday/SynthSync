@@ -13,6 +13,7 @@ import asyncio
 import time
 import typing
 
+import synthsync.core.limits
 import synthsync.core.timeline
 import synthsync.core.transport
 
@@ -37,11 +38,11 @@ class Engine:
 	pins would be set just now, as bits.
 	"""
 
-	def __init__ (self, outputs: int, now: typing.Callable[[], float] = time.monotonic) -> None:
+	def __init__ (self, outputs: int, now: typing.Callable[[], float] = time.monotonic, limits: synthsync.core.limits.Limits | None = None) -> None:
 
-		"""Make a stopped engine for this many outputs. `now` gives the time in seconds, for tests to stand in for."""
+		"""Make a stopped engine for this many outputs. `now` gives the time in seconds, for tests to stand in for, and `limits` the tempo range."""
 
-		self.timeline = synthsync.core.timeline.Timeline(outputs)
+		self.timeline = synthsync.core.timeline.Timeline(outputs, limits=limits)
 		self.pulses = [0] * outputs
 		self.pins = 0
 		self.midi = synthsync.core.timeline.MIDI_OFF

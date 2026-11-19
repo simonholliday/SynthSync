@@ -211,6 +211,13 @@ class Clock:
 		self._keep()
 		self._tell(TEMPO, by)
 
+	def set_knob_at (self, reading: object) -> None:
+
+		"""Note where the tempo knob is, to be saved with the settings. It changes nothing that plays, so nobody is told."""
+
+		self.settings.set_knob_at(reading)
+		self._keep()
+
 	def set_midi (self, mode: object, by: object = None) -> None:
 
 		"""Change what MIDI out does: "off", "playing" or "always"."""

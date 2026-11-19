@@ -293,7 +293,7 @@ def check_a_partly_damaged_file_keeps_what_it_can () -> None:
 
 	text = json.dumps({
 		"version": 1,
-		"tempo": 99999,
+		"tempo": 999999,
 		"outputs": [
 			{"ratio": "2", "muted": True},
 			{"ratio": "3/2", "snap": "sometimes", "pulse": 500, "role": "run"},
@@ -443,13 +443,27 @@ def check_the_ppqn_is_saved_and_loaded_before_the_ratios_it_allows () -> None:
 	saved = settings.to_text()
 
 	assert json.loads(saved)["ppqn"] == 1
-	assert json.loads(saved)["version"] == 3
+	assert json.loads(saved)["version"] == 4
 
 	again = synthsync.core.settings.Settings(2)
 
 	assert again.load_text(saved) == []
 	assert again.ppqn == 1
 	assert again.outputs[1].ratio == (96, 1)
+
+
+def check_a_saved_ratio_too_fast_for_its_saved_ppqn_is_reported () -> None:
+
+	"""A saved ratio the usual range wouldn't allow at the PPQN saved with it is damage: it is named, and the output keeps its first ratio, as it would if the ratio were typed."""
+
+	saved = json.loads(synthsync.core.settings.Settings(2).to_text())
+	saved["outputs"][1]["ratio"] = "30"
+
+	again = synthsync.core.settings.Settings(2)
+
+	assert saved["ppqn"] == 4
+	assert again.load_text(json.dumps(saved)) == ["output 2 ratio: At 4 PPQN the fastest ratio is ×24"]
+	assert again.outputs[1].ratio == (1, 1)
 
 
 def check_a_ratio_is_checked_against_the_ppqn () -> None:

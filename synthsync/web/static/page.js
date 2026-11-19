@@ -26,6 +26,11 @@ const TEMPO_PIXELS = 3;
 const SNAP_PIXELS = 12;
 const FREE_PIXELS = 5;
 
+// How many steps the usual tempo range has, 20 to 300 BPM, and how many of them Page Up moves.
+// Other ranges keep the same drag and the same share of the range for each.
+const USUAL_TEMPO_STEPS = 280;
+const TEMPO_BIG_STEP = 10;
+
 // The least time between two messages about the same thing, in milliseconds.
 // A dragged knob changes far more often than that, and only the latest is sent.
 const SEND_EVERY = 40;
@@ -243,6 +248,7 @@ const now = {
 	// The clock's pulses a beat, and the fastest ratio an output can have at that.
 	ppqn: 4,
 	fastestRatio: "24",
+	slowestRatio: "1/128",
 
 	transport: "stopped",
 	outputs: [],
@@ -264,7 +270,7 @@ const settings = new Settings(link);
 const tempoKnob = new Knob(document.getElementById("tempo-knob"), {
 	label: "Tempo",
 	pixelsPerStep: TEMPO_PIXELS,
-	bigStep: 10,
+	bigStep: TEMPO_BIG_STEP,
 	onStep: turnTempo,
 });
 
@@ -339,6 +345,7 @@ function hear (message) {
 
 		now.fixed = message.fixed;
 		beatSnaps = message.fixed.snaps;
+		fitTempoControls();
 
 		// This is how things already stand, not a start or a stop that has just happened.
 		now.transport = transport ? transport.state : "stopped";
@@ -370,7 +377,8 @@ function hear (message) {
 		// Every output is a ratio of the clock, so its light and the reach of its knob change with it.
 		now.ppqn = message.ppqn;
 		now.fastestRatio = message.fastest_ratio;
-		snaps = ratio.ofClock(beatSnaps, now.ppqn, now.fixed.slowest_ratio, now.fastestRatio);
+		now.slowestRatio = message.slowest_ratio;
+		snaps = ratio.ofClock(beatSnaps, now.ppqn, now.slowestRatio, now.fastestRatio);
 		rows.forEach((row, index) => showOutput(index));
 		settings.hear(message);
 
@@ -435,6 +443,17 @@ function showTempo () {
 }
 
 
+/* Make the tempo's controls suit the range: a full sweep of the knob is the same drag whatever the range, and tap tempo allows for its slowest beat. */
+function fitTempoControls () {
+
+	const steps = Math.max((now.fixed.fastest_tempo - now.fixed.slowest_tempo) / now.fixed.tempo_step, 1);
+
+	tempoKnob.pixelsPerStep = TEMPO_PIXELS * USUAL_TEMPO_STEPS / steps;
+	tempoKnob.bigStep = Math.max(Math.round(steps / USUAL_TEMPO_STEPS * TEMPO_BIG_STEP), 1);
+	tapCounter.slowest(now.fixed.slowest_tempo / 100);
+}
+
+
 /* Give the nearest whole BPM the clock can play. */
 function playableBpm (bpm) {
 
@@ -445,12 +464,13 @@ function playableBpm (bpm) {
 }
 
 
-/* The tempo knob has turned: move to the next whole BPM that way, and on from there. */
+/* The tempo knob has turned: move to the next whole step that way, and on from there, staying in the range. */
 function turnTempo (steps) {
 
-	const whole = steps > 0 ? Math.floor(now.tempo / 100) : Math.ceil(now.tempo / 100);
+	const step = now.fixed.tempo_step;
+	const whole = steps > 0 ? Math.floor(now.tempo / step) : Math.ceil(now.tempo / step);
 
-	askForTempo(playableBpm(whole + steps) * 100);
+	askForTempo(Math.min(Math.max((whole + steps) * step, now.fixed.slowest_tempo), now.fixed.fastest_tempo));
 }
 
 
@@ -525,7 +545,7 @@ function showTaps (bpm) {
 function keepTapOpen () {
 
 	clearTimeout(tapTimer);
-	tapTimer = setTimeout(lockTap, TAP_LOCKS_AFTER);
+	tapTimer = setTimeout(lockTap, Math.max(TAP_LOCKS_AFTER, tapCounter.startsAgainAfter));
 }
 
 
@@ -700,7 +720,7 @@ function build (count) {
 
 			row.knob = new Knob(element.querySelector(".ratio-knob"), {
 				label: "Output " + number + " multivider",
-				origin: ratio.along("1", now.fixed.slowest_ratio, now.fastestRatio),
+				origin: ratio.along("1", now.slowestRatio, now.fastestRatio),
 				onStep: (steps) => turnRatio(index, steps),
 			});
 
@@ -836,13 +856,13 @@ function showOutput (index) {
 	row.knob.pixelsPerStep = output.snap ? SNAP_PIXELS : FREE_PIXELS;
 	row.knob.bigStep = output.snap ? 3 : 12;
 	// The knob reaches as far as the clock's pulses a beat allow, so ×1 sits further along it at more of them.
-	row.knob.origin = ratio.along("1", now.fixed.slowest_ratio, now.fastestRatio);
-	row.knob.point(ratio.along(output.ratio, now.fixed.slowest_ratio, now.fastestRatio));
+	row.knob.origin = ratio.along("1", now.slowestRatio, now.fastestRatio);
+	row.knob.point(ratio.along(output.ratio, now.slowestRatio, now.fastestRatio));
 
 	row.knob.say(
 		inWords(output.label),
 		Number(ratio.toNumber(output.ratio).toFixed(4)),
-		Number(ratio.toNumber(now.fixed.slowest_ratio).toFixed(4)),
+		Number(ratio.toNumber(now.slowestRatio).toFixed(4)),
 		ratio.toNumber(now.fastestRatio),
 	);
 

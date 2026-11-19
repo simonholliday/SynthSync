@@ -23,6 +23,7 @@ import sys
 
 import synthsync.core.clock
 import synthsync.core.config
+import synthsync.core.limits
 import synthsync.core.settings
 import synthsync.core.timeline
 import synthsync.core.transport
@@ -35,9 +36,9 @@ class Stand:
 
 	"""Everything that makes up a stand-in SynthSync, put together."""
 
-	def __init__ (self, outputs: int = synthsync.core.config.DEFAULT_OUTPUTS, static: str | None = None, config_problems: list[str] | None = None) -> None:
+	def __init__ (self, outputs: int = synthsync.core.config.DEFAULT_OUTPUTS, static: str | None = None, config_problems: list[str] | None = None, limits: synthsync.core.limits.Limits = synthsync.core.limits.DEFAULT) -> None:
 
-		"""Make a stand-in with this many outputs, running, as a Pico is once switched on.
+		"""Make a stand-in with this many outputs, in this tempo range, running, as a Pico is once switched on.
 
 		`static` is the folder the page is served from, and is the page's own
 		six files unless given. `config_problems` is what the page is told
@@ -47,8 +48,8 @@ class Stand:
 		if static is None:
 			static = os.path.join(os.path.dirname(synthsync.web.app.__file__), "static")
 
-		self.engine = synthsync.sim.engine.Engine(outputs)
-		self.clock = synthsync.core.clock.Clock(synthsync.core.settings.Settings(outputs), self.engine)
+		self.engine = synthsync.sim.engine.Engine(outputs, limits=limits)
+		self.clock = synthsync.core.clock.Clock(synthsync.core.settings.Settings(outputs, limits), self.engine)
 		self.network = synthsync.sim.network.make(self.clock)
 		self.app = synthsync.web.app.App(self.clock, self.network, static, config_problems)
 
@@ -94,7 +95,7 @@ def main (arguments: list[str] | None = None) -> int:
 	for problem in wired.problems:
 		print(problem, flush=True)
 
-	stand = Stand(options.outputs or wired.outputs, options.static, wired.problems)
+	stand = Stand(options.outputs or wired.outputs, options.static, wired.problems, wired.limits())
 
 	print("SynthSync's stand-in is at http://%s:%d" % ("localhost" if options.host == "127.0.0.1" else options.host, options.port), flush=True)
 
