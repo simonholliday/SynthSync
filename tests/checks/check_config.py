@@ -74,6 +74,20 @@ def check_the_file_synthsync_makes_reads_cleanly_as_the_defaults () -> None:
 	assert b"\noutputs = 4\n" in data
 
 
+def check_the_example_in_the_file_synthsync_makes_is_true () -> None:
+
+	"""The note after a setting that the file shows, taken out of its own note, is read as it says."""
+
+	shown = b"\n#     outputs = 3  # only three jacks fitted so far\n"
+
+	assert shown in synthsync.core.default_config.TEXT
+
+	config = synthsync.core.config.parse(shown.replace(b"\n#     ", b"\n"))
+
+	assert config.problems == []
+	assert config.outputs == 3
+
+
 def check_a_pico_with_no_file_is_given_one_whole () -> None:
 
 	"""The file appears complete, with nothing left beside it, and reads as the defaults."""

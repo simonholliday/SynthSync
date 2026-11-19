@@ -9,10 +9,14 @@ TEXT = b"""# How your SynthSync is wired.
 # SynthSync reads this file when the Pico is switched on. After changing it,
 # save it, then unplug the Pico and plug it in again.
 #
-# A line that starts with # is a note for you, and SynthSync skips it. If
-# SynthSync can't make sense of a line, it uses its own setting in its place,
-# and the page says which line under Settings. Getting this file wrong can't
-# stop the clock.
+# Anything after a # is a note for you, and SynthSync skips it, whether the
+# note has a line of its own or comes after a setting, like this:
+#
+#     outputs = 3  # only three jacks fitted so far
+#
+# If SynthSync can't make sense of a line, it uses its own setting in its
+# place, and the page says which line under Settings. Getting this file wrong
+# can't stop the clock.
 #
 # Resetting SynthSync, from the page or by holding stop, leaves this file as
 # it is.
