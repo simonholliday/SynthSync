@@ -540,17 +540,17 @@ Ranges between those limits are in proportion. Anything that follows the clock m
 
 ## How accurate is it?
 
-There are two different questions here: how steady each pulse is, and how true the tempo stays over time. The figures below come from one Pico, timed for twelve hours.
+There are two different questions here: how steady each pulse is, and how true the tempo stays over time. The figures below come from one Pico, timed for twelve hours on each of two nights.
 
-**How steady is each pulse?** The pulses are placed by hardware inside the Pico's chip, counted from its crystal. No gap between one pulse and the next was more than a millionth of a second (1 µs) from what the tempo asks for. For scale, one sample of 48 kHz audio lasts about 21 µs, and one MIDI clock message takes 320 µs to send.
+**How steady is each pulse?** The pulses are placed by hardware inside the Pico's chip, counted from its crystal. On neither night was any gap between one pulse and the next more than a millionth of a second (1 µs) from what the tempo asks for. For scale, one sample of 48 kHz audio lasts about 21 µs, and one MIDI clock message takes 320 µs to send.
 
 At 30, 60, 120 and 300 BPM, every gap came out identical. At 174 BPM the exact gap isn't a whole number of microseconds, so it alternates between 86,206 and 86,207 µs, which keeps the average exact. These small differences never add up, so the outputs don't drift against each other however long the clock runs.
 
-**Does the tempo stay true over time?** Over the twelve hours, the Pico stayed within about 3 ms of network time, either way, and gained about 0.7 ms overall. In every hour, 120 BPM was still 120.000 BPM to three decimal places. Network time can only be read to about a millisecond over an ordinary internet connection, so part of that 3 ms may be the measurement itself.
+**Does the tempo stay true over time?** Against network time, the Pico gained about 0.7 ms over the twelve hours of the first night, and lost about 8 ms over the second. Either side of its average, it never strayed more than about 3 ms on the first night, or about 6 ms on the second. In every hour of both nights, 120 BPM was still 120.000 BPM to three decimal places. Network time can only be read to about a millisecond over an ordinary internet connection, so part of those few milliseconds may be the measurement itself.
 
-That is one Pico's crystal on one night, and yours may stray further: the crystal's specification allows about a tenth of a second an hour. It only matters against another clock that is running free. Anything clocked from SynthSync's outputs follows it exactly.
+That is one Pico's crystal on two nights. A crystal's pace changes a little with its temperature, which is likely why the nights differ. Yours may stray further: the crystal's specification allows about a tenth of a second an hour. It only matters against another clock that is running free. Anything clocked from SynthSync's outputs follows it exactly.
 
-**How we measured it.** Output 1 played 30, 60, 120, 174 and 300 BPM in turn, half an hour of each, at 4 pulses a beat, with the other outputs playing too. The Pico timed all of about 374,000 pulses at its own pin, to within 13 billionths of a second, and none was missing or out of place.
+**How we measured it.** Each night, output 1 played 30, 60, 120, 174 and 300 BPM in turn, half an hour of each, at 4 pulses a beat, with the other outputs playing too, and on the second night MIDI's clock going out as well. Each night the Pico timed all of about 374,000 pulses at its own pin, to within 13 billionths of a second, and none was missing or out of place.
 
 A separate twelve-hour test kept the page in constant use and saved the settings about twice a minute. All 407,443 pulses, at ten tempos from 60 to 300 BPM, were just as exact, with no late pulses and no timing faults.
 
