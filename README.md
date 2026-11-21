@@ -552,7 +552,7 @@ That is one Pico's crystal on two nights. A crystal's pace changes a little with
 
 **How we measured it.** Each night, output 1 played 30, 60, 120, 174 and 300 BPM in turn, half an hour of each, at 4 pulses a beat, with the other outputs playing too, and on the second night MIDI's clock going out as well. Each night the Pico timed all of about 374,000 pulses at its own pin, to within 13 billionths of a second, and none was missing or out of place.
 
-A separate twelve-hour test kept the page in constant use and saved the settings about twice a minute. All 407,443 pulses, at ten tempos from 60 to 300 BPM, were just as exact, with no late pulses and no timing faults.
+A separate twelve-hour test ran the whole of SynthSync, MIDI's clock included, with the page in constant use and the settings saved about twice a minute. All 563,170 pulses it timed, at ten tempos from 60 to 300 BPM, were just as exact, with no late pulses and no timing faults. Three times in the night the WiFi held the page up, the longest for about three and a half minutes, and the pulses carried on just as exactly through each.
 
 All of these figures are for four outputs. With more, see [More or fewer outputs](#more-or-fewer-outputs).
 
@@ -581,7 +581,7 @@ SynthSync stops while it measures, and starts again by itself at the end, with y
 | A module doesn't follow the clock | Try a longer pulse for that output, or the half pulse. Check the output with an LED, or with another module. |
 | An output does nothing, or stays high | Check that each transistor is the right kind in the right place: the NPN is the one connected to the Pico's pin. Check which leg is which, that the 5 V comes from pin 39, and that the jack's sleeve reaches a GND pin. |
 | SynthSync has gone missing on your WiFi | See [WiFi](#wifi). |
-| The page stops answering for a while | The clock keeps time, and the buttons on the Pico still work. On a weak or busy WiFi signal, SynthSync can be held up sending to a phone, sometimes for tens of seconds, and it comes back by itself. Moving the phone or the Pico closer to each other, or to your router, helps. |
+| The page stops answering for a while | The clock keeps time, and the buttons on the Pico still work. On a weak or busy WiFi signal, SynthSync can be held up sending to a phone, sometimes for a few minutes, and it comes back by itself. Moving the phone or the Pico closer to each other, or to your router, helps. |
 
 ## What it doesn't do
 
