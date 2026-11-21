@@ -6,6 +6,7 @@ through Microdot's own test client prove the addresses are wired up.
 """
 
 import asyncio
+import errno
 import io
 import json
 import os
@@ -13,6 +14,7 @@ import random
 import sys
 import time
 
+import microdot.microdot
 import microdot.test_client
 
 import synthsync
@@ -1800,21 +1802,96 @@ def check_a_connection_that_never_asks_for_anything_is_closed_and_one_that_is_on
 	tests.checks.check_clock.run(work())
 
 
-def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -> None:
+class Cut:
 
-	"""Given the folder the page is in, the app sends its files, a gzipped copy as such, and nothing else it finds there."""
+	"""Stands in for a connection the network stack gives up on, as the Pico's can once the first core has been held up for seconds.
 
-	files = {
-		"index.html": b"<p>the page</p>",
-		"page.js.gz": b"\x1f\x8bnot really gzipped",
-		"secret.txt": b"not the page's",
-	}
+	A send that can't go fails with EIO, which Microdot doesn't know as a
+	connection gone, and so does everything sent or closed after it.
+	"""
 
-	# A folder of this run's own, apart from every other run of these, on either Python, at the same time.
-	# MicroPython has no module to make one, so it is named at random until the name is a new one.
+	def __init__ (self, lines: "list[bytes]", room: int = 0, reading: bool = False) -> None:
+
+		"""Ask with `lines`, failing once more than `room` bytes would have gone, or at the first read if `reading`."""
+
+		self.lines = list(lines)
+		self.room = room
+		self.reading = reading
+		self.written = b""
+		self.tried = b""
+		self.attempts = 0
+		self.cut = False
+		self.closed = False
+
+	async def readline (self) -> bytes:
+
+		"""Give the request a line at a time, and then nothing, unless the connection goes first."""
+
+		if self.reading:
+			self.cut = True
+			raise OSError(errno.EIO)
+
+		return self.lines.pop(0) if self.lines else b""
+
+	def get_extra_info (self, name: str) -> "tuple[str, int]":
+
+		"""Say where the connection is from, which the server asks."""
+
+		return ("192.168.4.16", 50000)
+
+	async def awrite (self, data: bytes) -> None:
+
+		"""Keep what is sent until there is no more room, and fail from then on, noting what the server tried to send first and how many times it tried."""
+
+		self.attempts += 1
+
+		if not self.tried:
+			self.tried = data
+
+		if self.cut or len(self.written) + len(data) > self.room:
+			self.cut = True
+			raise OSError(errno.EIO)
+
+		self.written += data
+
+	async def aclose (self) -> None:
+
+		"""Note that the server closed the connection, which fails once the connection has gone."""
+
+		self.closed = True
+
+		if self.cut:
+			raise OSError(errno.EIO)
+
+
+async def answer_quietly (app: synthsync.web.app.App, connection: Cut) -> "list[object]":
+
+	"""Hand one connection to the server as the network does, and give whatever Microdot printed as a fault meanwhile."""
+
+	printed: "list[object]" = []
+	kept = getattr(microdot.microdot, "print_exception")
+	setattr(microdot.microdot, "print_exception", printed.append)
+
+	try:
+		await asyncio.wait_for(app.web.handle_request(connection, connection), 2)
+
+	finally:
+		setattr(microdot.microdot, "print_exception", kept)
+
+	return printed
+
+
+def make_folder (purpose: str, files: "dict[str, bytes]") -> str:
+
+	"""Make a folder of `files` for one check, apart from every other run of these, on either Python, at the same time, and give its name.
+
+	MicroPython has no module to make one, so it is named at random until the
+	name is a new one.
+	"""
+
 	for _ in range(20):
 
-		folder = "/tmp/synthsync-check-files-%s-%d" % (sys.implementation.name, random.getrandbits(30))
+		folder = "/tmp/synthsync-check-%s-%s-%d" % (purpose, sys.implementation.name, random.getrandbits(30))
 
 		try:
 			os.mkdir(folder)
@@ -1828,6 +1905,128 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 	for name in files:
 		with open(folder + "/" + name, "wb") as handle:
 			handle.write(files[name])
+
+	return folder
+
+
+def remove_folder (folder: str, files: "dict[str, bytes]") -> None:
+
+	"""Remove a folder `make_folder` made, and the files in it."""
+
+	for name in files:
+		os.remove(folder + "/" + name)
+
+	os.rmdir(folder)
+
+
+def check_a_page_load_the_network_gives_up_on_is_closed_and_gives_its_turn_back () -> None:
+
+	"""A phone the page can no longer be sent to, as on the Pico after a long hold, has its connection closed and the page's turn given back at once, with nothing printed as a fault."""
+
+	files = {"index.html": b"<p>" + b"a" * 3000 + b"</p>"}
+	folder = make_folder("cut", files)
+
+	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
+
+		clock, engine, storage = tests.checks.check_clock.make()
+		app = synthsync.web.app.App(clock, None, folder)
+		asking = [b"GET / HTTP/1.1\r\n", b"Host: 192.168.4.1\r\n"]
+
+		# Cut part of the way through the file, after it has had its turn.
+		cut = Cut(asking, room=1500)
+
+		assert await answer_quietly(app, cut) == []
+		assert cut.cut and cut.closed
+		assert b"<p>aaa" in cut.written
+		assert not app.sending_page
+
+		# So the next phone is sent the whole page straight away.
+		whole = Cut(asking, room=100000)
+
+		assert await answer_quietly(app, whole) == []
+		assert whole.written.endswith(files["index.html"])
+		assert whole.closed and not whole.cut
+
+	try:
+		tests.checks.check_clock.run(work())
+
+	finally:
+		remove_folder(folder, files)
+
+
+def check_a_connection_the_network_gives_up_on_at_any_other_moment_is_closed_quietly () -> None:
+
+	"""Cut while its request is read, or before any of the answer has gone, a connection is closed, with nothing printed and nothing left to fail later."""
+
+	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
+
+		app, engine, network = make()
+		asking = [b"GET /api/state HTTP/1.1\r\n", b"Host: 192.168.4.1\r\n"]
+
+		reading = Cut(asking, reading=True)
+
+		assert await answer_quietly(app, reading) == []
+		assert reading.cut and reading.closed
+		assert reading.tried == b""
+
+		answering = Cut(asking)
+
+		assert await answer_quietly(app, answering) == []
+		assert answering.cut and answering.closed
+		assert answering.tried.startswith(b"HTTP/1.0 200")
+
+	tests.checks.check_clock.run(work())
+
+
+def check_a_page_whose_socket_the_network_gives_up_on_before_it_opens_is_let_go_quietly () -> None:
+
+	"""A page that asks for its socket and can't be answered, as on the Pico during a long hold, is never counted as open, and nothing is printed as a fault of SynthSync's."""
+
+	async def work () -> None:
+
+		"""The check itself, which needs an event loop to run in."""
+
+		app, engine, network = make()
+		asking = [
+			b"GET /api/socket HTTP/1.1\r\n",
+			b"Host: 192.168.4.1\r\n",
+			b"Connection: Upgrade\r\n",
+			b"Upgrade: websocket\r\n",
+			b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n",
+			b"Sec-WebSocket-Version: 13\r\n",
+		]
+
+		cut = Cut(asking)
+
+		assert await answer_quietly(app, cut) == []
+		assert cut.cut and cut.closed
+
+		# It got as far as agreeing to open the socket, and nothing more was sent to it, not even a greeting.
+		assert cut.tried.startswith(b"HTTP/1.1 101")
+		assert cut.attempts == 1
+
+		await settle(app)
+
+		assert app.pages == []
+
+	tests.checks.check_clock.run(work())
+
+
+def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -> None:
+
+	"""Given the folder the page is in, the app sends its files, a gzipped copy as such, and nothing else it finds there."""
+
+	files = {
+		"index.html": b"<p>the page</p>",
+		"page.js.gz": b"\x1f\x8bnot really gzipped",
+		"secret.txt": b"not the page's",
+	}
+
+	folder = make_folder("files", files)
 
 	async def work () -> None:
 
@@ -1880,11 +2079,7 @@ def check_the_pages_own_files_are_sent_gzipped_or_plain_and_nothing_else_is () -
 		tests.checks.check_clock.run(work())
 
 	finally:
-
-		for name in files:
-			os.remove(folder + "/" + name)
-
-		os.rmdir(folder)
+		remove_folder(folder, files)
 
 
 def check_the_app_takes_every_message_its_table_lists_and_no_other () -> None:

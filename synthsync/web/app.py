@@ -306,6 +306,10 @@ _NO_ROOM = 2
 # How long a new connection may take to begin asking for something, in seconds, before it is closed.
 PATIENCE = 5.0
 
+# Microdot's own word for a connection that has gone. Told it, Microdot closes
+# whatever it was sending and then the connection.
+_LOST = "Connection lost"
+
 # What a page can be behind on, besides each output, which goes by its number.
 TEMPO = synthsync.core.clock.TEMPO
 PPQN = synthsync.core.clock.PPQN
@@ -351,7 +355,9 @@ class Turn:
 
 	Microdot reads a file's contents after the handler has given it back, so
 	the turn is taken by the first read and given back when the file is
-	closed, which Microdot does when the send is over, however it went.
+	closed. Microdot closes it when the send is over, or when it is told the
+	connection was lost, which `Sender` makes every failed send say. A load
+	that goes wrong any other way loses its turn after TURN_MOST.
 	"""
 
 	def __init__ (self, app: "App", file: "typing.Any") -> None:
@@ -455,17 +461,68 @@ class Patient:
 		return getattr(self._reader, name)
 
 
+class Sender:
+
+	"""Sends what the server writes to a connection, and says the connection was lost when anything can't be sent.
+
+	Microdot tidies up after a connection it is told was lost: it closes the
+	file it was sending, which gives the page's turn back, then the
+	connection. Any other failure it passes on with both left open, until
+	they are collected, and the failure is printed as a fault. On the Pico, a
+	send the network stack has given up on, as it can once the first core has
+	been held up for seconds, fails with EIO, which Microdot doesn't know.
+	"""
+
+	def __init__ (self, writer: "typing.Any") -> None:
+
+		"""Write to this connection."""
+
+		self._writer = writer
+
+	async def awrite (self, data: bytes) -> None:
+
+		"""Send `data`, or say the connection was lost."""
+
+		try:
+			await self._writer.awrite(data)
+
+		except OSError:
+			raise OSError(_LOST)
+
+	async def aclose (self) -> None:
+
+		"""Close the connection, which may have gone already."""
+
+		try:
+			await self._writer.aclose()
+
+		except OSError:
+			pass
+
+	def __getattr__ (self, name: str) -> "typing.Any":
+
+		"""Pass everything else straight to the connection."""
+
+		return getattr(self._writer, name)
+
+
 class Web (microdot.Microdot):
 
-	"""Microdot, with a limit on how long a new connection may take to ask for something."""
+	"""Microdot, with a limit on how long a new connection may take to ask for something, and every connection closed however it ends."""
 
 	async def handle_request (self, reader: "typing.Any", writer: "typing.Any") -> None:
 
-		"""Answer one connection, giving up on it if it never asks for anything."""
+		"""Answer one connection, giving up on it if it never asks for anything, and closing it if it goes."""
 
 		patient: "typing.Any" = Patient(reader)
+		sender: "typing.Any" = Sender(writer)
 
-		await microdot.Microdot.handle_request(self, patient, writer)
+		try:
+			await microdot.Microdot.handle_request(self, patient, sender)
+
+		except OSError:
+			# Gone while its request was being read, which Microdot passes on.
+			await sender.aclose()
 
 
 class Page:
@@ -1288,7 +1345,7 @@ class App:
 
 		async def upgrade (request: microdot.Request) -> microdot.websocket.WebSocket:
 
-			"""Turn a request into a socket, unless another site's page is asking."""
+			"""Turn a request into a socket, unless another site's page is asking, or the page has gone before it can be told."""
 
 			if not _to_the_pico(request, self.clock.settings.host_name):
 				microdot.abort(403, _NOT_THE_PICO)
@@ -1296,13 +1353,22 @@ class App:
 			if not _same_site(request):
 				microdot.abort(403, _OTHER_SITE)
 
-			return await microdot.websocket.websocket_upgrade(request)
+			try:
+				return await microdot.websocket.websocket_upgrade(request)
+
+			except OSError:
+				# Microdot would print this as a fault, though the page has only gone, as one can while the Pico is held up.
+				gone = microdot.websocket.WebSocket(request)
+				gone.closed = True
+
+				return gone
 
 		async def socket (request: microdot.Request, ws: microdot.websocket.WebSocket) -> None:
 
-			"""Look after one page's socket."""
+			"""Look after one page's socket, unless the page went before it opened."""
 
-			await self.serve(ws)
+			if not ws.closed:
+				await self.serve(ws)
 
 		async def index (request: microdot.Request) -> microdot.Response:
 
