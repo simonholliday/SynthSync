@@ -23,8 +23,6 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 
 *SynthSync on a breadboard: the Pico 2 W, the play/pause and stop buttons, the tempo LED, the tempo knob, and three clock outputs, each with its LED.*
 
-> **This README is a draft.** SynthSync is still being tested. Notes marked **To come** are waiting on a measurement, a decision or a piece of work.
-
 ## Contents
 
 - [What it does](#what-it-does)
