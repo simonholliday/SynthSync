@@ -11,8 +11,9 @@ README = ROOT / "README.md"
 # The raw tags the site lets through, and the three that make up a picture for light and dark pages.
 ALLOWED_TAGS = {"abbr", "br", "details", "kbd", "sub", "summary", "sup", "picture", "source", "img"}
 
-# The README's one picture that isn't a drawing.
+# The README's two pictures that aren't drawings: the page, and a photograph of the board built.
 PAGE_PICTURE = "docs/images/page.png"
+PHOTO = "docs/images/breadboard.jpg"
 
 # The one release number the README may name: the MicroPython it is built on.
 ALLOWED_VERSIONS = {"1.29.0"}
@@ -43,17 +44,17 @@ def test_only_the_raw_html_the_site_accepts_is_used () -> None:
 		assert re.findall(r'(?:^|" )([a-z-]+)=', attributes) == ["src", "alt"], attributes[:40]
 
 
-def test_every_image_is_a_drawing_or_the_picture_of_the_page_and_is_there () -> None:
+def test_every_image_is_a_drawing_the_picture_of_the_page_or_the_photograph_and_is_there () -> None:
 
-	"""The diagrams are SVG, and the one photograph-like picture is the page's."""
+	"""The diagrams are SVG, and the only other pictures are the page's and the photograph of the board."""
 
 	text = prose()
 	images = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", text) + re.findall(r'(?:src|srcset)="([^"]+)"', text)
 
-	assert images
+	assert PAGE_PICTURE in images and PHOTO in images
 
 	for image in images:
-		assert image.startswith("docs/images/") and (image.endswith(".svg") or image == PAGE_PICTURE), image
+		assert image.startswith("docs/images/") and (image.endswith(".svg") or image in (PAGE_PICTURE, PHOTO)), image
 		assert (ROOT / image).is_file(), image
 
 
@@ -85,6 +86,38 @@ def test_the_page_picture_is_wide_enough_to_be_sharp_with_clear_sides () -> None
 	assert struct.unpack(">I", png[16:20])[0] == 1600
 	assert png[25] == 6
 	assert zlib.decompress(pixels)[4] == 0
+
+
+def test_the_photograph_is_the_only_jpeg_sharp_light_and_with_nothing_hidden_in_it () -> None:
+
+	"""Every reader downloads it and the repository keeps it for good, so it is small, and carries no camera's notes, such as where it was taken."""
+
+	assert [path.name for path in (ROOT / "docs" / "images").iterdir() if path.suffix.lower() in (".jpg", ".jpeg")] == ["breadboard.jpg"]
+
+	jpeg = (ROOT / PHOTO).read_bytes()
+
+	assert jpeg[:2] == b"\xff\xd8"
+	assert len(jpeg) < 500_000
+
+	# Each part before the picture itself says what it holds: a camera's notes, Exif or XMP, are APP1 (E1), a comment is COM (FE), and the size is in the frame (C0).
+	place = 2
+	kinds = []
+	width = 0
+
+	while jpeg[place] == 0xFF and jpeg[place + 1] != 0xDA:
+
+		kind = jpeg[place + 1]
+		kinds.append(kind)
+
+		if kind == 0xC0:
+			width = struct.unpack(">H", jpeg[place + 7:place + 9])[0]
+
+		place += 2 + struct.unpack(">H", jpeg[place + 2:place + 4])[0]
+
+	assert 0xE1 not in kinds and 0xFE not in kinds
+
+	# Twice the site's column across, as the page's picture is, so it is sharp on any screen.
+	assert width >= 1600
 
 
 def test_no_link_climbs_out_of_the_repository () -> None:

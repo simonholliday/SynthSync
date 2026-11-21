@@ -19,6 +19,10 @@ SynthSync is a clock you build yourself, on a breadboard, from a handful of supe
 
 *The page SynthSync serves to your phone's web browser. The clock itself is the hardware you build.*
 
+![A breadboard with a Raspberry Pi Pico 2 W at one end, wired to two push buttons, a red LED, a knob, and three jack sockets, each with a yellow LED beside it. Yellow, green and purple patch cables are plugged into the jacks.](docs/images/breadboard.jpg)
+
+*SynthSync on a breadboard: the Pico 2 W, the play/pause and stop buttons, the tempo LED, the tempo knob, and three clock outputs, each with its LED.*
+
 > **This README is a draft.** SynthSync is still being tested. Notes marked **To come** are waiting on a measurement, a decision or a piece of work.
 
 ## Contents
